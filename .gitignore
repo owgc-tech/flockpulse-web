@@ -42,3 +42,8 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Jira seeding and credential files
+scripts/
+.env
+
