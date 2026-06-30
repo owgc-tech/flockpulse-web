@@ -48,3 +48,6 @@ CREATE POLICY "Groups are visible to members of the same tenant" ON groups
 -- RLS: Assignments
 CREATE POLICY "Assignments are visible to members of the same tenant" ON assignments
     FOR SELECT USING (tenant_id = get_tenant_id());
+
+
+
