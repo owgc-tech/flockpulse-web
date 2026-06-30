@@ -92,6 +92,150 @@ export async function publishEvent(id: string, tenantId: string) {
   return data;
 }
 
+export interface UpdateEventInput {
+  name?: string;
+  startDatetime?: string;
+  endDatetime?: string;
+  locationName?: string;
+  target?: Record<string, unknown>;
+  talkId?: string | null;
+}
+
+export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput) {
+  const db = serviceClient();
+
+  // Fetch current event state.
+  const { data: event, error: fetchError } = await db
+    .from('events')
+    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (fetchError || !event) {
+    const err = new Error('Event not found') as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (event.status === 'LOCKED' || event.status === 'CANCELLED') {
+    const err = new Error(`Cannot update event with status ${event.status}`) as Error & { code: string };
+    err.code = 'INVALID_STATE';
+    throw err;
+  }
+
+  // talk_id is immutable once any notification has been dispatched (status != PENDING).
+  if (input.talkId !== undefined && input.talkId !== event.talk_id) {
+    const { count, error: notifError } = await db
+      .from('event_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', id)
+      .neq('status', 'PENDING');
+
+    if (notifError) throw notifError;
+
+    if ((count ?? 0) > 0) {
+      const err = new Error('talk_id is immutable after notifications have been dispatched') as Error & { code: string };
+      err.code = 'IMMUTABLE_FIELD';
+      throw err;
+    }
+  }
+
+  // Validate datetime ordering if either end is being changed.
+  const newStart = input.startDatetime ?? event.start_datetime;
+  const newEnd = input.endDatetime ?? event.end_datetime;
+  if (new Date(newEnd) <= new Date(newStart)) {
+    const err = new Error('end_datetime must be after start_datetime') as Error & { code: string };
+    err.code = 'INVALID_DATETIME';
+    throw err;
+  }
+
+  // Build the update payload.
+  const patch: Record<string, unknown> = {
+    version: event.version + 1,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.startDatetime !== undefined) patch.start_datetime = input.startDatetime;
+  if (input.endDatetime !== undefined) patch.end_datetime = input.endDatetime;
+  if (input.locationName !== undefined) patch.location_name = input.locationName;
+  if (input.target !== undefined) patch.target = input.target;
+  if (input.talkId !== undefined) patch.talk_id = input.talkId;
+
+  const { data: updated, error: updateError } = await db
+    .from('events')
+    .update(patch)
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .select('id, name, status, version, start_datetime, end_datetime, location_name, target, talk_id, updated_at')
+    .single();
+
+  if (updateError) throw updateError;
+
+  // Recalculate unsent notification scheduled_for values when timing changes.
+  // Each purpose has a fixed offset relative to a reference time; recompute
+  // from the new reference rather than preserving the old absolute timestamp.
+  const timingChanged = input.startDatetime !== undefined || input.endDatetime !== undefined;
+  if (timingChanged) {
+    const start = new Date(newStart);
+    const end = new Date(newEnd);
+
+    const rescheduleMap: Record<string, Date> = {
+      PRE_EVENT_REMINDER:     new Date(start.getTime() - 24 * 60 * 60 * 1000),
+      POST_EVENT_SELF_REPORT: new Date(end.getTime()),
+      LEADER_CONFIRMATION:    new Date(end.getTime() + 2 * 60 * 60 * 1000),
+    };
+
+    const { data: unsent, error: unsentError } = await db
+      .from('event_notifications')
+      .select('id, purpose')
+      .eq('event_id', id)
+      .in('status', ['PENDING', 'RETRYING'])
+      .in('purpose', ['PRE_EVENT_REMINDER', 'POST_EVENT_SELF_REPORT', 'LEADER_CONFIRMATION']);
+
+    if (unsentError) throw unsentError;
+
+    for (const row of unsent ?? []) {
+      const newScheduledFor = rescheduleMap[row.purpose as string];
+      if (!newScheduledFor) continue;
+      const { error: reschedErr } = await db
+        .from('event_notifications')
+        .update({ scheduled_for: newScheduledFor.toISOString() })
+        .eq('id', row.id);
+      if (reschedErr) throw reschedErr;
+    }
+  }
+
+  // Insert EVENT_UPDATE notification for every expected attendee.
+  // scheduled_for = now (immediate; dispatch is handled by a separate worker).
+  const { data: attendees, error: attendeesError } = await db
+    .from('event_attendees')
+    .select('member_id')
+    .eq('event_id', id)
+    .eq('tenant_id', tenantId);
+
+  if (attendeesError) throw attendeesError;
+
+  if ((attendees ?? []).length > 0) {
+    const now = new Date().toISOString();
+    const notifRows = (attendees ?? []).map((a: { member_id: string }) => ({
+      tenant_id: tenantId,
+      event_id: id,
+      purpose: 'EVENT_UPDATE',
+      scheduled_for: now,
+      status: 'PENDING',
+    }));
+
+    const { error: notifInsertError } = await db
+      .from('event_notifications')
+      .insert(notifRows);
+
+    if (notifInsertError) throw notifInsertError;
+  }
+
+  return updated;
+}
+
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
