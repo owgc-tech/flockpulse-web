@@ -91,20 +91,6 @@ CREATE POLICY "groups_insert_admin" ON groups
         )
     );
 
-CREATE POLICY "groups_update_admin" ON groups
-    FOR UPDATE
-    USING (tenant_id = get_tenant_id())
-    WITH CHECK (
-        tenant_id = get_tenant_id()
-        AND EXISTS (
-            SELECT 1 FROM members m
-            WHERE m.user_id = auth.uid()
-              AND m.tenant_id = get_tenant_id()
-              AND m.role = 'ADMIN'
-              AND m.deleted_at IS NULL
-        )
-    );
-
 
 -- ==============================================================
 -- SECTION 3: assignments — redesign target_id polymorphism
