@@ -77,3 +77,5 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER trigger_event_scheduling
 AFTER UPDATE ON events
 FOR EACH ROW EXECUTE FUNCTION handle_event_scheduling();
+
+ALTER FUNCTION public.handle_event_scheduling() SET search_path = public, pg_catalog;
