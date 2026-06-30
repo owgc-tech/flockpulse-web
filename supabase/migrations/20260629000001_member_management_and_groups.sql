@@ -34,15 +34,17 @@ CREATE TABLE IF NOT EXISTS assignments (
 );
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 
--- 6. Update RLS policies
+-- 6. Update RLS policies using optimized tenant extraction
+DROP POLICY IF EXISTS "member_isolation_policy" ON members;
 DROP POLICY IF EXISTS "Members are visible to members of the same tenant" ON members;
-CREATE POLICY "Members are visible to members of the same tenant" ON members
-    FOR SELECT USING (tenant_id = (auth.jwt() ->> 'tenant_id')::UUID AND deleted_at IS NULL);
+
+CREATE POLICY "member_isolation_policy" ON members
+    FOR SELECT USING (tenant_id = get_tenant_id() AND deleted_at IS NULL);
 
 -- RLS: Groups
 CREATE POLICY "Groups are visible to members of the same tenant" ON groups
-    FOR SELECT USING (tenant_id = (auth.jwt() ->> 'tenant_id')::UUID);
+    FOR SELECT USING (tenant_id = get_tenant_id());
 
 -- RLS: Assignments
 CREATE POLICY "Assignments are visible to members of the same tenant" ON assignments
-    FOR SELECT USING (tenant_id = (auth.jwt() ->> 'tenant_id')::UUID);
+    FOR SELECT USING (tenant_id = get_tenant_id());
