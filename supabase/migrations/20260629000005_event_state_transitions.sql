@@ -24,6 +24,10 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 ALTER TABLE tenants
     ADD COLUMN IF NOT EXISTS attendance_window_hours INTEGER NOT NULL DEFAULT 24;
 
+ALTER TABLE tenants
+    ADD CONSTRAINT tenants_attendance_window_hours_check
+    CHECK (attendance_window_hours >= 1 AND attendance_window_hours <= 720);
+
 
 -- ==============================================================
 -- SECTION 3: event_notifications.status — add CANCELLED

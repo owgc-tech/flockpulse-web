@@ -174,6 +174,18 @@ and return 422 INVALID_STATE when it returns TRUE.
 - [ ] **PATCH with attendanceWindowHours = 1.5 (non-integer) → INVALID_VALUE**
   - Expected: 422, code = 'INVALID_VALUE'.
 
+- [ ] **DB-layer CHECK enforced independently of the application layer**
+  - Bypass the API entirely and attempt a direct DB write:
+  ```sql
+  UPDATE tenants SET attendance_window_hours = 0 WHERE id = '<any-tenant-id>';
+  UPDATE tenants SET attendance_window_hours = 721 WHERE id = '<any-tenant-id>';
+  UPDATE tenants SET attendance_window_hours = -5 WHERE id = '<any-tenant-id>';
+  ```
+  - All three must be rejected by Postgres with:
+    `ERROR: new row for relation "tenants" violates check constraint "tenants_attendance_window_hours_check"`
+  - Confirms enforcement is not bypassable via direct DB access, service-role clients,
+    or any path that skips the application layer.
+
 - [ ] **PATCH by non-Admin → FORBIDDEN_ROLE**
   - Member or Leader JWT. Expected: 403.
 
