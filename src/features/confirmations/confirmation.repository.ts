@@ -27,6 +27,11 @@ export async function getPendingConfirmations(
   tenantId: string,
   memberIdFilter: string[] | null
 ): Promise<PendingConfirmationRow[]> {
+  if (memberIdFilter !== null && memberIdFilter.length === 0) return [];
+
+  // Fetch self-reports with member name via FK embed (members!member_id resolves correctly).
+  // rsvps cannot be embedded here — PostgREST requires a direct FK between the two tables,
+  // and none exists between member_attendance_reports and rsvps. Fetched separately below.
   let query = serviceClient()
     .from('member_attendance_reports')
     .select(`
@@ -37,38 +42,55 @@ export async function getPendingConfirmations(
       feedback,
       star_rating,
       submitted_at,
-      members!member_id ( first_name, last_name ),
-      rsvps ( rsvp_status, rsvp_reason )
+      members!member_id ( first_name, last_name )
     `)
     .eq('tenant_id', tenantId)
     .eq('confirmation_status', 'PENDING_CONFIRMATION');
 
   if (memberIdFilter !== null) {
-    if (memberIdFilter.length === 0) return [];
     query = query.in('member_id', memberIdFilter);
   }
 
   const { data, error } = await query;
   if (error) throw error;
+  if (!data || data.length === 0) return [];
 
-  return (data ?? []).map((row: Record<string, unknown>) => {
+  // Collect the (event_id, member_id) pairs we need RSVPs for and fetch in one query.
+  const rows = data as Record<string, unknown>[];
+  const memberIds = rows.map(r => r['member_id'] as string);
+  const eventIds  = [...new Set(rows.map(r => r['event_id'] as string))];
+
+  const { data: rsvpData, error: rsvpError } = await serviceClient()
+    .from('rsvps')
+    .select('event_id, member_id, rsvp_status, rsvp_reason')
+    .eq('tenant_id', tenantId)
+    .in('event_id', eventIds)
+    .in('member_id', memberIds);
+
+  if (rsvpError) throw rsvpError;
+
+  // Index RSVPs by "eventId:memberId" for O(1) lookup.
+  const rsvpMap = new Map<string, { rsvp_status: string; rsvp_reason: string | null }>();
+  for (const r of (rsvpData ?? []) as { event_id: string; member_id: string; rsvp_status: string; rsvp_reason: string | null }[]) {
+    rsvpMap.set(`${r.event_id}:${r.member_id}`, { rsvp_status: r.rsvp_status, rsvp_reason: r.rsvp_reason });
+  }
+
+  return rows.map(row => {
     const member = row['members'] as { first_name: string; last_name: string } | null;
-    const rsvp = Array.isArray(row['rsvps'])
-      ? (row['rsvps'][0] as { rsvp_status: string; rsvp_reason: string | null } | undefined)
-      : (row['rsvps'] as { rsvp_status: string; rsvp_reason: string | null } | null);
+    const rsvp   = rsvpMap.get(`${row['event_id']}:${row['member_id']}`);
 
     return {
-      self_report_id: row['id'] as string,
-      event_id: row['event_id'] as string,
-      member_id: row['member_id'] as string,
+      self_report_id:    row['id'] as string,
+      event_id:          row['event_id'] as string,
+      member_id:         row['member_id'] as string,
       member_first_name: member?.first_name ?? '',
-      member_last_name: member?.last_name ?? '',
+      member_last_name:  member?.last_name  ?? '',
       self_report_status: row['self_report_status'] as string,
-      feedback: row['feedback'] as string | null,
-      star_rating: row['star_rating'] as number | null,
-      submitted_at: row['submitted_at'] as string,
-      rsvp_status: rsvp?.rsvp_status ?? null,
-      rsvp_reason: rsvp?.rsvp_reason ?? null,
+      feedback:          row['feedback']   as string | null,
+      star_rating:       row['star_rating'] as number | null,
+      submitted_at:      row['submitted_at'] as string,
+      rsvp_status:       rsvp?.rsvp_status  ?? null,
+      rsvp_reason:       rsvp?.rsvp_reason  ?? null,
     };
   });
 }
