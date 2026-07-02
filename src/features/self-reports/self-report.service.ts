@@ -1,7 +1,8 @@
 import {
   isExpectedAttendee,
   checkBlockedByGuard,
-  getEventStatus,
+  getEventExistsForTenant,
+  getEventEffectiveStatus,
   getExistingSelfReport,
   insertSelfReportYes,
   callSubmitSelfReportNo,
@@ -34,12 +35,17 @@ export async function submitSelfReport(
     throw serviceError('ATTENDANCE_NOT_OPEN', 'Self-report is not permitted for cancelled or locked events');
   }
 
-  // Step 3: Event must be COMPLETED for self-reports.
-  const event = await getEventStatus(tenantId, eventId);
-  if (!event) {
+  // Step 3: Confirm event belongs to this tenant, then derive effective status.
+  // This is the fix for the staleness bug: status is now computed from timestamps at
+  // query time, so the up-to-5-minute window between end_datetime and the old cron tick
+  // that could incorrectly reject a legitimate self-report is eliminated.
+  const eventExists = await getEventExistsForTenant(tenantId, eventId);
+  if (!eventExists) {
     throw serviceError('NOT_FOUND', 'Event not found');
   }
-  if (event.status !== 'COMPLETED') {
+
+  const effectiveStatus = await getEventEffectiveStatus(eventId);
+  if (effectiveStatus !== 'COMPLETED') {
     throw serviceError('SELF_REPORT_NOT_OPEN', 'Self-report window is only open when the event is COMPLETED');
   }
 
