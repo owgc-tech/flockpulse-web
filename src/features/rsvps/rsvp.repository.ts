@@ -23,16 +23,23 @@ export async function isExpectedAttendee(
   return (count ?? 0) > 0;
 }
 
-export async function getEventForRsvp(
+export async function getEventExistsForTenant(
   tenantId: string,
   eventId: string
-): Promise<{ status: string; start_datetime: string } | null> {
-  const { data } = await serviceClient()
+): Promise<boolean> {
+  const { count } = await serviceClient()
     .from('events')
-    .select('status, start_datetime')
+    .select('id', { count: 'exact', head: true })
     .eq('id', eventId)
-    .eq('tenant_id', tenantId)
-    .single();
+    .eq('tenant_id', tenantId);
+
+  return (count ?? 0) > 0;
+}
+
+export async function getEventEffectiveStatus(eventId: string): Promise<string | null> {
+  const { data } = await serviceClient().rpc('get_event_effective_status', {
+    p_event_id: eventId,
+  });
 
   return data ?? null;
 }

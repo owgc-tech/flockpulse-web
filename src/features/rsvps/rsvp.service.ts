@@ -1,6 +1,7 @@
 import {
   isExpectedAttendee,
-  getEventForRsvp,
+  getEventExistsForTenant,
+  getEventEffectiveStatus,
   checkBlockedByGuard,
   upsertRsvp,
 } from './rsvp.repository';
@@ -31,16 +32,19 @@ export async function submitRsvp(
     throw serviceError('INVALID_STATE', 'RSVP is not permitted for cancelled or locked events');
   }
 
-  // Step 3: Event must be SCHEDULED or ACTIVE, and the window must still be open (before start).
-  const event = await getEventForRsvp(tenantId, eventId);
-  if (!event) {
+  // Step 3: Confirm event belongs to this tenant, then derive effective status.
+  const eventExists = await getEventExistsForTenant(tenantId, eventId);
+  if (!eventExists) {
     throw serviceError('NOT_FOUND', 'Event not found');
   }
 
-  const isOpenStatus = event.status === 'SCHEDULED' || event.status === 'ACTIVE';
-  const isBeforeStart = new Date() < new Date(event.start_datetime);
+  const effectiveStatus = await getEventEffectiveStatus(eventId);
 
-  if (!isOpenStatus || !isBeforeStart) {
+  // RSVP is only open before start_datetime — i.e. while the derived status is SCHEDULED.
+  // The separate now() < start_datetime check from FP-16/17 is removed: SCHEDULED is itself
+  // defined as "before start_datetime" by the derivation function, so both conditions were
+  // always equivalent and keeping both would be dead logic.
+  if (effectiveStatus !== 'SCHEDULED') {
     throw serviceError('RSVP_CLOSED', 'RSVP window is closed for this event');
   }
 
