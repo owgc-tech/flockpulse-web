@@ -34,6 +34,10 @@ INSERT INTO attendance (..., confirmed_by) VALUES (..., '<member_id_from_other_t
 
 ### 8. LEADER confirming unassigned member's self-report → 403 FORBIDDEN_SCOPE
 
+**Tested via `scripts/test-fp23-25-gaps.ts` TEST A — PASSED.**
+`submitConfirmation()` called as LEADER for a member not in their `assignments` set.
+Threw `FORBIDDEN_SCOPE: "This member is not assigned to you"` as expected.
+
 ### 9. ADMIN confirming any member's self-report → succeeds (no assignment check)
 
 ### 10. Non-existent selfReportId → 404 NOT_FOUND
@@ -54,6 +58,10 @@ INSERT INTO attendance (..., confirmed_by) VALUES (..., '<member_id_from_other_t
 
 ### 18. FP-27: CANCELLED event → 422 ATTENDANCE_NOT_OPEN
 
+**Tested via `scripts/test-fp23-25-gaps.ts` TEST B — PASSED.**
+`submitConfirmation()` called as LEADER (assigned member) on a CANCELLED event's self-report.
+Scope check passed; cancel guard fired and threw `ATTENDANCE_NOT_OPEN: "Confirmation is not permitted for cancelled or locked events"`.
+
 ## FP-25 — POST /api/attendance/override
 
 ### 19. Non-ADMIN → 403 FORBIDDEN_ROLE
@@ -71,6 +79,10 @@ INSERT INTO attendance (..., confirmed_by) VALUES (..., '<member_id_from_other_t
 ### 25. FP-27: LOCKED event → 422 ATTENDANCE_NOT_OPEN
 
 ### 26. FP-27: CANCELLED event → 422 ATTENDANCE_NOT_OPEN
+
+**Tested via `scripts/test-fp23-25-gaps.ts` TEST C — PASSED.**
+`submitAttendanceOverride()` called as ADMIN on a CANCELLED event.
+Threw `ATTENDANCE_NOT_OPEN: "Override is not permitted for cancelled or locked events"`.
 
 ## Regression
 
