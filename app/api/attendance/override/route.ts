@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     if (!reason) return errorResponse('MISSING_FIELD', 'reason required', 400);
 
     if (attendance_status !== 'ATTENDED' && attendance_status !== 'DID_NOT_ATTEND') {
-      return errorResponse('INVALID_VALUE', 'attendance_status must be ATTENDED or DID_NOT_ATTEND', 400);
+      return errorResponse('INVALID_TARGET', 'attendance_status must be ATTENDED or DID_NOT_ATTEND', 400);
     }
 
     try {
