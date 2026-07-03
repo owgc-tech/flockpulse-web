@@ -20,14 +20,17 @@ Tester: CC (manual DB inspection + full regression)
 | 1.7 | RLS enabled — SELECT policy for Admin only, no INSERT/UPDATE/DELETE policies | PASS |
 | 1.8 | `write_audit_log()` shared helper created | PASS |
 
-### Group 2 — Immutability (verified against service_role)
+### Group 2 — Immutability (verified against service_role and postgres superuser)
 
 | # | Check | Result |
 |---|-------|--------|
-| 2.1 | UPDATE via service_role client → `permission denied for table audit_logs` | PASS |
-| 2.2 | DELETE via service_role client → `permission denied for table audit_logs` (code 42501) | PASS |
+| 2.1 | UPDATE via service_role client → `permission denied for table audit_logs` (code 42501, REVOKE layer) | PASS |
+| 2.2 | DELETE via service_role client → `permission denied for table audit_logs` (code 42501, REVOKE layer) | PASS |
+| 2.3 | UPDATE as postgres superuser (bypasses REVOKE) → trigger fires: `"audit_logs is append-only — UPDATE is not permitted"` | PASS |
 
-Both confirmed via `scripts/test-fp48-audit-logs.ts` tests 1.1 and 1.2.
+Confirmed via `scripts/test-fp48-audit-logs.ts` tests 1.1, 1.2, and 1.3.
+
+Test 2.3 is the critical one: postgres superuser has full privileges so REVOKE does not intercept. Only the trigger can block a superuser UPDATE. This directly validates the DIP's threat model — a future migration accidentally re-granting UPDATE to service_role or authenticated would still be caught by the trigger.
 
 ### Group 3 — Regression: all prior scripts
 
@@ -44,7 +47,7 @@ All scripts verified clean after RSVP upsert and self-report Yes paths rewired t
 
 **Total prior-script regression: 54/54 PASS**
 
-### Group 4 — Audit row content (scripts/test-fp48-audit-logs.ts — 10/10 PASS)
+### Group 4 — Audit row content (scripts/test-fp48-audit-logs.ts — 13/13 PASS)
 
 | # | Check | Result |
 |---|-------|--------|
@@ -56,16 +59,18 @@ All scripts verified clean after RSVP upsert and self-report Yes paths rewired t
 | 4.6 | admin_override (first insert, no prior row) → `before_value=null` | PASS |
 | 4.7 | admin_override (second call, ON CONFLICT) → `before_value=prior row`, before.attendance_status matches prior state | PASS |
 | 4.8 | createEvent → `entity_type=event`, `action=create`, `actor_id=null`, `before_value=null`, `after_value` populated | PASS |
+| 4.9 | updateEvent → `entity_type=event`, `action=update`, `before_value.name=prior name`, `after_value.name=new name`, `actor_id=admin` | PASS |
+| 4.10 | leader REJECT → `self_report/reject actor=leader` + `attendance/leader_reject actor=leader`, `attendance_status=DID_NOT_ATTEND` | PASS |
 
 ### Design decisions flagged in migration
 
 - `created_at` used instead of spec's literal `timestamp` column name (shadows SQL type name — deliberate deviation)
 - `actor_id` is a plain UUID, no FK — `ON DELETE SET NULL` would conflict with UPDATE immutability trigger; permanent preservation is better audit behavior anyway
-- DELETE immutability relies on REVOKE (not trigger) — allows postgres-superuser cascade deletes from tenant cleanup; UPDATE trigger catches the more dangerous silent-mutation case
+- DELETE immutability relies on REVOKE (not trigger) — allows postgres-superuser cascade deletes from tenant cleanup; UPDATE trigger catches the more dangerous silent-mutation case. Known trade-off: hard tenant deletion cascades through `ON DELETE CASCADE` and removes that tenant's audit rows; consistent with every other table in schema and acceptable for fully-deleted tenants
 - No RLS INSERT policy — audit_logs writable only through SECURITY DEFINER functions
 - `upsert_rsvp_with_audit` uses `RETURNS SETOF rsvps` (not `RETURNS TABLE`) — PL/pgSQL output column names would shadow SQL column names in `ON CONFLICT (tenant_id, ...)` conflict target, causing 42702 ambiguity
 
 ### Out of scope (documented in PR)
 
 - Event cancel audit: no cancel endpoint exists anywhere in the codebase. Future story implementing cancellation must add its own audit hook.
-- updateEvent audit: `actorMemberId` is optional and passes `null` until a route layer exists — audit row records the event mutation but actor is null. Correct behavior for now.
+- updateEvent audit: `actorMemberId` is optional and passes `null` until a route layer exists — audit row records the event mutation but actor is null. Correct behavior for now (test 4.9 uses an explicit actor to verify the field is wired; null path is exercised by test 4.8 createEvent).
