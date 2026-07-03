@@ -61,30 +61,17 @@ export async function upsertRsvp(
   rsvpStatus: 'YES' | 'NO',
   rsvpReason: string | null
 ): Promise<RsvpRow> {
-  const now = new Date().toISOString();
-
-  const { data, error } = await serviceClient()
-    .from('rsvps')
-    .upsert(
-      {
-        tenant_id: tenantId,
-        event_id: eventId,
-        member_id: memberId,
-        rsvp_status: rsvpStatus,
-        rsvp_reason: rsvpReason,
-        responded_at: now,
-        updated_at: now,
-      },
-      { onConflict: 'tenant_id,event_id,member_id' }
-    )
-    .select('id, tenant_id, event_id, member_id, rsvp_status, rsvp_reason, responded_at, created_at, updated_at')
-    .single();
+  const { data, error } = await serviceClient().rpc('upsert_rsvp_with_audit', {
+    p_tenant_id: tenantId,
+    p_event_id: eventId,
+    p_member_id: memberId,
+    p_rsvp_status: rsvpStatus,
+    p_rsvp_reason: rsvpReason,
+    p_actor_member_id: memberId,
+  });
 
   if (error) throw error;
 
-  // TODO(EPIC-10): write audit_logs entry (before/after RSVP state) once audit_logs table
-  // and audit.service exist — see Engineering Spec §6. This is intentional scope discipline,
-  // not an oversight — the audit_logs table belongs in EPIC-10/WP-2, not here.
-
-  return data as RsvpRow;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as RsvpRow;
 }

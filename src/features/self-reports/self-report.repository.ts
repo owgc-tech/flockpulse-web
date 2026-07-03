@@ -74,29 +74,18 @@ export async function insertSelfReportYes(
   feedback: string | null,
   starRating: number | null
 ): Promise<SelfReportRow> {
-  const { data, error } = await serviceClient()
-    .from('member_attendance_reports')
-    .insert({
-      tenant_id: tenantId,
-      event_id: eventId,
-      member_id: memberId,
-      self_report_status: 'SELF_REPORTED_YES',
-      reason: null,
-      feedback,
-      star_rating: starRating,
-      confirmation_status: 'PENDING_CONFIRMATION',
-    })
-    .select(
-      'id, tenant_id, event_id, member_id, self_report_status, reason, feedback, star_rating, confirmation_status, submitted_at, created_at, updated_at'
-    )
-    .single();
+  const { data, error } = await serviceClient().rpc('insert_self_report_yes_with_audit', {
+    p_tenant_id: tenantId,
+    p_event_id: eventId,
+    p_member_id: memberId,
+    p_feedback: feedback,
+    p_star_rating: starRating,
+  });
 
   if (error) throw error;
 
-  // TODO(EPIC-10): write audit_logs entry for self-report create once audit_logs table and
-  // audit.service exist — see Engineering Spec §6.
-
-  return data as SelfReportRow;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as SelfReportRow;
 }
 
 export async function callSubmitSelfReportNo(
