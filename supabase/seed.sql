@@ -4,6 +4,13 @@ INSERT INTO tenants (id, name) VALUES
 ('00000000-0000-0000-0000-000000000002', 'Delta Org')
 ON CONFLICT DO NOTHING;
 
+-- Seed default event types (one per tenant — mirrors migration 000016 Section 2,
+-- which runs before seed.sql so would find empty tenants at db reset time)
+INSERT INTO event_types (tenant_id, name, code) VALUES
+('00000000-0000-0000-0000-000000000001', 'General', 'GENERAL'),
+('00000000-0000-0000-0000-000000000002', 'General', 'GENERAL')
+ON CONFLICT DO NOTHING;
+
 -- Seed Members (Mock users)
 INSERT INTO members (tenant_id, user_id, email, role, first_name, last_name) VALUES
 ('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'admin@global.com', 'ADMIN', 'Admin', 'User'),

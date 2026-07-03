@@ -8,6 +8,20 @@ function serviceClient() {
   );
 }
 
+async function validateEventTypeId(eventTypeId: string, tenantId: string): Promise<void> {
+  const { data } = await serviceClient()
+    .from('event_types')
+    .select('id, deleted_at')
+    .eq('id', eventTypeId)
+    .eq('tenant_id', tenantId)
+    .single();
+  if (!data || data.deleted_at !== null) {
+    const err = new Error(`event_type_id ${eventTypeId} is invalid, soft-deleted, or belongs to a different tenant`) as Error & { code: string };
+    err.code = 'INVALID_TARGET';
+    throw err;
+  }
+}
+
 export interface CreateEventInput {
   tenantId: string;
   eventTypeId: string;
@@ -26,7 +40,8 @@ export async function createEvent(input: CreateEventInput) {
     throw err;
   }
 
-  // App-layer validation for talk_id — defense-in-depth on top of DB trigger.
+  // App-layer validation — defense-in-depth on top of DB triggers.
+  await validateEventTypeId(input.eventTypeId, input.tenantId);
   if (input.talkId) {
     await validateTalkIdForEvent(input.talkId, input.tenantId);
   }
