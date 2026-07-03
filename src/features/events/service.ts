@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { validateTalkIdForEvent } from '@/src/features/formation/talk.service';
 
 function serviceClient() {
   return createClient(
@@ -15,6 +16,7 @@ export interface CreateEventInput {
   endDatetime: string;
   locationName: string;
   target: { group_id: string } | Record<string, unknown>;
+  talkId?: string | null;
 }
 
 export async function createEvent(input: CreateEventInput) {
@@ -22,6 +24,11 @@ export async function createEvent(input: CreateEventInput) {
     const err = new Error('end_datetime must be after start_datetime') as Error & { code: string };
     err.code = 'INVALID_DATETIME';
     throw err;
+  }
+
+  // App-layer validation for talk_id — defense-in-depth on top of DB trigger.
+  if (input.talkId) {
+    await validateTalkIdForEvent(input.talkId, input.tenantId);
   }
 
   const { data, error } = await serviceClient()
@@ -35,8 +42,9 @@ export async function createEvent(input: CreateEventInput) {
       end_datetime: input.endDatetime,
       location_name: input.locationName,
       target: input.target,
+      ...(input.talkId !== undefined ? { talk_id: input.talkId } : {}),
     })
-    .select('id, name, status, start_datetime, end_datetime, location_name, target, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, target, talk_id, created_at')
     .single();
 
   if (error) throw error;
@@ -138,6 +146,11 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
       const err = new Error('talk_id is immutable after notifications have been dispatched') as Error & { code: string };
       err.code = 'IMMUTABLE_FIELD';
       throw err;
+    }
+
+    // App-layer validation for talk_id — defense-in-depth on top of DB trigger.
+    if (input.talkId) {
+      await validateTalkIdForEvent(input.talkId, tenantId);
     }
   }
 
