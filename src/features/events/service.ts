@@ -31,6 +31,7 @@ export interface CreateEventInput {
   locationName: string;
   target: { group_id: string } | Record<string, unknown>;
   talkId?: string | null;
+  actorMemberId?: string | null;
 }
 
 export async function createEvent(input: CreateEventInput) {
@@ -46,24 +47,22 @@ export async function createEvent(input: CreateEventInput) {
     await validateTalkIdForEvent(input.talkId, input.tenantId);
   }
 
-  const { data, error } = await serviceClient()
-    .from('events')
-    .insert({
-      tenant_id: input.tenantId,
-      event_type_id: input.eventTypeId,
-      name: input.name,
-      status: 'DRAFT',
-      start_datetime: input.startDatetime,
-      end_datetime: input.endDatetime,
-      location_name: input.locationName,
-      target: input.target,
-      ...(input.talkId !== undefined ? { talk_id: input.talkId } : {}),
-    })
-    .select('id, name, status, start_datetime, end_datetime, location_name, target, talk_id, created_at')
-    .single();
+  const { data, error } = await serviceClient().rpc('insert_event_with_audit', {
+    p_tenant_id: input.tenantId,
+    p_event_type_id: input.eventTypeId,
+    p_name: input.name,
+    p_start_datetime: input.startDatetime,
+    p_end_datetime: input.endDatetime,
+    p_location_name: input.locationName,
+    p_target: input.target,
+    p_talk_id: input.talkId ?? null,
+    p_actor_member_id: input.actorMemberId ?? null,
+  });
 
   if (error) throw error;
-  return data;
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
 }
 
 export async function publishEvent(id: string, tenantId: string) {
@@ -122,6 +121,7 @@ export interface UpdateEventInput {
   locationName?: string;
   target?: Record<string, unknown>;
   talkId?: string | null;
+  actorMemberId?: string | null;
 }
 
 export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput) {
@@ -178,11 +178,8 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     throw err;
   }
 
-  // Build the update payload.
-  const patch: Record<string, unknown> = {
-    version: event.version + 1,
-    updated_at: new Date().toISOString(),
-  };
+  // Build the patch payload for update_event_with_audit().
+  const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.startDatetime !== undefined) patch.start_datetime = input.startDatetime;
   if (input.endDatetime !== undefined) patch.end_datetime = input.endDatetime;
@@ -190,15 +187,16 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
 
-  const { data: updated, error: updateError } = await db
-    .from('events')
-    .update(patch)
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .select('id, name, status, version, start_datetime, end_datetime, location_name, target, talk_id, updated_at')
-    .single();
+  const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
+    p_event_id: id,
+    p_tenant_id: tenantId,
+    p_patch: patch,
+    p_actor_member_id: input.actorMemberId ?? null,
+  });
 
   if (updateError) throw updateError;
+
+  const updated = Array.isArray(updateRows) ? updateRows[0] : updateRows;
 
   // Recalculate unsent notification scheduled_for values when timing changes.
   // Each purpose has a fixed offset relative to a reference time; recompute
