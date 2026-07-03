@@ -1,16 +1,8 @@
 -- FP-51: Fix infinite recursion in members-subquery RLS policies.
 --
--- NOTE ON DEPENDENCY: This migration includes a re-application of the
--- get_tenant_id() fix from FP-50 (branch: feature/FP-50-fix-get-tenant-id,
--- PR #12). FP-51 was started before FP-50 merged to dev. The CREATE OR REPLACE
--- here is intentionally idempotent — if FP-50 merges first, this is a no-op.
--- If FP-51 merges first, it carries the get_tenant_id() fix. Either way the
--- end state is correct. See migration 20260629000012_fix_get_tenant_id_claim_path.sql
--- (FP-50 branch) for the original authorship and rationale.
---
--- Root cause of the recursion: several policies do EXISTS (SELECT 1 FROM members ...)
--- to check the caller's role. When evaluating those policies on the members table
--- itself (members_select_admin_all, members_insert_admin, members_update_admin),
+-- Root cause: several policies do EXISTS (SELECT 1 FROM members ...) to check
+-- the caller's role. When evaluating those policies on the members table itself
+-- (members_select_admin_all, members_insert_admin, members_update_admin),
 -- Postgres builds the combined policy predicate as:
 --   (policy1_using) OR (policy2_using)
 -- Evaluating policy2's EXISTS re-enters members' own policies → 42P17.
@@ -18,8 +10,9 @@
 -- attendance) are also affected because their members subqueries trigger the same
 -- recursive members policy evaluation.
 --
--- This was always present; FP-50's get_tenant_id() fix removed the accidental
--- NULL-short-circuit that was masking it.
+-- This was always present; FP-50 (000012) removed the accidental NULL-short-circuit
+-- that was masking it — once get_tenant_id() returns a real UUID, the EXISTS fires
+-- and the recursion surfaces.
 --
 -- Fix: extract each subquery pattern into a SECURITY DEFINER function. Functions
 -- with SECURITY DEFINER run as the definer (postgres), bypassing the caller's RLS
@@ -39,21 +32,6 @@
 --
 -- No authorization logic changes — only the mechanism for the check.
 -- ==============================================================
-
-
--- ==============================================================
--- SECTION 0: Re-apply get_tenant_id() fix (idempotent if FP-50 already merged)
--- ==============================================================
-
-CREATE OR REPLACE FUNCTION public.get_tenant_id()
-RETURNS UUID
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_catalog, pg_temp
-AS $$
-  SELECT (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::UUID;
-$$;
 
 
 -- ==============================================================
