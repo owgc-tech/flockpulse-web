@@ -98,7 +98,9 @@ FOR EACH ROW EXECUTE FUNCTION validate_event_event_type_id();
 -- SECTION 5: Table privileges
 -- ==============================================================
 
-GRANT SELECT ON event_types TO anon, authenticated;
+-- anon is deliberately excluded: no endpoint is reachable without a JWT (see migration 000011).
+-- service_role is covered by ALTER DEFAULT PRIVILEGES in 000011 — no explicit grant needed.
+GRANT SELECT ON event_types TO authenticated;
 GRANT INSERT, UPDATE ON event_types TO authenticated;
 
 

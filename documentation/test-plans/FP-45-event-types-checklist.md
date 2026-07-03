@@ -43,6 +43,23 @@ All scripts previously used `gen_random_uuid()` for `event_type_id`. Each was up
 
 ---
 
+### Group 4 — App-layer validation (`validateEventTypeId`)
+
+| # | Check | Result |
+|---|-------|--------|
+| 4.1 | Valid `event_type_id` accepted — `service_role` reads `event_types` via `serviceClient()` | PASS |
+| 4.2 | Invalid `event_type_id` (non-existent UUID) → `INVALID_TARGET` thrown by `createEvent` | PASS |
+
+Confirmed via `scripts/test-fp45-validate-event-type.ts` (2/2 PASS).
+
+---
+
+### Security fix (post-initial-PR review)
+
+`anon` grant removed from migration 000016 Section 5. Original: `GRANT SELECT ON event_types TO anon, authenticated`. Fixed to `GRANT SELECT ON event_types TO authenticated`, consistent with migration 000011's deliberate design (no unauthenticated endpoints). `service_role` access is covered by `ALTER DEFAULT PRIVILEGES` in 000011 — no explicit grant needed.
+
+---
+
 ### Flagged assumptions (not tested, carried into PR)
 
 - `event_types` rows auto-seeded for tenants created before this migration only — new-tenant seeding is a known gap, deferred to future tenant-onboarding work.
