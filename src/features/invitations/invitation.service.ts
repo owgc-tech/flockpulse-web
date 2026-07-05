@@ -13,6 +13,7 @@ export interface InviteMemberInput {
   email: string;
   role: MemberRole;
   groupId?: string | null;
+  redirectTo?: string;
 }
 
 export async function inviteMember(
@@ -20,7 +21,7 @@ export async function inviteMember(
   invitedByMemberId: string,
   input: InviteMemberInput
 ): Promise<InvitationRow> {
-  const { email, role, groupId = null } = input;
+  const { email, role, groupId = null, redirectTo } = input;
 
   // Guard: no duplicate pending invite for this email in this tenant.
   const alreadyPending = await pendingInvitationExistsForEmail(tenantId, email);
@@ -33,8 +34,13 @@ export async function inviteMember(
   // Step 1: Create the pending Supabase Auth user via the Admin API.
   // inviteUserByEmail `data` maps to user_metadata (readable by the client).
   // app_metadata (JWT claims, not user-editable) requires a separate updateUserById call.
+  // redirectTo points the invite link at the registration-completion route so the
+  // registrant lands on /register/set-password with their access_token in the URL hash.
   const db = serviceClient();
-  const { data: inviteData, error: inviteError } = await db.auth.admin.inviteUserByEmail(email);
+  const { data: inviteData, error: inviteError } = await db.auth.admin.inviteUserByEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined
+  );
   if (inviteError) {
     const err = new Error(inviteError.message) as Error & { code: string };
     err.code = 'INVITE_FAILED';
