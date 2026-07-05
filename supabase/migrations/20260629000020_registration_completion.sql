@@ -21,15 +21,40 @@ ALTER TABLE members ALTER COLUMN birthdate SET NOT NULL;
 -- complete_registration() is SECURITY DEFINER and bypasses RLS — this policy
 -- only applies to direct table INSERT. Mirrors the function's own check exactly:
 -- user_id must be auth.uid() AND a PENDING invitation for that auth user must exist.
+--
+-- The EXISTS subquery reads from invitations, which is also RLS-protected (admin-only
+-- SELECT). A direct EXISTS inside WITH CHECK runs in the calling user's context and
+-- cannot see through the invitations RLS, so it always returns false for non-admins.
+-- We solve this with a SECURITY DEFINER helper that runs as postgres and bypasses
+-- the invitations RLS entirely — keeping the policy tight while making it actually work.
+--
+-- invitations_select_self lets a registrant read their own invitation row (status
+-- check, UI display); it is independent of the policy helper.
 
+CREATE POLICY "invitations_select_self" ON invitations
+    FOR SELECT USING (auth_user_id = auth.uid());
+
+CREATE OR REPLACE FUNCTION public.caller_has_pending_invitation()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public, pg_catalog
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM invitations
+        WHERE auth_user_id = auth.uid()
+        AND status = 'PENDING'
+    );
+$$;
+
+-- Note: the INSERT does not use .select() (the registrant has no tenant in
+-- app_metadata, so get_tenant_id() = NULL and the SELECT policy blocks them from
+-- reading back the row). Tests verify the row via direct psql query after INSERT.
 CREATE POLICY "members_registration_insert" ON members
     FOR INSERT WITH CHECK (
         user_id = auth.uid()
-        AND EXISTS (
-            SELECT 1 FROM invitations
-            WHERE invitations.auth_user_id = auth.uid()
-            AND invitations.status = 'PENDING'
-        )
+        AND public.caller_has_pending_invitation()
     );
 
 -- ==============================================================

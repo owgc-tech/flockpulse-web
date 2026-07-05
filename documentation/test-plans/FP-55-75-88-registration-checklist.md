@@ -2,7 +2,7 @@
 
 **Scope:** Migration 000020, `complete_registration()` SECURITY DEFINER function, registration service, set-password page, complete-profile page.
 
-**Test script:** `scripts/test-fp55-registration.ts` — 13/13 PASS (2026-07-05)
+**Test script:** `scripts/test-fp55-registration.ts` — 15/15 PASS (2026-07-05)
 
 ---
 
@@ -31,6 +31,21 @@
 
 ---
 
+## Group 2b — Defense-in-Depth RLS INSERT Policy (Direct Path)
+
+These tests bypass `complete_registration()` entirely and attempt raw INSERTs via an authenticated client (anon key). This is the only way to verify the `members_registration_insert` policy in isolation — the SECURITY DEFINER function bypasses RLS and cannot exercise it.
+
+| # | What is tested | How | Expected |
+|---|---|---|---|
+| 2.7 | RLS INSERT policy **permits** a user WITH a PENDING invitation to insert directly | Authenticated client (no service-role), PENDING invitation in DB; `INSERT` without `.select()` (SELECT policy blocks registrant from reading back their own row — `get_tenant_id()` = NULL); row verified via direct psql count | INSERT succeeds; row confirmed present |
+| 2.8 | RLS INSERT policy **rejects** a user WITHOUT a PENDING invitation | Same client after invitation is marked ACCEPTED (from 2.7 cleanup) | INSERT rejected: `"new row violates row-level security policy for table 'members'"` |
+
+**Implementation note — `caller_has_pending_invitation()` SECURITY DEFINER function:** The policy's EXISTS subquery against `invitations` must run as postgres. If it ran as the calling user, the `invitations` admin-only SELECT policy would block it and the EXISTS would always return false — making the policy accidentally deny all direct inserts. The SECURITY DEFINER helper function resolves this. The `invitations_select_self` policy (added in this migration) is independent — it lets registrants read their own invitation row for UI purposes (status display, etc.).
+
+**Implementation note — `.select()` after INSERT:** The test does NOT chain `.select('id').single()` on the INSERT call. The registrant has no tenant in `app_metadata`, so `get_tenant_id()` returns NULL, and the `members_select` policy blocks them from reading back the inserted row. PostgREST surfaces that as an RLS error on the INSERT, masking whether the INSERT itself succeeded. The test inserts without a return value and verifies via direct psql query.
+
+---
+
 ## Group 3 — `app_metadata.member_id` (Service Layer)
 
 | # | What is tested | How | Expected |
@@ -55,3 +70,4 @@
 - **`SECURITY DEFINER`:** Bypasses RLS for the atomic multi-table write (members + assignments + invitations + audit_logs). Defense-in-depth RLS INSERT policy on `members` mirrors the function's own check for belt-and-suspenders.
 - **Two-step app_metadata:** After the RPC, the service-role client calls `updateUserById` to write `member_id` into `app_metadata`. The member row exists at this point, so a failure here is an orphaned-metadata issue, not a data-integrity issue — caught by `METADATA_WRITE_FAILED` error code.
 - **`redirectTo` in invite:** Route handler derives origin from `new URL(req.url).origin` and passes `${origin}/register/set-password` so invite links land at the correct page.
+- **`setSession()` vs `signInWithPassword()` — email confirmation gate:** The real set-password page uses `supabase.auth.setSession({ access_token, refresh_token })` with tokens Supabase issues as part of the invite link. `setSession` decodes the JWT locally, checks expiry, and either uses the token directly or calls `_callRefreshToken` — there is no email confirmation check in this path (confirmed by review of `@supabase/auth-js` GoTrueClient source). The `email_not_confirmed` error code lives exclusively in `signInWithPassword`, which is why test harness users need `email_confirm: true` before calling `signInWithPassword` to simulate "has a session". Real registrants clicking their invite link never go through `signInWithPassword` and are never blocked by the confirmation gate.
