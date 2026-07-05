@@ -24,10 +24,16 @@ export const POST = (req: NextRequest) =>
     }
 
     try {
+      // Derive the app's own origin from the incoming request so redirectTo works
+      // correctly in every environment (local, staging, production) without a
+      // separate env var. The invite link lands on /register/set-password where
+      // the registrant sets their password before completing their profile.
+      const origin = new URL(req.url).origin;
       const invitation = await inviteMember(ctx.tenantId, ctx.memberId, {
         email,
         role,
         groupId: groupId ?? null,
+        redirectTo: `${origin}/register/set-password`,
       });
       return NextResponse.json({ data: invitation }, { status: 201 });
     } catch (err: unknown) {

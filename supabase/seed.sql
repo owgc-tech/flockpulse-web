@@ -12,10 +12,12 @@ INSERT INTO event_types (tenant_id, name, code) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Seed Members (Mock users)
-INSERT INTO members (tenant_id, user_id, email, role, first_name, last_name) VALUES
-('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'admin@global.com', 'ADMIN', 'Admin', 'User'),
-('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12', 'leader@global.com', 'LEADER', 'Leader', 'User'),
-('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13', 'member@global.com', 'MEMBER', 'Member', 'User')
+-- gender/marital_status/birthdate added by migration 000020 as NOT NULL;
+-- dummy values supplied here for development seed data only.
+INSERT INTO members (tenant_id, user_id, email, role, first_name, last_name, gender, marital_status, birthdate) VALUES
+('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'admin@global.com', 'ADMIN', 'Admin', 'User', 'MALE', 'SINGLE', '1990-01-01'),
+('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12', 'leader@global.com', 'LEADER', 'Leader', 'User', 'MALE', 'SINGLE', '1990-01-01'),
+('00000000-0000-0000-0000-000000000001', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13', 'member@global.com', 'MEMBER', 'Member', 'User', 'MALE', 'SINGLE', '1990-01-01')
 ON CONFLICT DO NOTHING;
 
 -- Seed Groups
