@@ -2,14 +2,24 @@
 --
 -- SECTION 1: Demographic columns on members (FP-75, FP-88)
 -- ==============================================================
--- Added as NOT NULL — safe because migrations run before seed.sql in db reset,
--- so the table is empty at migration time. seed.sql supplies values for its rows.
+-- ADD COLUMN is nullable first so the statement succeeds on databases that
+-- already have rows (fpdb-dev had test/seed members). The backfill step below
+-- fills those rows before the NOT NULL constraint is applied.
+-- On local db reset, members is always empty before this migration runs,
+-- so the backfill is a no-op there — that's expected, not a sign of a problem.
 
 ALTER TABLE members ADD COLUMN IF NOT EXISTS gender TEXT
     CHECK (gender IN ('MALE', 'FEMALE'));
 ALTER TABLE members ADD COLUMN IF NOT EXISTS marital_status TEXT
     CHECK (marital_status IN ('SINGLE', 'MARRIED'));
 ALTER TABLE members ADD COLUMN IF NOT EXISTS birthdate DATE;
+
+-- Backfill: confirmed no real data anywhere in this project — fpdb-dev's existing
+-- members rows are test/seed accounts only. Placeholder values match the convention
+-- already used in seed.sql for local dev.
+UPDATE members SET gender = 'MALE' WHERE gender IS NULL;
+UPDATE members SET marital_status = 'SINGLE' WHERE marital_status IS NULL;
+UPDATE members SET birthdate = '1990-01-01' WHERE birthdate IS NULL;
 
 ALTER TABLE members ALTER COLUMN gender SET NOT NULL;
 ALTER TABLE members ALTER COLUMN marital_status SET NOT NULL;
