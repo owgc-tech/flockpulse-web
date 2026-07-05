@@ -106,3 +106,36 @@ If any Jira ticket needs to be filed for a finding during this DIP, do not file 
 All changes go through a feature branch and a PR — no direct pushes to `dev`, no exceptions.
 Create the feature branch, implement, test (including direct verification that a second registration attempt by the same Auth user is rejected cleanly, that both audit log entries are genuinely present with correct entity types, and that the post-registration `app_metadata` is actually correct via direct inspection — not just "the call didn't error"), commit, push, and open the PR against `dev`. Do not merge — the user will test locally and merge manually.
 Include full diffs for every file in your completion report — not a summary.
+
+
+---
+
+## Amendment — post-initial-implementation revision (2026-07-05)
+
+The following changes were made to the implementation after the initial PR was opened. Per standing practice, the original DIP text is preserved above and corrections are appended here rather than silently rewritten.
+
+**1. Split into two screens.**
+The original DIP described a single registration screen. The implementation was revised to two screens:
+- **Screen 1** (`/register/founder`): email + password only. No `options.data` stashing. After `signUp()`, if session is returned immediately (local dev), stores the access token in `sessionStorage` and redirects to Screen 2. If `session === null` (production with confirmations enabled), shows "check your inbox."
+- **Screen 2** (`/register/founder/complete`): community name, description, first/last name, gender, marital status, birthdate. This is where `create_tenant_and_founding_admin()` is called.
+
+**2. Screen 2 dual arrival paths.**
+Grounding Check 2 confirmed Supabase delivers confirmation tokens via URL hash (`#access_token=...&refresh_token=...&type=signup`). Screen 2 handles both:
+- Path A (local dev): reads `sessionStorage` token set by Screen 1.
+- Path B (fpdb-dev/production): parses the URL hash and calls `setSession()` — same mechanism as FP-55's set-password page.
+Both paths verified in test 2.3.
+
+**3. Screen 2 layout: two-column with dynamic textarea height.**
+Left column: Community Name + Description textarea. Right column: first name, last name, gender, marital status, birthdate. Vertical rule divides them. Textarea height computed at render time via `useLayoutEffect` + `getBoundingClientRect()` on the right column ref, keeping both column bottoms aligned regardless of validation messages.
+
+**4. `description TEXT` added to tenants (migration 000022, edited directly — not a new migration number).**
+Nullable, no default, no NOT NULL. `INSERT INTO tenants` updated to include `(name, description)`. `create_tenant_and_founding_admin()` gains `p_description TEXT` parameter. Empty string from UI coerced to `null` in the service layer.
+
+**5. `attendance_window_hours` confirmation.**
+Not exposed in either screen UI. Column default (24) applies silently via the existing `DEFAULT 24` constraint from migration 000005. The function's `INSERT INTO tenants` intentionally omits it.
+
+**6. Test suite updated: 11/11 pass.**
+- Tests updated to pass `p_description` in all RPC calls.
+- 1.7: NULL description accepted cleanly.
+- 2.3: Path B hash-token arrival path exercises `setSession()` → service call.
+- No user_metadata stashing tests (mechanism removed).

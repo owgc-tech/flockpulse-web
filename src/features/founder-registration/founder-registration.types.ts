@@ -1,5 +1,6 @@
 export interface FounderRegistrationInput {
   communityName: string;
+  description: string | null;
   firstName: string;
   lastName: string;
   gender: string;

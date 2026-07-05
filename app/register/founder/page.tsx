@@ -8,7 +8,7 @@ export default function FounderRegistrationPage() {
           Start your community
         </h1>
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          Create your community and your admin account in one step.
+          Create your account to get started. You&apos;ll set up your community details on the next step.
         </p>
         <FounderRegistrationForm />
       </div>

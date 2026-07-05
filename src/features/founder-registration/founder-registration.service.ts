@@ -23,6 +23,7 @@ export async function createTenantAndFoundingAdmin(
   accessToken: string,
   params: {
     communityName: string;
+    description: string | null;
     firstName: string;
     lastName: string;
     gender: string;
@@ -41,6 +42,7 @@ export async function createTenantAndFoundingAdmin(
     'create_tenant_and_founding_admin',
     {
       p_community_name:  params.communityName,
+      p_description:     params.description,
       p_first_name:      params.firstName,
       p_last_name:       params.lastName,
       p_gender:          params.gender,

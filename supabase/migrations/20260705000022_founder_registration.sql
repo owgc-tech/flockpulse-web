@@ -1,7 +1,8 @@
 -- FP-101: Founder Self-Registration — New Tenant + Founding Admin
 --
 -- Creates an atomic function that:
---   1. Inserts a new tenants row (attendance_window_hours uses the column's DEFAULT 24).
+--   1. Inserts a new tenants row (attendance_window_hours uses the column's DEFAULT 24;
+--      description is nullable with no default — NULL when founder leaves it blank).
 --   2. Inserts the founder as a MEMBER row with role = 'ADMIN'.
 --   3. Writes two audit log entries: entity_type=tenant/action=create and
 --      entity_type=member/action=register.
@@ -10,8 +11,12 @@
 -- resolves to them. The two-step application layer writes app_metadata afterward
 -- via the service-role Admin API (same pattern as complete_registration).
 
+-- Add description column to tenants (nullable, no default, no NOT NULL).
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS description TEXT;
+
 CREATE OR REPLACE FUNCTION public.create_tenant_and_founding_admin(
     p_community_name  TEXT,
+    p_description     TEXT,
     p_first_name      TEXT,
     p_last_name       TEXT,
     p_gender          TEXT,
@@ -36,9 +41,11 @@ BEGIN
 
     SELECT email INTO v_email FROM auth.users WHERE id = auth.uid();
 
-    -- Create the tenant. attendance_window_hours intentionally omitted — column DEFAULT 24 applies.
-    INSERT INTO tenants (name)
-    VALUES (p_community_name)
+    -- Create the tenant.
+    -- attendance_window_hours intentionally omitted — column DEFAULT 24 applies.
+    -- description is included; NULL is valid (founder may leave it blank).
+    INSERT INTO tenants (name, description)
+    VALUES (p_community_name, p_description)
     RETURNING id INTO v_tenant_id;
 
     -- Create the founding admin member row.
@@ -70,5 +77,5 @@ END;
 $$;
 
 -- Grant execute to authenticated users so the founder can call this with their own JWT.
-GRANT EXECUTE ON FUNCTION public.create_tenant_and_founding_admin(TEXT, TEXT, TEXT, TEXT, TEXT, DATE)
+GRANT EXECUTE ON FUNCTION public.create_tenant_and_founding_admin(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, DATE)
     TO authenticated;
