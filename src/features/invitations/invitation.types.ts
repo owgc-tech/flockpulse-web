@@ -13,3 +13,15 @@ export interface InvitationRow {
   invited_at: string;
   responded_at: string | null;
 }
+
+// Resolved shape for display — group_id/invited_by foreign keys expanded to names.
+export interface InvitationDisplayRow {
+  id: string;
+  email: string;
+  role: MemberRole;
+  status: InvitationStatus;
+  group_name: string | null;
+  inviter_name: string;
+  invited_at: string;
+  responded_at: string | null;
+}

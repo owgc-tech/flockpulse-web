@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
-import { inviteMember } from '@/src/features/invitations/invitation.service';
+import { inviteMember, listInvitations } from '@/src/features/invitations/invitation.service';
 
 const requireAdmin = requireRole('ADMIN');
+
+// GET /api/invitations — Admin lists all invitations for the tenant with resolved names.
+// Optional ?status=PENDING|ACCEPTED|REVOKED filter.
+export const GET = (req: NextRequest) =>
+  withAuth(req, requireAdmin(async (req, ctx) => {
+    const status = new URL(req.url).searchParams.get('status') ?? null;
+    if (status && !['PENDING', 'ACCEPTED', 'REVOKED'].includes(status)) {
+      return errorResponse('INVALID_VALUE', 'status must be PENDING, ACCEPTED, or REVOKED', 400);
+    }
+    try {
+      let invitations = await listInvitations(ctx.tenantId);
+      if (status) invitations = invitations.filter(i => i.status === status);
+      return NextResponse.json({ data: invitations });
+    } catch {
+      return errorResponse('INTERNAL_ERROR', 'Failed to fetch invitations', 500);
+    }
+  }));
 
 // POST /api/invitations — Admin sends an invite email to a prospective member.
 // role and groupId are locked at invite time — never editable by the registrant.
