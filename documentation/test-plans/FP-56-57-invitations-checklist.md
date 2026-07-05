@@ -36,13 +36,15 @@
 | 1.4 | Call on PENDING invitation → returns `{ status: REVOKED }` | REVOKED row returned | ✅ PASS |
 | 1.5 | Audit log written: `entity_type=invitation`, `action=revoke`, `before_value` present, `after_value=null` | audit row present | ✅ PASS |
 
-### Group 2 — `listInvitations()` Service / Repository Layer
+### Group 2 — `GET /api/invitations` (HTTP via real `next dev`)
+
+Tests run against a spawned `next dev` process with env vars injected. The real `requireRole('ADMIN')` gate and `?status=` query-param parsing/filtering code path are exercised end-to-end.
 
 | ID  | Description | Expected | Result |
 |-----|-------------|----------|--------|
-| 2.1 | Returns rows with resolved `inviter_name` (not raw UUID) | name string | ✅ PASS |
-| 2.2 | Returns rows with resolved `group_name` (not null when `group_id` set) | group name string | ✅ PASS |
-| 2.3 | Returns all statuses — ACCEPTED and REVOKED both present | both found | ✅ PASS |
+| 2.1 | Admin token → 200, rows returned with resolved `inviter_name` (not raw UUID) | 200, name string | ✅ PASS |
+| 2.2 | `?status=PENDING` filter returns only PENDING rows; REVOKED/ACCEPTED rows excluded; live PENDING row present | rows ≥ 1, all PENDING | ✅ PASS |
+| 2.3 | MEMBER token → 403 `FORBIDDEN_ROLE` | 403 | ✅ PASS |
 
 ### Group 3 — `revokeInvitation()` Service Layer
 
