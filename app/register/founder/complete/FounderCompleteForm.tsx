@@ -67,15 +67,15 @@ export default function FounderCompleteForm() {
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
 
   // After the Server Action returns success, refresh the browser session so the new
-  // app_metadata claims (tenant_id, role, member_id) propagate to the in-memory JWT,
-  // then redirect to login. The Server Action cannot touch the browser session directly.
+  // app_metadata claims (tenant_id, role, member_id) propagate to the in-memory JWT.
+  // The Server Action cannot touch the browser session directly; this must run client-side.
+  // We do NOT auto-redirect — the success screen renders a manual "Continue to Login" button
+  // so there is no race between this async refresh and the redirect firing.
   useEffect(() => {
     if (!state.success) return;
     const db = supabaseBrowserClient();
-    db.auth.refreshSession().then(() => {
-      router.push('/login');
-    });
-  }, [state.success, router]);
+    db.auth.refreshSession();
+  }, [state.success]);
 
   // Establish session on mount.
   // Two valid arrival paths:
@@ -126,6 +126,30 @@ export default function FounderCompleteForm() {
 
     establishSession();
   }, [router]);
+
+  if (state.success) {
+    return (
+      <div className="flex flex-col gap-6 rounded-xl border border-green-200 bg-green-50 p-8 dark:border-green-800 dark:bg-green-950">
+        <div className="flex flex-col gap-2">
+          <p className="text-base font-semibold text-green-900 dark:text-green-100">
+            Your community and Administrator account have been created successfully.
+          </p>
+          <p className="text-sm text-green-800 dark:text-green-200">
+            Use your email and password to sign in.
+          </p>
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => router.push('/login')}
+            className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            Continue to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (pageState === 'loading') {
     return (
