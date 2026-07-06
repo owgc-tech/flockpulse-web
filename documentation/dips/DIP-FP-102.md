@@ -92,6 +92,25 @@ Maps to FP-102's AC: real session establishment via `@supabase/ssr` + middleware
 
 ---
 
+---
+
+## Amendment — GC-3 and GC-4 resolutions + grounding findings (2026-07-06)
+
+**GC-3 resolved (MFA frequency):** Per-member configurable trusted-session duration. Default 28 days; member-adjustable, hard cap 56 days. After successful TOTP verification, a `fp_mfa_expires_at` cookie is set to `now + mfa_trust_duration_days * 86400 * 1000`. The proxy reads this cookie and redirects to MFA challenge if expired, even if the Supabase session itself is still valid. Trust duration at verification time is baked into the cookie value — no DB query in the proxy.
+
+New column: `members.mfa_trust_duration_days INTEGER NOT NULL DEFAULT 28 CHECK (mfa_trust_duration_days BETWEEN 1 AND 56)`
+
+A settings UI (dedicated "Security" section, likely near Member Edit / FP-72) lets the member adjust this value within the 1–56 day bound.
+
+**GC-4 resolved (MFA gating):** Mandatory, no skip. After password-only login, if the account has no verified TOTP factor (`mfa.listFactors()` returns an empty verified list), the proxy/login action redirects to enrollment. There is no way to dismiss or bypass enrollment and reach any `/admin/*` route.
+
+**Grounding findings (confirmed pre-implementation):**
+
+- `@supabase/ssr` was **not installed** — installed as part of this implementation (`0.12.0`). API shape: `createServerClient` with `cookies: { getAll, setAll }` (the `get/set/remove` form is deprecated). `createBrowserClient` needs no custom cookie config in normal use.
+- **Next.js 16 uses `proxy.ts`, not `middleware.ts`** — `middleware` was deprecated and renamed in v16.0.0. The file convention is `proxy.ts` at the project root. Function export: `export default async function proxy(req: NextRequest)`. This is a **breaking change from every prior Next.js version** — `middleware.ts` will be silently ignored in Next.js 16.
+- **Supabase MFA API** (confirmed from installed `@supabase/auth-js`): `mfa.enroll({ factorType: 'totp' })` → `{ id, totp: { qr_code, secret, uri } }`; `mfa.challengeAndVerify({ factorId, code })` → session promoted to `aal2`; `mfa.listFactors()` → factor list; `mfa.getAuthenticatorAssuranceLevel()` → `{ currentLevel, nextLevel }`.
+- **Session cookie name** set by `@supabase/ssr`: `sb-<project-ref>-auth-token` (chunked). The proxy uses `createServerClient` with `req.cookies`/`res.cookies` to read/write it — not a raw `sb-access-token` string.
+
 ## Stop Point
 
 Save this DIP verbatim to `documentation/dips/DIP-FP-102.md` and do not append executor notes after the initial save. Executor observations belong exclusively in the PR description.

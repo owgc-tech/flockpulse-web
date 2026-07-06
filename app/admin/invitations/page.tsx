@@ -1,29 +1,22 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listInvitations } from '@/src/features/invitations/invitation.service';
 import InvitationsTable from './InvitationsTable';
 
 // Server Component — resolves auth, fetches invitations with resolved names,
 // then passes them to the interactive InvitationsTable Client Component.
+// Route is protected by proxy.ts (session + MFA trust).
 export default async function InvitationsPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('sb-access-token')?.value;
-  if (!token) redirect('/login');
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
   const role = user.app_metadata?.role as string | undefined;
   const memberId = user.app_metadata?.member_id as string | undefined;
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !memberId) redirect('/');
+  if (!tenantId || role !== 'ADMIN' || !memberId || !token) redirect('/login');
 
   const invitations = await listInvitations(tenantId);
 
