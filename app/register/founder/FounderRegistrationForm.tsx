@@ -37,6 +37,7 @@ export default function FounderRegistrationForm() {
     setPageState('submitting');
 
     const db = supabaseBrowserClient();
+    // emailRedirectTo must be explicit — without it Supabase falls back to the project's Site URL.
     const { data, error: signUpError } = await db.auth.signUp({
       email,
       password,
