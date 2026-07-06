@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { createTenantAndFoundingAdmin } from '@/src/features/founder-registration/founder-registration.service';
+import {
+  completeFounderRegistrationAction,
+  type FounderCompleteState,
+} from './actions';
 
-type PageState = 'loading' | 'ready' | 'submitting' | 'error';
+type PageState = 'loading' | 'ready' | 'error';
+
+const initialState: FounderCompleteState = {};
 
 const GENDER_OPTIONS = [
   { value: 'MALE', label: 'Male' },
@@ -33,15 +39,7 @@ export default function FounderCompleteForm() {
   const router = useRouter();
   const [pageState, setPageState] = useState<PageState>('loading');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [communityName, setCommunityName] = useState('');
-  const [description, setDescription] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [gender, setGender] = useState('');
-  const [maritalStatus, setMaritalStatus] = useState('');
-  const [birthdate, setBirthdate] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Right column ref for measuring rendered height to set textarea height.
   const rightColRef = useRef<HTMLDivElement>(null);
@@ -59,6 +57,25 @@ export default function FounderCompleteForm() {
     const computed = rightHeight - nameFieldHeight - gap;
     setTextareaHeight(computed > 80 ? computed : 80);
   });
+
+  // Wire up the Server Action. boundAction is re-derived when sessionToken is resolved.
+  const boundAction = sessionToken
+    ? completeFounderRegistrationAction.bind(null, sessionToken)
+    : async (_prev: FounderCompleteState, _fd: FormData) =>
+        ({ error: 'No active session. Please restart registration.' } as FounderCompleteState);
+
+  const [state, formAction, isPending] = useActionState(boundAction, initialState);
+
+  // After the Server Action returns success, refresh the browser session so the new
+  // app_metadata claims (tenant_id, role, member_id) propagate to the in-memory JWT,
+  // then redirect to login. The Server Action cannot touch the browser session directly.
+  useEffect(() => {
+    if (!state.success) return;
+    const db = supabaseBrowserClient();
+    db.auth.refreshSession().then(() => {
+      router.push('/login');
+    });
+  }, [state.success, router]);
 
   // Establish session on mount.
   // Two valid arrival paths:
@@ -92,7 +109,7 @@ export default function FounderCompleteForm() {
           refresh_token: refreshToken,
         });
         if (sessionError) {
-          setError('Could not establish session from confirmation link: ' + sessionError.message);
+          setLoadError('Could not establish session from confirmation link: ' + sessionError.message);
           setPageState('error');
           return;
         }
@@ -110,36 +127,6 @@ export default function FounderCompleteForm() {
     establishSession();
   }, [router]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!sessionToken) return;
-    setError(null);
-    setPageState('submitting');
-
-    try {
-      const db = supabaseBrowserClient();
-
-      await createTenantAndFoundingAdmin(sessionToken, {
-        communityName,
-        description: description.trim() || null,
-        firstName,
-        lastName,
-        gender,
-        maritalStatus,
-        birthdate,
-      });
-
-      // Refresh session so new app_metadata claims (tenant_id, role, member_id)
-      // propagate to the in-memory JWT before redirect.
-      await db.auth.refreshSession();
-
-      router.push('/login');
-    } catch (err: unknown) {
-      setError((err as Error).message ?? 'Registration failed. Please try again.');
-      setPageState('ready');
-    }
-  }
-
   if (pageState === 'loading') {
     return (
       <div className="flex items-center justify-center py-16">
@@ -148,25 +135,24 @@ export default function FounderCompleteForm() {
     );
   }
 
-  if (pageState === 'error' && !sessionToken) {
+  if (pageState === 'error') {
     return (
       <div className="rounded-xl border border-red-200 bg-white p-6 dark:border-red-800 dark:bg-zinc-950">
-        <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+        <p className="text-sm text-red-700 dark:text-red-300">{loadError}</p>
       </div>
     );
   }
 
-  const isSubmitting = pageState === 'submitting';
   const inputClass =
     'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 w-full';
   const labelClass = 'text-sm font-medium text-zinc-700 dark:text-zinc-300';
   const fieldClass = 'flex flex-col gap-1.5';
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      {error && (
+    <form action={formAction} className="flex flex-col gap-6">
+      {state.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {error}
+          {state.error}
         </div>
       )}
 
@@ -177,8 +163,7 @@ export default function FounderCompleteForm() {
           <div ref={communityNameFieldRef} className={fieldClass}>
             <label htmlFor="communityName" className={labelClass}>Community name</label>
             <input
-              id="communityName" type="text" required
-              value={communityName} onChange={e => setCommunityName(e.target.value)}
+              id="communityName" name="communityName" type="text" required
               placeholder="e.g. Grace Community Church"
               className={inputClass}
             />
@@ -190,9 +175,7 @@ export default function FounderCompleteForm() {
               <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
             </label>
             <textarea
-              id="description"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+              id="description" name="description"
               placeholder="A short description of your community…"
               style={textareaHeight !== null ? { height: textareaHeight } : undefined}
               className={`${inputClass} resize-none`}
@@ -209,16 +192,14 @@ export default function FounderCompleteForm() {
             <div className={fieldClass}>
               <label htmlFor="firstName" className={labelClass}>First name</label>
               <input
-                id="firstName" type="text" required
-                value={firstName} onChange={e => setFirstName(e.target.value)}
+                id="firstName" name="firstName" type="text" required
                 className={inputClass}
               />
             </div>
             <div className={fieldClass}>
               <label htmlFor="lastName" className={labelClass}>Last name</label>
               <input
-                id="lastName" type="text" required
-                value={lastName} onChange={e => setLastName(e.target.value)}
+                id="lastName" name="lastName" type="text" required
                 className={inputClass}
               />
             </div>
@@ -227,11 +208,10 @@ export default function FounderCompleteForm() {
           <div className={fieldClass}>
             <label htmlFor="gender" className={labelClass}>Gender</label>
             <select
-              id="gender" required
-              value={gender} onChange={e => setGender(e.target.value)}
+              id="gender" name="gender" required defaultValue=""
               className={inputClass}
             >
-              <option value="">Select…</option>
+              <option value="" disabled>Select…</option>
               {GENDER_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -241,11 +221,10 @@ export default function FounderCompleteForm() {
           <div className={fieldClass}>
             <label htmlFor="maritalStatus" className={labelClass}>Marital status</label>
             <select
-              id="maritalStatus" required
-              value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)}
+              id="maritalStatus" name="maritalStatus" required defaultValue=""
               className={inputClass}
             >
-              <option value="">Select…</option>
+              <option value="" disabled>Select…</option>
               {MARITAL_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -255,8 +234,7 @@ export default function FounderCompleteForm() {
           <div className={fieldClass}>
             <label htmlFor="birthdate" className={labelClass}>Date of birth</label>
             <input
-              id="birthdate" type="date" required
-              value={birthdate} onChange={e => setBirthdate(e.target.value)}
+              id="birthdate" name="birthdate" type="date" required
               className={inputClass}
             />
           </div>
@@ -266,10 +244,10 @@ export default function FounderCompleteForm() {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isPending || !sessionToken}
           className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
-          {isSubmitting ? 'Creating your community…' : 'Create community'}
+          {isPending ? 'Creating your community…' : 'Create community'}
         </button>
       </div>
     </form>
