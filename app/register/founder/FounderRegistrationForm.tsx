@@ -37,7 +37,13 @@ export default function FounderRegistrationForm() {
     setPageState('submitting');
 
     const db = supabaseBrowserClient();
-    const { data, error: signUpError } = await db.auth.signUp({ email, password });
+    const { data, error: signUpError } = await db.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/register/founder/complete`,
+      },
+    });
 
     if (signUpError) {
       setError(signUpError.message);

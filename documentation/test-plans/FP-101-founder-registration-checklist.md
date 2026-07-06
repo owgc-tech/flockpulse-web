@@ -68,7 +68,7 @@
 ## Key Design Decisions
 
 **Two-screen split**  
-Screen 1 (`/register/founder`) collects only email + password, calls `signUp()` with no `options.data` stashing. Screen 2 (`/register/founder/complete`) collects community + founder profile and calls the RPC. Avoids requiring all profile data to survive across the email-confirmation gap via user_metadata.
+Screen 1 (`/register/founder`) collects only email + password. `signUp()` passes `emailRedirectTo: window.location.origin + /register/founder/complete` — explicit per-call redirect so the confirmation link points at the deployed app's origin rather than falling back to the Supabase project's Site URL setting (which would point at `http://localhost:3000`). Same pattern as FP-54's `inviteMember()`. Screen 2 (`/register/founder/complete`) collects community + founder profile and calls the RPC.
 
 **Screen 2 dual arrival paths**  
 - **Path A** (local dev): Screen 1 stores the immediate session token in `sessionStorage` and redirects. Screen 2 reads it and clears it.
