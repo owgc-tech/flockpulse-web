@@ -139,3 +139,17 @@ Not exposed in either screen UI. Column default (24) applies silently via the ex
 - 1.7: NULL description accepted cleanly.
 - 2.3: Path B hash-token arrival path exercises `setSession()` → service call.
 - No user_metadata stashing tests (mechanism removed).
+
+---
+
+## Amendment — Server Action fix for `app_metadata` write (2026-07-06)
+
+**Root cause of production failure:** `FounderCompleteForm.tsx` (a Client Component) was importing and calling `createTenantAndFoundingAdmin()` directly in the browser. That service function's second step calls `serviceClient()`, which requires `SUPABASE_SERVICE_ROLE_KEY` — a server-only secret Next.js correctly refuses to bundle into client-side code. The result was `"supabaseKey is required"` the instant that line executed in the browser.
+
+**Fix:** Extracted the service call into a dedicated Server Action at `app/register/founder/complete/actions.ts` (`'use server'`), mirroring the pattern already used by FP-55's `app/register/complete/actions.ts`. `FounderCompleteForm.tsx` now uses `useActionState(completeFounderRegistrationAction.bind(null, sessionToken), initialState)` — the service-role key never leaves the server.
+
+**`refreshSession()` sequencing confirmed:** The Server Action cannot touch the browser's in-memory session. After `state.success` is set, a client-side `useEffect` calls `db.auth.refreshSession()` and then `router.push('/login')`. This preserves the original intent: new `app_metadata` claims (tenant_id, role, member_id) propagate to the in-memory JWT before the founder hits the login screen.
+
+**Changes:**
+- New: `app/register/founder/complete/actions.ts` — `'use server'`, exports `completeFounderRegistrationAction` and `FounderCompleteState`
+- Modified: `app/register/founder/complete/FounderCompleteForm.tsx` — replaced `handleSubmit` + direct service import with `useActionState` + `formAction`; all inputs now have `name=` attributes; layout, textarea height logic, and dual-path session establishment are unchanged
