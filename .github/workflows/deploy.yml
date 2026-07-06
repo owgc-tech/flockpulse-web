@@ -1,46 +1,27 @@
 name: FlockPulse Vercel Deployment
-
 on:
   push:
     branches:
       - main
       - dev
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set Deployment Target
         id: var-meta
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "target=production" >> $GITHUB_OUTPUT
             echo "prod_flag=--prod" >> $GITHUB_OUTPUT
           else
-            echo "target=preview" >> $GITHUB_OUTPUT
             echo "prod_flag=" >> $GITHUB_OUTPUT
           fi
-
       - name: Install Vercel CLI
         run: npm install -g vercel
-
-      - name: Pull Vercel Environment Information
-        run: vercel pull --yes --environment=${{ steps.var-meta.outputs.target }} --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Build Project Artifacts
-        run: vercel build ${{ steps.var-meta.outputs.prod_flag }} --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
       - name: Deploy Project to Vercel
-        run: vercel deploy --prebuilt ${{ steps.var-meta.outputs.prod_flag }} --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy ${{ steps.var-meta.outputs.prod_flag }} --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
