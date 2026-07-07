@@ -25,7 +25,7 @@ interface CourseOverlayProps extends BaseProps {
   entity: 'course';
   item?: CourseRow;
   parentId?: never;
-  hasChildren?: never;
+  hasChildren?: boolean;
 }
 interface ModuleOverlayProps extends BaseProps {
   entity: 'module';
