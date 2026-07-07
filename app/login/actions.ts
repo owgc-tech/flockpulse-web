@@ -1,6 +1,7 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
 export interface LoginState {
@@ -44,4 +45,30 @@ export async function loginAction(
   // Proxy will redirect to /login/mfa-challenge on any /admin/* request.
   // Send the user there now directly to avoid that bounce.
   redirect('/login/mfa-challenge');
+}
+
+// Returns the tenant/community name for a given email, or "Community" if not
+// found. Always returns the same shape regardless of whether the email matches
+// — this must not be a distinguishable signal for account enumeration.
+export async function lookupCommunityName(email: string): Promise<string> {
+  const fallback = 'Community';
+  if (!email || !email.includes('@')) return fallback;
+
+  try {
+    const svc = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data } = await svc
+      .from('members')
+      .select('tenants(name)')
+      .eq('email', email.trim().toLowerCase())
+      .eq('role', 'ADMIN')
+      .maybeSingle();
+
+    const name = (data as { tenants?: { name?: string } } | null)?.tenants?.name;
+    return name || fallback;
+  } catch {
+    return fallback;
+  }
 }

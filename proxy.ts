@@ -46,6 +46,15 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
+  // /admin/mfa-enroll is the enrollment destination for first-time Admins.
+  // It must be reachable with a password-only (aal1) session — applying the
+  // AAL2 check here would redirect them to /login/mfa-challenge, which requires
+  // a verified factor that doesn't exist yet (lockout). Session authentication
+  // above is still enforced; only the MFA-complete check is skipped.
+  if (pathname.startsWith('/admin/mfa-enroll')) {
+    return res;
+  }
+
   // Defense-in-depth: verify the underlying Supabase session is actually at AAL2
   // (meaning MFA was genuinely completed in this session).
   // getAuthenticatorAssuranceLevel() with no JWT arg reads from the loaded session
