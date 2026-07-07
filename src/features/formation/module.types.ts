@@ -3,6 +3,8 @@ export interface ModuleRow {
   tenant_id: string;
   course_id: string;
   name: string;
+  alias: string | null;
+  description: string | null;
   sequence_order: number;
   deleted_at: string | null;
   created_at: string;
@@ -12,11 +14,15 @@ export interface ModuleRow {
 export interface CreateModuleInput {
   courseId: string;
   name: string;
+  alias?: string | null;
+  description?: string | null;
   sequenceOrder: number;
 }
 
 export interface UpdateModuleInput {
   name?: string;
+  alias?: string | null;
+  description?: string | null;
   sequenceOrder?: number;
   deletedAt?: string | null;
 }

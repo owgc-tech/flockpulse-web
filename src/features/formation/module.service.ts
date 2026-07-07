@@ -1,5 +1,5 @@
 import type { ModuleRow, CreateModuleInput, UpdateModuleInput } from './module.types';
-import { insertModule, patchModule, getModule, listModulesByCourse } from './module.repository';
+import { insertModule, patchModule, getModule, listModulesByCourse, reorderModulesRpc } from './module.repository';
 import { getCourse } from './course.repository';
 
 function err(code: string, message: string): Error & { code: string } {
@@ -47,8 +47,15 @@ export async function updateModule(
     if (!updated) throw err('NOT_FOUND', 'Module not found');
     return updated;
   } catch (e: unknown) {
-    if ((e as { code?: string }).code === '23505') {
+    const code = (e as { code?: string }).code;
+    if (code === '23505') {
       throw err('VALIDATION_ERROR', `sequence_order ${input.sequenceOrder} is already taken in this course`);
+    }
+    if (code === 'P0001') {
+      const msg = (e as Error).message ?? '';
+      if (msg.includes('Cannot soft-delete module')) {
+        throw err('INVALID_STATE_TRANSITION', msg);
+      }
     }
     throw e;
   }
@@ -58,6 +65,21 @@ export async function getModuleById(id: string, tenantId: string): Promise<Modul
   const module = await getModule(id, tenantId);
   if (!module) throw err('NOT_FOUND', 'Module not found');
   return module;
+}
+
+export async function reorderModules(
+  courseId: string, tenantId: string, orderedIds: string[]
+): Promise<void> {
+  if (!orderedIds.length) throw err('VALIDATION_ERROR', 'orderedIds must be non-empty');
+  try {
+    await reorderModulesRpc(courseId, tenantId, orderedIds);
+  } catch (e: unknown) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('different tenant') || msg.includes('course/tenant')) {
+      throw err('CROSS_TENANT_ACCESS', msg);
+    }
+    throw err('VALIDATION_ERROR', msg);
+  }
 }
 
 export { listModulesByCourse };

@@ -1,5 +1,5 @@
 import type { TalkRow, CreateTalkInput, UpdateTalkInput } from './talk.types';
-import { insertTalk, patchTalk, getTalk, listTalksByModule, getTalkByIdForValidation } from './talk.repository';
+import { insertTalk, patchTalk, getTalk, listTalksByModule, getTalkByIdForValidation, reorderTalksRpc } from './talk.repository';
 import { getModule } from './module.repository';
 
 function err(code: string, message: string): Error & { code: string } {
@@ -8,11 +8,25 @@ function err(code: string, message: string): Error & { code: string } {
   return e;
 }
 
+function validateDemographics(input: Pick<CreateTalkInput | UpdateTalkInput, 'forSingleMen' | 'forSingleWomen' | 'forMarriedMen' | 'forMarriedWomen'>) {
+  const anySet =
+    input.forSingleMen !== undefined ||
+    input.forSingleWomen !== undefined ||
+    input.forMarriedMen !== undefined ||
+    input.forMarriedWomen !== undefined;
+  if (!anySet) return; // no demographic fields in this update — skip check
+  const anyTrue = input.forSingleMen || input.forSingleWomen || input.forMarriedMen || input.forMarriedWomen;
+  if (!anyTrue) {
+    throw err('VALIDATION_ERROR', 'At least one demographic audience must be selected');
+  }
+}
+
 export async function createTalk(tenantId: string, input: CreateTalkInput): Promise<TalkRow> {
   if (!input.name?.trim()) throw err('VALIDATION_ERROR', 'name is required');
   if (!Number.isInteger(input.sequenceOrder) || input.sequenceOrder < 1) {
     throw err('VALIDATION_ERROR', 'sequence_order must be a positive integer');
   }
+  validateDemographics(input);
   const module = await getModule(input.moduleId, tenantId);
   if (!module || module.deleted_at) throw err('NOT_FOUND', 'Module not found or deleted');
   // TODO(EPIC-10): audit hook — talk created
@@ -38,6 +52,7 @@ export async function updateTalk(
   if (input.sequenceOrder !== undefined && (!Number.isInteger(input.sequenceOrder) || input.sequenceOrder < 1)) {
     throw err('VALIDATION_ERROR', 'sequence_order must be a positive integer');
   }
+  validateDemographics(input);
   // TODO(EPIC-10): audit hook — talk updated / soft-deleted
   try {
     const updated = await patchTalk(id, tenantId, {
@@ -51,7 +66,6 @@ export async function updateTalk(
     if (code === '23505') {
       throw err('VALIDATION_ERROR', `sequence_order ${input.sequenceOrder} is already taken in this module`);
     }
-    // DB trigger raises P0001 when a referenced talk is soft-deleted
     if (code === 'P0001') {
       const msg = (e as Error).message ?? '';
       if (msg.includes('Cannot soft-delete talk')) {
@@ -72,6 +86,21 @@ export async function validateTalkIdForEvent(talkId: string, tenantId: string): 
   const talk = await getTalkByIdForValidation(talkId, tenantId);
   if (!talk || talk.deleted_at !== null) {
     throw err('INVALID_FORMATION_LINK', `talk_id ${talkId} is invalid, soft-deleted, or belongs to a different tenant`);
+  }
+}
+
+export async function reorderTalks(
+  moduleId: string, tenantId: string, orderedIds: string[]
+): Promise<void> {
+  if (!orderedIds.length) throw err('VALIDATION_ERROR', 'orderedIds must be non-empty');
+  try {
+    await reorderTalksRpc(moduleId, tenantId, orderedIds);
+  } catch (e: unknown) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('different tenant') || msg.includes('module/tenant')) {
+      throw err('CROSS_TENANT_ACCESS', msg);
+    }
+    throw err('VALIDATION_ERROR', msg);
   }
 }
 
