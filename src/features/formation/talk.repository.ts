@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { TalkRow, CreateTalkInput, UpdateTalkInput } from './talk.types';
 
+const COLS = 'id, tenant_id, module_id, name, alias, description, sequence_order, for_single_men, for_single_women, for_married_men, for_married_women, deleted_at, created_at, updated_at';
+
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,9 +17,15 @@ export async function insertTalk(tenantId: string, input: CreateTalkInput): Prom
       tenant_id: tenantId,
       module_id: input.moduleId,
       name: input.name,
+      alias: input.alias ?? null,
+      description: input.description ?? null,
       sequence_order: input.sequenceOrder,
+      for_single_men: input.forSingleMen ?? false,
+      for_single_women: input.forSingleWomen ?? false,
+      for_married_men: input.forMarriedMen ?? false,
+      for_married_women: input.forMarriedWomen ?? false,
     })
-    .select('id, tenant_id, module_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .single();
 
   if (error) throw error;
@@ -29,7 +37,13 @@ export async function patchTalk(
 ): Promise<TalkRow | null> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) patch.name = input.name;
+  if (input.alias !== undefined) patch.alias = input.alias;
+  if (input.description !== undefined) patch.description = input.description;
   if (input.sequenceOrder !== undefined) patch.sequence_order = input.sequenceOrder;
+  if (input.forSingleMen !== undefined) patch.for_single_men = input.forSingleMen;
+  if (input.forSingleWomen !== undefined) patch.for_single_women = input.forSingleWomen;
+  if (input.forMarriedMen !== undefined) patch.for_married_men = input.forMarriedMen;
+  if (input.forMarriedWomen !== undefined) patch.for_married_women = input.forMarriedWomen;
   if (input.deletedAt !== undefined) patch.deleted_at = input.deletedAt;
 
   const { data, error } = await serviceClient()
@@ -37,7 +51,7 @@ export async function patchTalk(
     .update(patch)
     .eq('id', id)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, module_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .single();
 
   if (error) throw error;
@@ -47,7 +61,7 @@ export async function patchTalk(
 export async function getTalk(id: string, tenantId: string): Promise<TalkRow | null> {
   const { data, error } = await serviceClient()
     .from('talks')
-    .select('id, tenant_id, module_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -61,7 +75,7 @@ export async function listTalksByModule(
 ): Promise<TalkRow[]> {
   let q = serviceClient()
     .from('talks')
-    .select('id, tenant_id, module_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .eq('module_id', moduleId)
     .eq('tenant_id', tenantId)
     .order('sequence_order', { ascending: true });
@@ -85,4 +99,15 @@ export async function getTalkByIdForValidation(
 
   if (error) return null;
   return data as { id: string; deleted_at: string | null };
+}
+
+export async function reorderTalksRpc(
+  moduleId: string, tenantId: string, orderedIds: string[]
+): Promise<void> {
+  const { error } = await serviceClient().rpc('reorder_talks', {
+    p_module_id: moduleId,
+    p_tenant_id: tenantId,
+    p_ids: orderedIds,
+  });
+  if (error) throw error;
 }

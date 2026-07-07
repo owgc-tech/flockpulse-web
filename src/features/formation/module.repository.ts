@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ModuleRow, CreateModuleInput, UpdateModuleInput } from './module.types';
 
+const COLS = 'id, tenant_id, course_id, name, alias, description, sequence_order, deleted_at, created_at, updated_at';
+
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,9 +17,11 @@ export async function insertModule(tenantId: string, input: CreateModuleInput): 
       tenant_id: tenantId,
       course_id: input.courseId,
       name: input.name,
+      alias: input.alias ?? null,
+      description: input.description ?? null,
       sequence_order: input.sequenceOrder,
     })
-    .select('id, tenant_id, course_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .single();
 
   if (error) throw error;
@@ -29,6 +33,8 @@ export async function patchModule(
 ): Promise<ModuleRow | null> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) patch.name = input.name;
+  if (input.alias !== undefined) patch.alias = input.alias;
+  if (input.description !== undefined) patch.description = input.description;
   if (input.sequenceOrder !== undefined) patch.sequence_order = input.sequenceOrder;
   if (input.deletedAt !== undefined) patch.deleted_at = input.deletedAt;
 
@@ -37,7 +43,7 @@ export async function patchModule(
     .update(patch)
     .eq('id', id)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, course_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .single();
 
   if (error) throw error;
@@ -47,7 +53,7 @@ export async function patchModule(
 export async function getModule(id: string, tenantId: string): Promise<ModuleRow | null> {
   const { data, error } = await serviceClient()
     .from('modules')
-    .select('id, tenant_id, course_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -61,7 +67,7 @@ export async function listModulesByCourse(
 ): Promise<ModuleRow[]> {
   let q = serviceClient()
     .from('modules')
-    .select('id, tenant_id, course_id, name, sequence_order, deleted_at, created_at, updated_at')
+    .select(COLS)
     .eq('course_id', courseId)
     .eq('tenant_id', tenantId)
     .order('sequence_order', { ascending: true });
@@ -71,4 +77,15 @@ export async function listModulesByCourse(
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as ModuleRow[];
+}
+
+export async function reorderModulesRpc(
+  courseId: string, tenantId: string, orderedIds: string[]
+): Promise<void> {
+  const { error } = await serviceClient().rpc('reorder_modules', {
+    p_course_id: courseId,
+    p_tenant_id: tenantId,
+    p_ids: orderedIds,
+  });
+  if (error) throw error;
 }

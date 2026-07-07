@@ -1,5 +1,5 @@
 import type { CourseRow, CreateCourseInput, UpdateCourseInput } from './course.types';
-import { insertCourse, patchCourse, getCourse, listCourses } from './course.repository';
+import { insertCourse, patchCourse, getCourse, listCourses, reorderCoursesRpc } from './course.repository';
 
 function err(code: string, message: string): Error & { code: string } {
   const e = new Error(message) as Error & { code: string };
@@ -44,8 +44,15 @@ export async function updateCourse(
     if (!updated) throw err('NOT_FOUND', 'Course not found');
     return updated;
   } catch (e: unknown) {
-    if ((e as { code?: string }).code === '23505') {
+    const code = (e as { code?: string }).code;
+    if (code === '23505') {
       throw err('VALIDATION_ERROR', `sequence_order ${input.sequenceOrder} is already taken in this tenant`);
+    }
+    if (code === 'P0001') {
+      const msg = (e as Error).message ?? '';
+      if (msg.includes('Cannot soft-delete course')) {
+        throw err('INVALID_STATE_TRANSITION', msg);
+      }
     }
     throw e;
   }
@@ -55,6 +62,17 @@ export async function getCourseById(id: string, tenantId: string): Promise<Cours
   const course = await getCourse(id, tenantId);
   if (!course) throw err('NOT_FOUND', 'Course not found');
   return course;
+}
+
+export async function reorderCourses(tenantId: string, orderedIds: string[]): Promise<void> {
+  if (!orderedIds.length) throw err('VALIDATION_ERROR', 'orderedIds must be non-empty');
+  try {
+    await reorderCoursesRpc(tenantId, orderedIds);
+  } catch (e: unknown) {
+    const msg = (e as Error).message ?? '';
+    if (msg.includes('different tenant')) throw err('CROSS_TENANT_ACCESS', msg);
+    throw err('VALIDATION_ERROR', msg);
+  }
 }
 
 export { listCourses };
