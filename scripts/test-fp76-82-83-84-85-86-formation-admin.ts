@@ -167,7 +167,7 @@ async function main() {
     });
     assert(!!error, 'Expected CHECK constraint violation but insert succeeded');
     assert(
-      error.message.includes('check_at_least_one_demographic') || error.code === '23514',
+      error.message.includes('talks_at_least_one_demographic') || error.code === '23514',
       `Expected 23514 (check_violation), got: ${error.message}`
     );
 

@@ -274,13 +274,15 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
     setOverlay({ entity: 'course', mode: 'create', nextSequenceOrder: courses.length + 1 });
   }
 
-  function openEditCourse(id: string) {
+  async function openEditCourse(id: string) {
     const item = courses.find(c => c.id === id);
     if (!item) return;
+    const res = await listModulesAction(token, id);
+    const hasChildren = (res.data ?? []).filter(m => !m.deleted_at).length > 0;
     setOverlay({
       entity: 'course', mode: 'edit', item,
       nextSequenceOrder: item.sequence_order,
-      hasChildren: modules.some(m => !m.deleted_at), // only accurate if this course is selected
+      hasChildren,
     });
   }
 
@@ -292,13 +294,15 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
     });
   }
 
-  function openEditModule(id: string) {
+  async function openEditModule(id: string) {
     const item = modules.find(m => m.id === id);
     if (!item) return;
+    const res = await listTalksAction(token, id);
+    const hasChildren = (res.data ?? []).filter(t => !t.deleted_at).length > 0;
     setOverlay({
       entity: 'module', mode: 'edit', item, parentId: selectedCourseId!,
       nextSequenceOrder: item.sequence_order,
-      hasChildren: talks.some(t => !t.deleted_at),
+      hasChildren,
     });
   }
 
