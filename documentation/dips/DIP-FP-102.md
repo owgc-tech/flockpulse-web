@@ -124,3 +124,42 @@ Save this DIP verbatim to `documentation/dips/DIP-FP-102.md` and do not append e
 Create the feature branch, implement, test (including direct verification that `/admin/invite` and `/admin/invitations` both genuinely work end-to-end against the new session mechanism, that a password reset actually forces MFA re-verification on next login rather than silently skipping it, and that an unauthenticated request to any `/admin/*` route is correctly redirected by the middleware — not just "the page loaded when I was already logged in"), commit, push, and open the PR against `dev`. Do not merge — the user will test locally and merge manually.
 
 Include full diffs for every file in your completion report — not a summary.
+
+---
+
+## Amendment — Atlas Security Review (2026-07-06)
+
+Three issues identified by Atlas review of the initial PR #32 implementation. All three fixes are committed to the same `feature/fp102-web-admin-login` branch (no new PR).
+
+### Fix 1 — Global session invalidation on password reset
+
+**Issue:** `app/reset-password/confirm/actions.ts` called `supabase.auth.updateUser({ password })` but did not invalidate sessions on other devices. An attacker already holding a valid session (or one who triggered the reset themselves) retained access.
+
+**Resolution:** After `updateUser()` succeeds, call `svc.auth.admin.signOut(accessToken, 'global')` using the service-role client. The Admin API `signOut` takes the user's JWT (not user ID) and the `'global'` scope revokes every refresh token for that account. The local `fp_mfa_expires_at` trust cookie is also deleted from the current browser.
+
+**Files changed:** `app/reset-password/confirm/actions.ts`
+
+### Fix 2 — AAL2 defense-in-depth in `proxy.ts`
+
+**Issue:** `proxy.ts` only checked the `fp_mfa_expires_at` trust cookie. A request with a forged or replayed cookie (but a genuine Supabase session that was never actually promoted to AAL2) would pass through.
+
+**Resolution:** Added `supabase.auth.mfa.getAuthenticatorAssuranceLevel()` call in `proxy.ts` after `getUser()`. Both conditions must be satisfied to proceed to the `/admin/*` route: the Supabase session must be at `aal2` AND the trust window cookie must be present and unexpired. Either failing alone triggers a redirect to `/login/mfa-challenge`.
+
+**Files changed:** `proxy.ts`
+
+### Fix 3 — Automated test script
+
+**Issue:** No automated tests for the `mfa_trust_duration_days` DB constraint or the Supabase MFA API calls.
+
+**Resolution:** `scripts/test-fp102-web-admin-login.ts` — 13 tests in 2 groups:
+
+- **Group 1 (1.1–1.6):** `mfa_trust_duration_days` CHECK constraint (`BETWEEN 1 AND 56`), DEFAULT 28.
+- **Group 2 (2.1–2.7):** MFA API — `listFactors` (empty), `enroll`, `challengeAndVerify` (wrong code rejected, correct code accepted + JWT carries `aal2` claim), `listFactors` (factor verified after challenge), `unenroll`.
+
+TOTP code generation is implemented inline using Node built-in `crypto` (RFC 6238: base32 decode → HMAC-SHA1 → time-based counter). No external library.
+
+**Local Supabase note:** `supabase/config.toml` had `[auth.mfa.totp] enroll_enabled = false` — changed to `true` to allow the test to enroll factors against the local instance.
+
+**Test results (local, 2026-07-06):** 13/13 passed.
+
+**Files changed:** `scripts/test-fp102-web-admin-login.ts`, `supabase/config.toml`

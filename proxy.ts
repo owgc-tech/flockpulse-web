@@ -46,13 +46,23 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  // Optimistic MFA trust check — read expiry timestamp from cookie.
-  // Written by the MFA challenge action after successful TOTP verification.
+  // Defense-in-depth: verify the underlying Supabase session is actually at AAL2
+  // (meaning MFA was genuinely completed in this session).
+  // getAuthenticatorAssuranceLevel() with no JWT arg reads from the loaded session
+  // — fast, no network call after the getUser() above has already hydrated it.
+  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const sessionIsAAL2 = aalData?.currentLevel === 'aal2';
+
+  // Also check our trust-window cookie. Both must be satisfied:
+  // - AAL2 confirms the session actually completed MFA verification.
+  // - fp_mfa_expires_at confirms the trust window hasn't expired per the
+  //   member's configured mfa_trust_duration_days.
   const mfaExpires = req.cookies.get(MFA_EXPIRES_COOKIE)?.value;
   const now = Date.now();
+  const trustWindowValid = !!mfaExpires && parseInt(mfaExpires, 10) > now;
 
-  if (!mfaExpires || parseInt(mfaExpires, 10) <= now) {
-    // Trust window absent or expired — require fresh TOTP verification.
+  if (!sessionIsAAL2 || !trustWindowValid) {
+    // Either the session isn't at AAL2, or the trust window has expired.
     const challengeUrl = new URL('/login/mfa-challenge', req.url);
     challengeUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(challengeUrl);
