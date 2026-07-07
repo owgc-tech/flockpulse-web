@@ -187,23 +187,3 @@ Two follow-up fixes identified after PR #32 merged. Delivered on branch `feature
 - `app/login/LoginForm.tsx`: debounced `onChange` handler on the email field calls `lookupCommunityName` and updates the submit button label to `"Sign in to [Community Name]"`. Default label before lookup: `"Sign in to Community"`. The static "FlockPulse Admin" subheading is removed.
 
 **Files changed:** `app/login/actions.ts`, `app/login/LoginForm.tsx`, `app/login/page.tsx`
-
----
-
-## Amendment — Email-lookup approach rejected; replaced with local post-success storage (2026-07-07)
-
-**The `lookupCommunityName` Server Action written in Fix B above was wrong and has been removed.**
-
-The approach resolved the tenant name by querying `members JOIN tenants` by email on every keystroke (debounced) before the user had authenticated. This was rejected for two reasons: (1) it fires a server-side database query before the person has proved who they are, which is the wrong place for any tenant-specific data to surface; and (2) despite the "always return the same shape" safeguard, the response timing of a real DB hit versus a short-circuit still differs enough to be a side-channel — the enumeration risk is not fully closed by returning a generic fallback value.
-
-**Correct approach: write the community name to `localStorage` after authentication, read it back on the login screen.**
-
-Two write points — both after the person has already proved their identity:
-
-1. **`app/register/founder/complete/FounderCompleteForm.tsx`** — the community name is already in the form's controlled state (`communityName`). When `state.success` is true (Server Action completed successfully), `localStorage.setItem('fp_community_name', communityName)` is called inside the existing `useEffect` that also calls `refreshSession()`. This covers the first-ever login for every new Admin.
-
-2. **`app/admin/invitations/InvitationsTable.tsx`** — the invitations page is the first authenticated Admin route after login. `invitations/page.tsx` now fetches the tenant name from `tenants` and passes it as a `tenantName` prop. `InvitationsTable` writes it to `localStorage` in a `useEffect` on every authenticated load, keeping the value current if the community name changes.
-
-**`app/login/LoginForm.tsx`** reads `localStorage.getItem('fp_community_name')` in a `useEffect` on mount. The submit button shows `"Sign in to [Community Name]"` if the value is present, `"Sign in to Community"` otherwise. No server call, no email field dependency.
-
-**Files changed:** `app/login/actions.ts` (lookupCommunityName removed), `app/login/LoginForm.tsx` (localStorage read on mount), `app/register/founder/complete/FounderCompleteForm.tsx` (controlled communityName state + localStorage write on success), `app/admin/invitations/page.tsx` (fetch + pass tenantName), `app/admin/invitations/InvitationsTable.tsx` (tenantName prop + localStorage write)
