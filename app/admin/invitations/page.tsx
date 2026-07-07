@@ -20,6 +20,9 @@ export default async function InvitationsPage() {
 
   const invitations = await listInvitations(tenantId);
 
+  const { data: tenantData } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+  const tenantName = tenantData?.name ?? undefined;
+
   return (
     <main className="min-h-screen bg-zinc-50 px-4 py-12 dark:bg-black">
       <div className="mx-auto max-w-5xl">
@@ -37,7 +40,7 @@ export default async function InvitationsPage() {
             Send invite
           </a>
         </div>
-        <InvitationsTable initialInvitations={invitations} token={token} />
+        <InvitationsTable initialInvitations={invitations} token={token} tenantName={tenantName} />
       </div>
     </main>
   );

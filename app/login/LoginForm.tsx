@@ -1,27 +1,21 @@
 'use client';
 
-import { useActionState, useRef, useState, useTransition } from 'react';
-import { loginAction, lookupCommunityName, type LoginState } from './actions';
+import { useActionState, useEffect, useState } from 'react';
+import { loginAction, type LoginState } from './actions';
 
 const initialState: LoginState = {};
 
 export default function LoginForm() {
   const [state, formAction, isPending] = useActionState(loginAction, initialState);
   const [communityName, setCommunityName] = useState<string>('Community');
-  const [, startLookup] = useTransition();
-  const lookupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const value = e.target.value;
-    if (lookupTimeout.current) clearTimeout(lookupTimeout.current);
-    // Debounce: wait until the user pauses typing (400 ms) before hitting the server.
-    lookupTimeout.current = setTimeout(() => {
-      startLookup(async () => {
-        const name = await lookupCommunityName(value);
-        setCommunityName(name);
-      });
-    }, 400);
-  }
+  // Read the stored community name on mount — written by FounderCompleteForm on
+  // first registration, and refreshed by InvitationsTable on every subsequent
+  // authenticated admin page load. No server round-trip before login.
+  useEffect(() => {
+    const stored = localStorage.getItem('fp_community_name');
+    if (stored) setCommunityName(stored);
+  }, []);
 
   const inputClass =
     'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 w-full';
@@ -37,15 +31,7 @@ export default function LoginForm() {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="email" className={labelClass}>Email address</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          className={inputClass}
-          onChange={handleEmailChange}
-        />
+        <input id="email" name="email" type="email" required autoComplete="email" className={inputClass} />
       </div>
 
       <div className="flex flex-col gap-1.5">

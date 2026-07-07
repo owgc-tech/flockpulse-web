@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import type { InvitationDisplayRow, InvitationStatus } from '@/src/features/invitations/invitation.types';
 
 interface Props {
   initialInvitations: InvitationDisplayRow[];
   token: string;
+  tenantName?: string;
 }
 
 const STATUS_LABELS: Record<InvitationStatus, string> = {
@@ -22,8 +23,18 @@ const STATUS_CLASSES: Record<InvitationStatus, string> = {
 
 const ROLE_LABELS: Record<string, string> = { ADMIN: 'Admin', LEADER: 'Leader', MEMBER: 'Member' };
 
-export default function InvitationsTable({ initialInvitations, token }: Props) {
+export default function InvitationsTable({ initialInvitations, token, tenantName }: Props) {
   const [invitations, setInvitations] = useState<InvitationDisplayRow[]>(initialInvitations);
+
+  // Keep the login screen's community name greeting up to date.
+  // Written here (post-authentication) rather than before login so no
+  // server round-trip happens before credentials are submitted.
+  useEffect(() => {
+    if (!tenantName) return;
+    if (localStorage.getItem('fp_community_name') !== tenantName) {
+      localStorage.setItem('fp_community_name', tenantName);
+    }
+  }, [tenantName]);
   const [filter, setFilter] = useState<InvitationStatus | 'ALL'>('ALL');
   const [revoking, setRevoking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
