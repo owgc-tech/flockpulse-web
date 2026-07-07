@@ -43,7 +43,8 @@ export async function sendInviteAction(
   if (!['ADMIN', 'LEADER', 'MEMBER'].includes(role)) return { error: 'Invalid role' };
 
   try {
-    const invitation = await inviteMember(ctx.tenantId, ctx.memberId, { email, role, groupId });
+    const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/register/set-password`;
+    const invitation = await inviteMember(ctx.tenantId, ctx.memberId, { email, role, groupId, redirectTo });
     return { success: true, invitationId: invitation.id };
   } catch (err: unknown) {
     const code = (err as { code?: string }).code;
