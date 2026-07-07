@@ -163,3 +163,27 @@ TOTP code generation is implemented inline using Node built-in `crypto` (RFC 623
 **Test results (local, 2026-07-06):** 13/13 passed.
 
 **Files changed:** `scripts/test-fp102-web-admin-login.ts`, `supabase/config.toml`
+
+---
+
+## Amendment — Proxy lockout fix + community-branded login (2026-07-06)
+
+Two follow-up fixes identified after PR #32 merged. Delivered on branch `feature/fp102-followup-proxy-login`.
+
+### Fix A — `/admin/mfa-enroll` locked out by proxy
+
+**Issue:** `proxy.ts` applies the full AAL2 + trust-cookie check to every `/admin/*` path including `/admin/mfa-enroll`. A first-time Admin completing login for the first time has no verified factor yet — `loginAction` redirects them to `/admin/mfa-enroll`, but the proxy immediately bounces them back to `/login/mfa-challenge` (which requires a verified factor that doesn't exist). Complete lockout for all new Admins.
+
+**Resolution:** `proxy.ts` now exempts `/admin/mfa-enroll` from the AAL2/trust-cookie check. The unauthenticated-visitor check (`getUser()` returning null) still applies — the route is unreachable without a valid password-authenticated session. Only the MFA-complete gating is skipped.
+
+**Files changed:** `proxy.ts`
+
+### Fix B — Login screen branded with tenant community name, not "FlockPulse"
+
+**Issue:** `/login/page.tsx` displayed "FlockPulse Admin — authorised personnel only." FlockPulse is the platform name, invisible to tenants; the Admin's screen should feel like their own community's login.
+
+**Resolution:**
+- `app/login/actions.ts`: new `lookupCommunityName(email)` Server Action. Uses the service-role client to query `members JOIN tenants` by email + role='ADMIN'. Returns the tenant name, or `"Community"` on any error or miss. **Always returns the same shape — no distinguishable "not found" vs "found" state**, so the endpoint cannot be used for account enumeration.
+- `app/login/LoginForm.tsx`: debounced `onChange` handler on the email field calls `lookupCommunityName` and updates the submit button label to `"Sign in to [Community Name]"`. Default label before lookup: `"Sign in to Community"`. The static "FlockPulse Admin" subheading is removed.
+
+**Files changed:** `app/login/actions.ts`, `app/login/LoginForm.tsx`, `app/login/page.tsx`

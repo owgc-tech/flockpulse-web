@@ -40,6 +40,7 @@ export default function FounderCompleteForm() {
   const [pageState, setPageState] = useState<PageState>('loading');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [communityName, setCommunityName] = useState<string>('');
 
   // Right column ref for measuring rendered height to set textarea height.
   const rightColRef = useRef<HTMLDivElement>(null);
@@ -75,7 +76,12 @@ export default function FounderCompleteForm() {
     if (!state.success) return;
     const db = supabaseBrowserClient();
     db.auth.refreshSession();
-  }, [state.success]);
+    // Persist the community name so the login screen can greet the Admin by
+    // their community name without any server lookup before credentials are entered.
+    if (communityName) {
+      localStorage.setItem('fp_community_name', communityName);
+    }
+  }, [state.success, communityName]);
 
   // Establish session on mount.
   // Two valid arrival paths:
@@ -190,6 +196,8 @@ export default function FounderCompleteForm() {
               id="communityName" name="communityName" type="text" required
               placeholder="e.g. Grace Community Church"
               className={inputClass}
+              value={communityName}
+              onChange={e => setCommunityName(e.target.value)}
             />
           </div>
 

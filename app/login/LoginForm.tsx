@@ -1,12 +1,21 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { loginAction, type LoginState } from './actions';
 
 const initialState: LoginState = {};
 
 export default function LoginForm() {
   const [state, formAction, isPending] = useActionState(loginAction, initialState);
+  const [communityName, setCommunityName] = useState<string>('Community');
+
+  // Read the stored community name on mount — written by FounderCompleteForm on
+  // first registration, and refreshed by InvitationsTable on every subsequent
+  // authenticated admin page load. No server round-trip before login.
+  useEffect(() => {
+    const stored = localStorage.getItem('fp_community_name');
+    if (stored) setCommunityName(stored);
+  }, []);
 
   const inputClass =
     'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 w-full';
@@ -35,7 +44,7 @@ export default function LoginForm() {
         disabled={isPending}
         className="mt-1 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
       >
-        {isPending ? 'Signing in…' : 'Sign in'}
+        {isPending ? 'Signing in…' : `Sign in to ${communityName}`}
       </button>
 
       <p className="text-center text-xs text-zinc-400 dark:text-zinc-600">
