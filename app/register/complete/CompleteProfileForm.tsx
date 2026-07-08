@@ -61,6 +61,15 @@ export default function CompleteProfileForm() {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 p-6 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
         <p className="font-medium">Registration complete.</p>
+        {role === 'ADMIN' && (
+          <button
+            type="button"
+            onClick={() => router.push('/login')}
+            className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            Continue to Login
+          </button>
+        )}
         <p className="text-sm">Download the FlockPulse app to get started. Your login email is the address your invitation was sent to.</p>
       </div>
     );
