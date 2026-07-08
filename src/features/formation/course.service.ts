@@ -1,5 +1,5 @@
 import type { CourseRow, CreateCourseInput, UpdateCourseInput } from './course.types';
-import { insertCourse, patchCourse, getCourse, listCourses, reorderCoursesRpc } from './course.repository';
+import { insertCourse, patchCourse, getCourse, listCourses, reorderCoursesRpc, maxActiveCourseSequenceOrder } from './course.repository';
 
 function err(code: string, message: string): Error & { code: string } {
   const e = new Error(message) as Error & { code: string };
@@ -76,3 +76,29 @@ export async function reorderCourses(tenantId: string, orderedIds: string[]): Pr
 }
 
 export { listCourses };
+
+export async function listDeletedCourses(tenantId: string): Promise<CourseRow[]> {
+  const all = await listCourses(tenantId, true);
+  return all.filter(c => c.deleted_at !== null);
+}
+
+export async function restoreCourse(id: string, tenantId: string): Promise<CourseRow> {
+  const existing = await getCourse(id, tenantId);
+  if (!existing) throw err('NOT_FOUND', 'Course not found');
+  if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Course is not deleted');
+
+  const maxOrder = await maxActiveCourseSequenceOrder(tenantId);
+  try {
+    const restored = await patchCourse(id, tenantId, {
+      deletedAt: null,
+      sequenceOrder: maxOrder + 1,
+    });
+    if (!restored) throw err('NOT_FOUND', 'Course not found');
+    return restored;
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === '23505') {
+      throw err('VALIDATION_ERROR', 'sequence_order collision during restore — please retry');
+    }
+    throw e;
+  }
+}

@@ -75,6 +75,20 @@ export async function listCourses(tenantId: string, includeDeleted = false): Pro
   return (data ?? []) as CourseRow[];
 }
 
+export async function maxActiveCourseSequenceOrder(tenantId: string): Promise<number> {
+  const { data, error } = await serviceClient()
+    .from('courses')
+    .select('sequence_order')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('sequence_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as { sequence_order: number } | null)?.sequence_order ?? 0;
+}
+
 export async function reorderCoursesRpc(tenantId: string, orderedIds: string[]): Promise<void> {
   const { error } = await serviceClient().rpc('reorder_courses', {
     p_tenant_id: tenantId,
