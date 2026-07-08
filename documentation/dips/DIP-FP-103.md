@@ -45,3 +45,5 @@ FP-103: Show role-aware confirmation screen (Admin login link + app download)
 
 ### Stop Point
 Save this DIP verbatim to documentation/dips/DIP-FP-103.md and do not append executor notes, observations, or any other content to that file after the initial save. Executor observations belong exclusively in the PR description. Open the PR against dev and stop. Do not merge — the user will check out the branch locally, test it, and merge manually.
+
+Include full diffs for every file in your completion report per Section 5, rule 12 — not a summary.
