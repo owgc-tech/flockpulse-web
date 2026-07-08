@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const TAGLINE_MAX = 150;
+const DESCRIPTION_MAX = 500;
 const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
 
@@ -20,7 +21,7 @@ function err(code: string, message: string): Error & { code: string } {
 export async function getTenantSettings(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('tenants')
-    .select('id, name, attendance_window_hours, logo_url, tagline, created_at')
+    .select('id, name, attendance_window_hours, logo_url, tagline, description, created_at')
     .eq('id', tenantId)
     .single();
 
@@ -31,13 +32,14 @@ export async function getTenantSettings(tenantId: string) {
     attendance_window_hours: number;
     logo_url: string | null;
     tagline: string | null;
+    description: string | null;
     created_at: string;
   };
 }
 
 export async function updateTenantSettings(
   tenantId: string,
-  input: { attendanceWindowHours?: number; tagline?: string | null }
+  input: { attendanceWindowHours?: number; tagline?: string | null; description?: string | null }
 ) {
   const patch: Record<string, unknown> = {};
 
@@ -59,6 +61,13 @@ export async function updateTenantSettings(
     patch.tagline = input.tagline;
   }
 
+  if (input.description !== undefined) {
+    if (input.description !== null && input.description.length > DESCRIPTION_MAX) {
+      throw err('VALIDATION_ERROR', `Description must be ${DESCRIPTION_MAX} characters or fewer`);
+    }
+    patch.description = input.description;
+  }
+
   if (Object.keys(patch).length === 0) {
     throw err('NO_FIELDS', 'No updatable fields provided');
   }
@@ -67,7 +76,7 @@ export async function updateTenantSettings(
     .from('tenants')
     .update(patch)
     .eq('id', tenantId)
-    .select('id, name, attendance_window_hours, logo_url, tagline')
+    .select('id, name, attendance_window_hours, logo_url, tagline, description')
     .single();
 
   if (error) throw error;

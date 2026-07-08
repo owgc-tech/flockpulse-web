@@ -197,19 +197,48 @@ async function main() {
   // ── GROUP 3: getTenantSettings ────────────────────────────────────────────
   console.log('\nGROUP 3 — getTenantSettings');
 
-  await test('3.1  getTenantSettings: returns expected fields', async () => {
+  await test('3.1  getTenantSettings: returns expected fields including description', async () => {
     const s = await getTenantSettings(tenantA);
     assert('id' in s, 'Missing id');
     assert('name' in s, 'Missing name');
     assert('logo_url' in s, 'Missing logo_url');
     assert('tagline' in s, 'Missing tagline');
+    assert('description' in s, 'Missing description');
     assert('attendance_window_hours' in s, 'Missing attendance_window_hours');
   });
 
-  await test('3.2  getTenantSettings: logo_url and tagline null on fresh tenant', async () => {
+  await test('3.2  getTenantSettings: logo_url, tagline, description null on fresh tenant', async () => {
     const s = await getTenantSettings(tenantB);
     assert(s.logo_url === null, `Expected logo_url null, got ${s.logo_url}`);
     assert(s.tagline === null, `Expected tagline null, got ${s.tagline}`);
+    assert(s.description === null, `Expected description null, got ${s.description}`);
+  });
+
+  // ── GROUP 4: Description ──────────────────────────────────────────────────
+  console.log('\nGROUP 4 — Description update');
+
+  await test('4.1  updateTenantSettings: sets description on tenant record', async () => {
+    await updateTenantSettings(tenantA, { description: 'A community for men seeking growth.' });
+    const s = await getTenantSettings(tenantA);
+    assert(s.description === 'A community for men seeking growth.', `Got: "${s.description}"`);
+  });
+
+  await test('4.2  updateTenantSettings: clears description when null passed', async () => {
+    await updateTenantSettings(tenantA, { description: null });
+    const s = await getTenantSettings(tenantA);
+    assert(s.description === null, `Expected null, got "${s.description}"`);
+  });
+
+  await test('4.3  updateTenantSettings: rejects description > 500 chars (VALIDATION_ERROR)', async () => {
+    await assertThrowsCode('VALIDATION_ERROR', () =>
+      updateTenantSettings(tenantA, { description: 'x'.repeat(501) })
+    );
+  });
+
+  await test('4.4  updateTenantSettings: description tenant isolation', async () => {
+    await updateTenantSettings(tenantA, { description: 'Tenant A only' });
+    const b = await getTenantSettings(tenantB);
+    assert(b.description === null, `Expected tenantB description null, got "${b.description}"`);
   });
 
   // ── Summary ───────────────────────────────────────────────────────────────
