@@ -1,19 +1,23 @@
 import {
   fetchActiveModulesForCourse,
   fetchActiveTalksForModules,
-  fetchEventsForTalks,
-  fetchAttendedRows,
+  fetchCompletionsForTalks,
+  fetchMemberDemographics,
+  type ActiveTalkRow,
+  type MemberDemographics,
 } from './formation-completion.repository';
 import { listCourses } from './course.repository';
 
 export interface TalkProgress {
   talk_id: string;
+  talk_name: string;
   completed: boolean;
-  attendance_recorded_at: string | null;
+  completed_at: string | null;
 }
 
 export interface ModuleProgress {
   module_id: string;
+  module_name: string;
   module_completed: boolean;
   talks: TalkProgress[];
 }
@@ -27,37 +31,59 @@ export interface CourseProgress {
   modules: ModuleProgress[];
 }
 
+/**
+ * Determine whether a talk is relevant to a member given their demographics.
+ *
+ * Relevance mapping (DIP Grounding Check item 3):
+ *   MALE + SINGLE   → for_single_men flag
+ *   FEMALE + SINGLE → for_single_women flag
+ *   MALE + MARRIED  → for_married_men flag
+ *   FEMALE + MARRIED→ for_married_women flag
+ *
+ * "No restrictions" = all four flags true (DB CHECK ensures at least one must be
+ * true, so a talk with all four true is universally relevant).
+ *
+ * If gender or marital_status is null/unknown → fail-open (include all talks).
+ *
+ * INVARIANT (FP-77 AC): computed live at query time; never cached or materialized.
+ */
+function isTalkRelevant(talk: ActiveTalkRow, demographics: MemberDemographics): boolean {
+  const { gender, marital_status } = demographics;
+
+  // Fail-open: unknown demographics → include every talk
+  if (!gender || !marital_status) return true;
+
+  if (gender === 'MALE' && marital_status === 'SINGLE') return talk.for_single_men;
+  if (gender === 'FEMALE' && marital_status === 'SINGLE') return talk.for_single_women;
+  if (gender === 'MALE' && marital_status === 'MARRIED') return talk.for_married_men;
+  if (gender === 'FEMALE' && marital_status === 'MARRIED') return talk.for_married_women;
+
+  // Unrecognised combination → fail-open
+  return true;
+}
+
 export async function computeCourseProgress(
   memberId: string, courseId: string, tenantId: string
 ): Promise<CourseProgress> {
+  // Fetch member demographics once (FP-77: live, no caching)
+  const demographics = await fetchMemberDemographics(memberId, tenantId);
+
   const modules = await fetchActiveModulesForCourse(courseId, tenantId);
   const moduleIds = modules.map(m => m.id);
 
-  const talks = await fetchActiveTalksForModules(moduleIds, tenantId);
-  const talkIds = talks.map(t => t.id);
+  const allTalks = await fetchActiveTalksForModules(moduleIds, tenantId);
 
-  const events = await fetchEventsForTalks(talkIds, tenantId);
-  const eventIds = events.map(e => e.id);
+  // Filter to member-relevant talks only (excluded talks drop from denominator entirely)
+  const relevantTalks = allTalks.filter(t => isTalkRelevant(t, demographics));
+  const relevantTalkIds = relevantTalks.map(t => t.id);
 
-  // INVARIANT (Rule 4): only attendance_status = 'ATTENDED' counts. No rsvps or self-reports.
-  const attended = await fetchAttendedRows(memberId, eventIds, tenantId);
+  // Single query against talk_completions (replaces old events/attendance join)
+  // INVARIANT (Rule 4): only a talk_completions row constitutes completion.
+  const completedSet = await fetchCompletionsForTalks(memberId, relevantTalkIds, tenantId);
 
-  // Map event_id → confirmed_at for ATTENDED rows.
-  const attendedMap = new Map<string, string>(
-    attended.map(a => [a.event_id, a.confirmed_at])
-  );
-
-  // Map talk_id → list of event_ids that link to it.
-  const talkEventMap = new Map<string, string[]>();
-  for (const ev of events) {
-    const list = talkEventMap.get(ev.talk_id) ?? [];
-    list.push(ev.id);
-    talkEventMap.set(ev.talk_id, list);
-  }
-
-  // Group talks by module.
-  const talksByModule = new Map<string, typeof talks>();
-  for (const t of talks) {
+  // Group relevant talks by module
+  const talksByModule = new Map<string, typeof relevantTalks>();
+  for (const t of relevantTalks) {
     const list = talksByModule.get(t.module_id) ?? [];
     list.push(t);
     talksByModule.set(t.module_id, list);
@@ -68,21 +94,15 @@ export async function computeCourseProgress(
   const moduleProgress: ModuleProgress[] = modules.map(mod => {
     const modTalks = talksByModule.get(mod.id) ?? [];
     const talkProgress: TalkProgress[] = modTalks.map(t => {
-      const linkedEvents = talkEventMap.get(t.id) ?? [];
-      let attendedAt: string | null = null;
-      for (const eid of linkedEvents) {
-        const ts = attendedMap.get(eid);
-        if (ts) { attendedAt = ts; break; }
-      }
-      const completed = attendedAt !== null;
+      const completed = completedSet.has(t.id);
       if (completed) completedTalkCount++;
-      return { talk_id: t.id, completed, attendance_recorded_at: attendedAt };
+      return { talk_id: t.id, talk_name: t.name, completed, completed_at: null };
     });
 
-    // Empty module is vacuously complete (all-of-empty-set is true).
+    // Empty or all-irrelevant module is vacuously complete.
     // See DIP-FP-29-FP-30-FP-43 Grounding Check item 6 for the reasoning.
     const module_completed = talkProgress.length === 0 || talkProgress.every(t => t.completed);
-    return { module_id: mod.id, module_completed, talks: talkProgress };
+    return { module_id: mod.id, module_name: mod.name, module_completed, talks: talkProgress };
   });
 
   const course_completed = moduleProgress.length === 0 || moduleProgress.every(m => m.module_completed);
@@ -91,7 +111,7 @@ export async function computeCourseProgress(
     member_id: memberId,
     course_id: courseId,
     completed_talk_count: completedTalkCount,
-    total_talk_count: talks.length,
+    total_talk_count: relevantTalks.length,
     course_completed,
     modules: moduleProgress,
   };

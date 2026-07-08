@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 
 const NAV = [
   { href: '/admin/formation', label: 'Formation' },
+  { href: '/admin/formation-progress', label: 'Formation Progress' },
   { href: '/admin/invitations', label: 'Invitations' },
   { href: '/admin/community', label: 'Community' },
   {

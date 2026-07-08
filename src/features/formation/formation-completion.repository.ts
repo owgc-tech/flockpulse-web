@@ -12,6 +12,10 @@ export interface ActiveTalkRow {
   module_id: string;
   name: string;
   sequence_order: number;
+  for_single_men: boolean;
+  for_single_women: boolean;
+  for_married_men: boolean;
+  for_married_women: boolean;
 }
 
 export interface ActiveModuleRow {
@@ -21,14 +25,10 @@ export interface ActiveModuleRow {
   sequence_order: number;
 }
 
-export interface AttendedRow {
-  event_id: string;
-  confirmed_at: string;
-}
 
-export interface EventTalkRow {
-  id: string;
-  talk_id: string;
+export interface MemberDemographics {
+  gender: string | null;
+  marital_status: string | null;
 }
 
 export async function fetchActiveModulesForCourse(
@@ -52,7 +52,7 @@ export async function fetchActiveTalksForModules(
   if (moduleIds.length === 0) return [];
   const { data, error } = await serviceClient()
     .from('talks')
-    .select('id, module_id, name, sequence_order')
+    .select('id, module_id, name, sequence_order, for_single_men, for_single_women, for_married_men, for_married_women')
     .in('module_id', moduleIds)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -62,35 +62,36 @@ export async function fetchActiveTalksForModules(
   return (data ?? []) as ActiveTalkRow[];
 }
 
-export async function fetchEventsForTalks(
-  talkIds: string[], tenantId: string
-): Promise<EventTalkRow[]> {
-  if (talkIds.length === 0) return [];
+export async function fetchCompletionsForTalks(
+  memberId: string, talkIds: string[], tenantId: string
+): Promise<Set<string>> {
+  if (talkIds.length === 0) return new Set();
   const { data, error } = await serviceClient()
-    .from('events')
-    .select('id, talk_id')
-    .in('talk_id', talkIds)
-    .eq('tenant_id', tenantId)
-    .neq('status', 'CANCELLED');
-
-  if (error) throw error;
-  return (data ?? []) as EventTalkRow[];
-}
-
-export async function fetchAttendedRows(
-  memberId: string, eventIds: string[], tenantId: string
-): Promise<AttendedRow[]> {
-  // INVARIANT (Rule 4): only attendance_status = 'ATTENDED' completes a talk.
-  // rsvps and member_attendance_reports are deliberately NOT read here.
-  if (eventIds.length === 0) return [];
-  const { data, error } = await serviceClient()
-    .from('attendance')
-    .select('event_id, confirmed_at')
+    .from('talk_completions')
+    .select('talk_id')
     .eq('member_id', memberId)
     .eq('tenant_id', tenantId)
-    .eq('attendance_status', 'ATTENDED')
-    .in('event_id', eventIds);
+    .in('talk_id', talkIds);
 
   if (error) throw error;
-  return (data ?? []) as AttendedRow[];
+  return new Set((data ?? []).map((r: { talk_id: string }) => r.talk_id));
+}
+
+export async function fetchMemberDemographics(
+  memberId: string, tenantId: string
+): Promise<MemberDemographics> {
+  const { data, error } = await serviceClient()
+    .from('members')
+    .select('gender, marital_status')
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return { gender: null, marital_status: null };
+  return {
+    gender: (data as { gender: string | null }).gender,
+    marital_status: (data as { marital_status: string | null }).marital_status,
+  };
 }
