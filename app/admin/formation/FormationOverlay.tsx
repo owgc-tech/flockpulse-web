@@ -60,10 +60,10 @@ export default function FormationOverlay(props: Props) {
 
   // Talk demographic state
   const talkItem = entity === 'talk' ? (item as TalkRow | undefined) : undefined;
-  const [forSingleMen, setForSingleMen] = useState(talkItem?.for_single_men ?? false);
-  const [forSingleWomen, setForSingleWomen] = useState(talkItem?.for_single_women ?? false);
-  const [forMarriedMen, setForMarriedMen] = useState(talkItem?.for_married_men ?? false);
-  const [forMarriedWomen, setForMarriedWomen] = useState(talkItem?.for_married_women ?? false);
+  const [forSingleMen, setForSingleMen] = useState(talkItem?.for_single_men ?? true);
+  const [forSingleWomen, setForSingleWomen] = useState(talkItem?.for_single_women ?? true);
+  const [forMarriedMen, setForMarriedMen] = useState(talkItem?.for_married_men ?? true);
+  const [forMarriedWomen, setForMarriedWomen] = useState(talkItem?.for_married_women ?? true);
   const noDemographic = entity === 'talk' && !forSingleMen && !forSingleWomen && !forMarriedMen && !forMarriedWomen;
 
   useEffect(() => { firstInputRef.current?.focus(); }, []);
