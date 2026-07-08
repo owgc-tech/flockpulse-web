@@ -20,10 +20,10 @@ export async function insertTalk(tenantId: string, input: CreateTalkInput): Prom
       alias: input.alias ?? null,
       description: input.description ?? null,
       sequence_order: input.sequenceOrder,
-      for_single_men: input.forSingleMen ?? false,
-      for_single_women: input.forSingleWomen ?? false,
-      for_married_men: input.forMarriedMen ?? false,
-      for_married_women: input.forMarriedWomen ?? false,
+      for_single_men: input.forSingleMen ?? true,
+      for_single_women: input.forSingleWomen ?? true,
+      for_married_men: input.forMarriedMen ?? true,
+      for_married_women: input.forMarriedWomen ?? true,
     })
     .select(COLS)
     .single();
