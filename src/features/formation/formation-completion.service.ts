@@ -7,6 +7,7 @@ import {
   type MemberDemographics,
 } from './formation-completion.repository';
 import { listCourses } from './course.repository';
+import { getCourseById } from './course.service';
 
 export interface TalkProgress {
   talk_id: string;
@@ -25,6 +26,8 @@ export interface ModuleProgress {
 export interface CourseProgress {
   member_id: string;
   course_id: string;
+  course_name: string;
+  course_description: string | null;
   completed_talk_count: number;
   total_talk_count: number;
   course_completed: boolean;
@@ -65,8 +68,11 @@ function isTalkRelevant(talk: ActiveTalkRow, demographics: MemberDemographics): 
 export async function computeCourseProgress(
   memberId: string, courseId: string, tenantId: string
 ): Promise<CourseProgress> {
-  // Fetch member demographics once (FP-77: live, no caching)
-  const demographics = await fetchMemberDemographics(memberId, tenantId);
+  // Fetch course metadata and member demographics in parallel
+  const [course, demographics] = await Promise.all([
+    getCourseById(courseId, tenantId),
+    fetchMemberDemographics(memberId, tenantId),
+  ]);
 
   const modules = await fetchActiveModulesForCourse(courseId, tenantId);
   const moduleIds = modules.map(m => m.id);
@@ -110,6 +116,8 @@ export async function computeCourseProgress(
   return {
     member_id: memberId,
     course_id: courseId,
+    course_name: course.name,
+    course_description: course.description ?? null,
     completed_talk_count: completedTalkCount,
     total_talk_count: relevantTalks.length,
     course_completed,
