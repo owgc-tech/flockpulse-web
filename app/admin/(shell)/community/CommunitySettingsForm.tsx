@@ -1,25 +1,28 @@
 'use client';
 
 import { useRef, useState, useTransition } from 'react';
-import { updateTaglineAction, uploadLogoAction } from './actions';
+import { updateCommunityDetailsAction, uploadLogoAction } from './actions';
 
 interface Props {
   token: string;
   communityName: string;
   initialLogoUrl: string | null;
   initialTagline: string | null;
+  initialDescription: string | null;
 }
 
 const TAGLINE_MAX = 150;
+const DESCRIPTION_MAX = 500;
 
 export default function CommunitySettingsForm({
-  token, communityName, initialLogoUrl, initialTagline,
+  token, communityName, initialLogoUrl, initialTagline, initialDescription,
 }: Props) {
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [tagline, setTagline] = useState(initialTagline ?? '');
+  const [description, setDescription] = useState(initialDescription ?? '');
   const [logoError, setLogoError] = useState<string | null>(null);
-  const [taglineError, setTaglineError] = useState<string | null>(null);
-  const [taglineSaved, setTaglineSaved] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsSaved, setDetailsSaved] = useState(false);
   const [logoSaved, setLogoSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -49,15 +52,15 @@ export default function CommunitySettingsForm({
     });
   }
 
-  function handleTaglineSave(e: React.FormEvent<HTMLFormElement>) {
+  function handleDetailsSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setTaglineError(null);
-    setTaglineSaved(false);
+    setDetailsError(null);
+    setDetailsSaved(false);
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
-      const res = await updateTaglineAction(token, fd);
-      if (res.error) { setTaglineError(res.error); return; }
-      setTaglineSaved(true);
+      const res = await updateCommunityDetailsAction(token, fd);
+      if (res.error) { setDetailsError(res.error); return; }
+      setDetailsSaved(true);
     });
   }
 
@@ -112,10 +115,10 @@ export default function CommunitySettingsForm({
         </form>
       </div>
 
-      {/* Tagline */}
+      {/* Community Details — tagline + description, one save */}
       <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Tagline</h2>
-        <form onSubmit={handleTaglineSave} className="flex flex-col gap-4">
+        <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Community Details</h2>
+        <form onSubmit={handleDetailsSave} className="flex flex-col gap-5">
           <div className="flex flex-col gap-1.5">
             <label className={labelClass}>
               Tagline{' '}
@@ -126,21 +129,39 @@ export default function CommunitySettingsForm({
               rows={2}
               maxLength={TAGLINE_MAX}
               value={tagline}
-              onChange={e => { setTagline(e.target.value); setTaglineSaved(false); }}
+              onChange={e => { setTagline(e.target.value); setDetailsSaved(false); }}
               className={`${inputClass} resize-none`}
               placeholder="e.g. Serving the city of Portland since 1998"
             />
             <p className="text-right text-xs text-zinc-400">{tagline.length}/{TAGLINE_MAX}</p>
           </div>
-          {taglineError && <p className="text-sm text-red-600 dark:text-red-400">{taglineError}</p>}
-          {taglineSaved && <p className="text-sm text-green-600 dark:text-green-400">Tagline saved.</p>}
+
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClass}>
+              Description{' '}
+              <span className="font-normal text-zinc-400">(optional, longer description of your community)</span>
+            </label>
+            <textarea
+              name="description"
+              rows={4}
+              maxLength={DESCRIPTION_MAX}
+              value={description}
+              onChange={e => { setDescription(e.target.value); setDetailsSaved(false); }}
+              className={`${inputClass} resize-none`}
+              placeholder="Tell members about your community — its history, mission, or values."
+            />
+            <p className="text-right text-xs text-zinc-400">{description.length}/{DESCRIPTION_MAX}</p>
+          </div>
+
+          {detailsError && <p className="text-sm text-red-600 dark:text-red-400">{detailsError}</p>}
+          {detailsSaved && <p className="text-sm text-green-600 dark:text-green-400">Details saved.</p>}
           <div>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
-              {isPending ? 'Saving…' : 'Save tagline'}
+              {isPending ? 'Saving…' : 'Save details'}
             </button>
           </div>
         </form>

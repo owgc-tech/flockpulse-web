@@ -22,7 +22,7 @@ export default async function CommunityPage() {
         <div className="mb-8">
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Community Settings</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Manage your community's name, logo, and tagline.
+            Manage your community's name, logo, tagline, and description.
           </p>
         </div>
         <CommunitySettingsForm
@@ -30,6 +30,7 @@ export default async function CommunityPage() {
           communityName={settings.name}
           initialLogoUrl={settings.logo_url ?? null}
           initialTagline={settings.tagline ?? null}
+          initialDescription={settings.description ?? null}
         />
       </div>
     </div>

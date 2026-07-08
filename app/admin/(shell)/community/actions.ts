@@ -31,7 +31,7 @@ export interface CommunityActionResult<T = undefined> {
   error?: string;
 }
 
-export async function updateTaglineAction(
+export async function updateCommunityDetailsAction(
   token: string,
   formData: FormData
 ): Promise<CommunityActionResult> {
@@ -39,8 +39,9 @@ export async function updateTaglineAction(
   if (!ctx) return { error: 'Unauthorized' };
 
   const tagline = (formData.get('tagline') as string | null)?.trim() || null;
+  const description = (formData.get('description') as string | null)?.trim() || null;
   try {
-    await updateTenantSettings(ctx.tenantId, { tagline });
+    await updateTenantSettings(ctx.tenantId, { tagline, description });
     return {};
   } catch (e) { return { error: mapError(e) }; }
 }
