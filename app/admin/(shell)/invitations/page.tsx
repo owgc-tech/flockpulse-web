@@ -24,8 +24,8 @@ export default async function InvitationsPage() {
   const tenantName = tenantData?.name ?? undefined;
 
   return (
-    <main className="min-h-screen bg-zinc-50 px-4 py-12 dark:bg-black">
-      <div className="mx-auto max-w-5xl">
+    <div className="px-6 py-8">
+      <div className="mx-auto max-w-4xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Invitations</h1>
@@ -42,6 +42,6 @@ export default async function InvitationsPage() {
         </div>
         <InvitationsTable initialInvitations={invitations} token={token} tenantName={tenantName} />
       </div>
-    </main>
+    </div>
   );
 }

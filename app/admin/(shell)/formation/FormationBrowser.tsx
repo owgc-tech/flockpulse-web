@@ -148,7 +148,7 @@ function Column({
   }
 
   return (
-    <div className="flex w-full flex-col border-r border-zinc-200 dark:border-zinc-800 last:border-r-0">
+    <div className="flex w-full flex-col border-b border-zinc-200 dark:border-zinc-800 lg:border-b-0 lg:border-r last:border-b-0 lg:last:border-r-0" style={{ minHeight: '200px', maxHeight: '60vh' }}>
       <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
         <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {title}
@@ -378,7 +378,7 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
         </div>
       )}
 
-      <div className="grid flex-1 grid-cols-3 overflow-hidden">
+      <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-3">
         <Column
           title="Courses"
           items={courses}

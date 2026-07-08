@@ -17,19 +17,14 @@ export default async function FormationPage() {
   const courses = await listCourses(tenantId);
 
   return (
-    <main className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Formation</h1>
-          <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-            Manage courses, modules, and talks.
-          </p>
-        </div>
-        <nav className="flex gap-4 text-sm text-zinc-500 dark:text-zinc-400">
-          <a href="/admin/invitations" className="hover:text-zinc-900 dark:hover:text-zinc-100">Invitations</a>
-        </nav>
+    <div className="flex flex-col">
+      <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Formation</h1>
+        <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+          Manage courses, modules, and talks.
+        </p>
       </div>
       <FormationBrowser initialCourses={courses} token={token} />
-    </main>
+    </div>
   );
 }
