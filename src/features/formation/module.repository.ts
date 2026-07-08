@@ -79,6 +79,33 @@ export async function listModulesByCourse(
   return (data ?? []) as ModuleRow[];
 }
 
+export async function maxActiveModuleSequenceOrder(courseId: string, tenantId: string): Promise<number> {
+  const { data, error } = await serviceClient()
+    .from('modules')
+    .select('sequence_order')
+    .eq('course_id', courseId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('sequence_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as { sequence_order: number } | null)?.sequence_order ?? 0;
+}
+
+export async function listDeletedModulesForTenant(tenantId: string): Promise<ModuleRow[]> {
+  const { data, error } = await serviceClient()
+    .from('modules')
+    .select(COLS)
+    .eq('tenant_id', tenantId)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as ModuleRow[];
+}
+
 export async function reorderModulesRpc(
   courseId: string, tenantId: string, orderedIds: string[]
 ): Promise<void> {

@@ -1,5 +1,5 @@
 import type { TalkRow, CreateTalkInput, UpdateTalkInput } from './talk.types';
-import { insertTalk, patchTalk, getTalk, listTalksByModule, getTalkByIdForValidation, reorderTalksRpc } from './talk.repository';
+import { insertTalk, patchTalk, getTalk, listTalksByModule, getTalkByIdForValidation, listDeletedTalksForTenant, maxActiveTalkSequenceOrder, reorderTalksRpc } from './talk.repository';
 import { getModule } from './module.repository';
 
 function err(code: string, message: string): Error & { code: string } {
@@ -105,3 +105,52 @@ export async function reorderTalks(
 }
 
 export { listTalksByModule };
+
+export interface DeletedTalkRow extends TalkRow {
+  module_name: string;
+  module_deleted_at: string | null;
+}
+
+export async function listDeletedTalks(tenantId: string): Promise<DeletedTalkRow[]> {
+  const talks = await listDeletedTalksForTenant(tenantId);
+  if (!talks.length) return [];
+
+  const moduleIds = [...new Set(talks.map(t => t.module_id))];
+  const modules = await Promise.all(moduleIds.map(id => getModule(id, tenantId)));
+  const moduleMap = new Map(
+    modules.filter(Boolean).map(m => [m!.id, m!])
+  );
+
+  return talks.map(t => ({
+    ...t,
+    module_name: moduleMap.get(t.module_id)?.name ?? '(unknown)',
+    module_deleted_at: moduleMap.get(t.module_id)?.deleted_at ?? null,
+  }));
+}
+
+export async function restoreTalk(id: string, tenantId: string): Promise<TalkRow> {
+  const existing = await getTalk(id, tenantId);
+  if (!existing) throw err('NOT_FOUND', 'Talk not found');
+  if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Talk is not deleted');
+
+  const module = await getModule(existing.module_id, tenantId);
+  if (!module) throw err('NOT_FOUND', 'Parent module not found');
+  if (module.deleted_at !== null) {
+    throw err('INVALID_STATE_TRANSITION', `Restore module "${module.name}" first`);
+  }
+
+  const maxOrder = await maxActiveTalkSequenceOrder(existing.module_id, tenantId);
+  try {
+    const restored = await patchTalk(id, tenantId, {
+      deletedAt: null,
+      sequenceOrder: maxOrder + 1,
+    });
+    if (!restored) throw err('NOT_FOUND', 'Talk not found');
+    return restored;
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === '23505') {
+      throw err('VALIDATION_ERROR', 'sequence_order collision during restore — please retry');
+    }
+    throw e;
+  }
+}

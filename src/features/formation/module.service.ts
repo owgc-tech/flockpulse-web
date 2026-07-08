@@ -1,5 +1,5 @@
 import type { ModuleRow, CreateModuleInput, UpdateModuleInput } from './module.types';
-import { insertModule, patchModule, getModule, listModulesByCourse, reorderModulesRpc } from './module.repository';
+import { insertModule, patchModule, getModule, listModulesByCourse, listDeletedModulesForTenant, maxActiveModuleSequenceOrder, reorderModulesRpc } from './module.repository';
 import { getCourse } from './course.repository';
 
 function err(code: string, message: string): Error & { code: string } {
@@ -83,3 +83,52 @@ export async function reorderModules(
 }
 
 export { listModulesByCourse };
+
+export interface DeletedModuleRow extends ModuleRow {
+  course_name: string;
+  course_deleted_at: string | null;
+}
+
+export async function listDeletedModules(tenantId: string): Promise<DeletedModuleRow[]> {
+  const modules = await listDeletedModulesForTenant(tenantId);
+  if (!modules.length) return [];
+
+  const courseIds = [...new Set(modules.map(m => m.course_id))];
+  const courses = await Promise.all(courseIds.map(id => getCourse(id, tenantId)));
+  const courseMap = new Map(
+    courses.filter(Boolean).map(c => [c!.id, c!])
+  );
+
+  return modules.map(m => ({
+    ...m,
+    course_name: courseMap.get(m.course_id)?.name ?? '(unknown)',
+    course_deleted_at: courseMap.get(m.course_id)?.deleted_at ?? null,
+  }));
+}
+
+export async function restoreModule(id: string, tenantId: string): Promise<ModuleRow> {
+  const existing = await getModule(id, tenantId);
+  if (!existing) throw err('NOT_FOUND', 'Module not found');
+  if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Module is not deleted');
+
+  const course = await getCourse(existing.course_id, tenantId);
+  if (!course) throw err('NOT_FOUND', 'Parent course not found');
+  if (course.deleted_at !== null) {
+    throw err('INVALID_STATE_TRANSITION', `Restore course "${course.name}" first`);
+  }
+
+  const maxOrder = await maxActiveModuleSequenceOrder(existing.course_id, tenantId);
+  try {
+    const restored = await patchModule(id, tenantId, {
+      deletedAt: null,
+      sequenceOrder: maxOrder + 1,
+    });
+    if (!restored) throw err('NOT_FOUND', 'Module not found');
+    return restored;
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === '23505') {
+      throw err('VALIDATION_ERROR', 'sequence_order collision during restore — please retry');
+    }
+    throw e;
+  }
+}
