@@ -162,8 +162,10 @@ function CourseRow({ course, tenantId, adminMemberId, memberId, onRefresh }: {
         className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900"
       >
         <div>
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100">Course</span>
-          <span className="ml-2 text-xs text-zinc-500">({course.course_id.slice(0, 8)}...)</span>
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100">{course.course_name}</span>
+          {course.course_description && (
+            <span className="ml-2 text-xs text-zinc-500">({course.course_description})</span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className={`text-xs font-medium ${course.course_completed ? 'text-green-600 dark:text-green-400' : 'text-zinc-500'}`}>
