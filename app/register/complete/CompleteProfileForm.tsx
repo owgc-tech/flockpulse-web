@@ -61,6 +61,15 @@ export default function CompleteProfileForm() {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 p-6 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
         <p className="font-medium">Registration complete.</p>
+        {role === 'ADMIN' && (
+          <p className="text-sm">
+            As an admin, you can{' '}
+            <a href="/login" className="font-medium underline">
+              sign in to the FlockPulse admin dashboard
+            </a>{' '}
+            right away.
+          </p>
+        )}
         <p className="text-sm">Download the FlockPulse app to get started. Your login email is the address your invitation was sent to.</p>
       </div>
     );
