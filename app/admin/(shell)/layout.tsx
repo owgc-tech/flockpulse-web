@@ -22,7 +22,7 @@ export default async function AdminShellLayout({ children }: { children: React.R
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
+    <div className="flex h-screen flex-col overflow-hidden bg-zinc-50 dark:bg-black">
       <CommunityBanner
         name={settings?.name ?? null}
         logoUrl={settings?.logo_url ?? null}

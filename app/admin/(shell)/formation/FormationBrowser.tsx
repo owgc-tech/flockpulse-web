@@ -149,7 +149,7 @@ function Column({
 
   return (
     <div className="flex w-full flex-col border-b border-zinc-200 dark:border-zinc-800 lg:border-b-0 lg:border-r last:border-b-0 lg:last:border-r-0" style={{ minHeight: '200px', maxHeight: '60vh' }}>
-      <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
         <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {title}
         </span>
@@ -163,7 +163,7 @@ function Column({
           +
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto p-2">
         {isLoading ? (
           <p className="px-2 py-4 text-center text-xs text-zinc-400">Loading…</p>
         ) : items.length === 0 ? (
