@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getEventById } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
+import { listMembers } from '@/src/features/members/service';
 import type { EventDetailRow } from '@/src/features/events/event.types';
 import EventDetail from './EventDetail';
 
@@ -25,15 +26,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     redirect('/admin/events');
   }
 
-  const [eventTypes, groups] = await Promise.all([
+  const [eventTypes, groups, members] = await Promise.all([
     listEventTypes(tenantId),
     listGroups(tenantId),
+    listMembers(tenantId),
   ]);
 
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-3xl">
-        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} token={token} />
+        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} token={token} />
       </div>
     </div>
   );

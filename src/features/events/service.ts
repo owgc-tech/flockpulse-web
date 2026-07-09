@@ -22,6 +22,22 @@ export async function validateEventTypeId(eventTypeId: string, tenantId: string)
   }
 }
 
+// FP-107: mirrors validateEventTypeId() exactly — same pattern, different table. Defense-in-depth
+// on top of trigger_validate_event_prayer_leader_tenant_scope.
+async function validatePrayerLeaderMemberId(memberId: string, tenantId: string): Promise<void> {
+  const { data } = await serviceClient()
+    .from('members')
+    .select('id, deleted_at')
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .single();
+  if (!data || data.deleted_at !== null) {
+    const err = new Error(`prayer_leader_member_id ${memberId} is invalid, soft-deleted, or belongs to a different tenant`) as Error & { code: string };
+    err.code = 'INVALID_TARGET';
+    throw err;
+  }
+}
+
 export interface CreateEventInput {
   tenantId: string;
   eventTypeId: string;
@@ -33,6 +49,8 @@ export interface CreateEventInput {
   locationUrl?: string | null;
   target: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
+  prayerLeaderMemberId?: string | null;
+  foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
   actorMemberId?: string | null;
 }
 
@@ -48,6 +66,9 @@ export async function createEvent(input: CreateEventInput) {
   if (input.talkId) {
     await validateTalkIdForEvent(input.talkId, input.tenantId);
   }
+  if (input.prayerLeaderMemberId) {
+    await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, input.tenantId);
+  }
 
   const { data, error } = await serviceClient().rpc('insert_event_with_audit', {
     p_tenant_id: input.tenantId,
@@ -60,6 +81,8 @@ export async function createEvent(input: CreateEventInput) {
     p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
+    p_prayer_leader_member_id: input.prayerLeaderMemberId ?? null,
+    p_food_assignment: input.foodAssignment ?? null,
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
@@ -127,6 +150,8 @@ export interface UpdateEventInput {
   locationUrl?: string | null;
   target?: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
+  prayerLeaderMemberId?: string | null;
+  foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
   actorMemberId?: string | null;
 }
 
@@ -175,6 +200,13 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     }
   }
 
+  // FP-107: app-layer validation for prayer_leader_member_id — defense-in-depth on top of
+  // trigger_validate_event_prayer_leader_tenant_scope. No immutability rule (unlike talk_id) —
+  // Prayer Leader is purely informational and freely re-settable at any time.
+  if (input.prayerLeaderMemberId) {
+    await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, tenantId);
+  }
+
   // Validate datetime ordering if either end is being changed.
   const newStart = input.startDatetime ?? event.start_datetime;
   const newEnd = input.endDatetime ?? event.end_datetime;
@@ -194,6 +226,8 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.locationUrl !== undefined) patch.location_url = input.locationUrl;
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
+  if (input.prayerLeaderMemberId !== undefined) patch.prayer_leader_member_id = input.prayerLeaderMemberId;
+  if (input.foodAssignment !== undefined) patch.food_assignment = input.foodAssignment;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,
@@ -273,7 +307,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, created_at')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
@@ -300,7 +334,7 @@ export async function listEvents(tenantId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
