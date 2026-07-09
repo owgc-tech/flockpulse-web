@@ -8,7 +8,7 @@ function serviceClient() {
   );
 }
 
-async function validateEventTypeId(eventTypeId: string, tenantId: string): Promise<void> {
+export async function validateEventTypeId(eventTypeId: string, tenantId: string): Promise<void> {
   const { data } = await serviceClient()
     .from('event_types')
     .select('id, deleted_at')
@@ -300,7 +300,7 @@ export async function listEvents(tenantId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
