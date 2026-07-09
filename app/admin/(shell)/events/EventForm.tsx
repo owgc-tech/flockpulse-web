@@ -7,6 +7,8 @@ import type {
   CourseOption, ModuleOption, TalkOption, SeriesFrequency,
 } from '@/src/features/events/event.types';
 import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS } from '@/src/features/events/event.types';
+import RepeatsFields from './RepeatsFields';
+import ConvertToSeriesSection from './ConvertToSeriesSection';
 
 interface Props {
   token: string;
@@ -286,52 +288,20 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           </label>
 
           {repeats && (
-            <div className="flex flex-col gap-3">
-              <div className={fieldClass}>
-                <label className={labelClass}>Frequency</label>
-                <select className={inputClass} value={frequency} onChange={e => setFrequency(e.target.value as SeriesFrequency)}>
-                  <option value="WEEKLY">Weekly (up to 52)</option>
-                  <option value="FORTNIGHTLY">Fortnightly (up to 26)</option>
-                  <option value="MONTHLY">Monthly (up to 12)</option>
-                </select>
-              </div>
-
-              <div className="flex gap-4">
-                <label className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-                  <input type="radio" checked={repeatMode === 'COUNT'} onChange={() => setRepeatMode('COUNT')} />
-                  Repeat N times
-                </label>
-                <label className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-                  <input type="radio" checked={repeatMode === 'UNTIL'} onChange={() => setRepeatMode('UNTIL')} />
-                  Ends on date
-                </label>
-              </div>
-
-              {repeatMode === 'COUNT' ? (
-                <div className={fieldClass}>
-                  <label className={labelClass}>Number of occurrences</label>
-                  <input
-                    type="number" min={1} max={cap} className={inputClass}
-                    value={repeatCount} onChange={e => setRepeatCount(Number(e.target.value))}
-                  />
-                </div>
-              ) : (
-                <div className={fieldClass}>
-                  <label className={labelClass}>Ends on</label>
-                  <input type="date" className={inputClass} value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
-                </div>
-              )}
-
-              {impliedCount !== null && (
-                <p className={`text-xs ${overCap ? 'text-red-600 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                  {overCap
-                    ? `${impliedCount} occurrences would be generated — exceeds the cap of ${cap} for ${frequency.toLowerCase()} events.`
-                    : `${impliedCount} occurrence${impliedCount === 1 ? '' : 's'} will be generated.`}
-                </p>
-              )}
-            </div>
+            <RepeatsFields
+              frequency={frequency} onFrequencyChange={setFrequency}
+              mode={repeatMode} onModeChange={setRepeatMode}
+              count={repeatCount} onCountChange={setRepeatCount}
+              until={repeatUntil} onUntilChange={setRepeatUntil}
+              cap={cap} impliedCount={impliedCount} overCap={overCap}
+            />
           )}
         </div>
+      )}
+
+      {isEdit && initialEvent && initialEvent.recurrence_series_id === null &&
+        !['CANCELLED', 'COMPLETED', 'LOCKED'].includes(initialEvent.effective_status) && (
+        <ConvertToSeriesSection token={token} initialEvent={initialEvent} />
       )}
 
       <div className="flex items-center gap-3">

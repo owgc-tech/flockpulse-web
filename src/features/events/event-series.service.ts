@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { validateTalkIdForEvent } from '@/src/features/formation/talk.service';
 import { validateEventTypeId, cancelEvent } from './service';
+import { computeOccurrenceDates } from './event.types';
 import type { SeriesFrequency, OccurrenceDates, EventTarget, CancelRemainingResult } from './event.types';
 
 function serviceClient() {
@@ -59,6 +60,69 @@ export async function createEventSeries(input: CreateEventSeriesInput) {
   if (error) {
     const msg = error.message ?? '';
     if (msg.includes('exceeds cap') || msg.includes('must be at least 1') || msg.includes('must be WEEKLY')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as { series_id: string; event_ids: string[] };
+}
+
+export interface ConvertEventToSeriesInput {
+  eventId: string;
+  tenantId: string;
+  startDatetime: Date; // the existing event's own current start/end — needed to compute
+  endDatetime: Date;   // the full occurrence sequence, index 0 of which is this event itself.
+  frequency: SeriesFrequency;
+  mode: 'COUNT' | 'UNTIL';
+  countOrUntil: number | Date;
+  actorMemberId?: string | null;
+}
+
+// FP-106: attaches an existing single event to a brand-new series as its first occurrence.
+// Reuses computeOccurrenceDates() exactly (DIP Grounding Check) — index 0 of the computed
+// sequence is the existing event's own unchanged dates, so only indices 1..N-1 (the new
+// siblings) are sent to the RPC. Slicing here, once, is the only place this split happens.
+export async function convertEventToSeries(input: ConvertEventToSeriesInput) {
+  const fullSequence = computeOccurrenceDates(
+    input.startDatetime, input.endDatetime, input.frequency, input.mode, input.countOrUntil
+  );
+  const additionalOccurrences = fullSequence.slice(1);
+
+  const occurrencePayload = additionalOccurrences.map(o => ({
+    start_datetime: o.start.toISOString(),
+    end_datetime: o.end.toISOString(),
+  }));
+
+  const { data, error } = await serviceClient().rpc('convert_event_to_series_with_audit', {
+    p_event_id: input.eventId,
+    p_tenant_id: input.tenantId,
+    p_frequency: input.frequency,
+    p_additional_occurrence_dates: occurrencePayload,
+    p_actor_member_id: input.actorMemberId ?? null,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('not found for tenant')) {
+      const err = new Error('Event not found') as Error & { code: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    if (msg.includes('already belongs to a series')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    if (msg.includes('cannot be converted to a series from status')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'INVALID_STATE_TRANSITION';
+      throw err;
+    }
+    if (msg.includes('exceeds cap') || msg.includes('must be WEEKLY')) {
       const err = new Error(msg) as Error & { code: string };
       err.code = 'VALIDATION_ERROR';
       throw err;
