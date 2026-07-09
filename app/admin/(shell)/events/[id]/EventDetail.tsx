@@ -98,6 +98,13 @@ export default function EventDetail({ event, eventTypes, groups, token }: Props)
 
   return (
     <div className="flex flex-col gap-6">
+      <a
+        href="/admin/events"
+        className="self-start text-sm font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+      >
+        ← Back to Events
+      </a>
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">{event.name}</h1>
