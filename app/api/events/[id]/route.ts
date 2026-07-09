@@ -28,7 +28,10 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId } = body;
+    const {
+      name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
+      prayerLeaderMemberId, foodAssignment,
+    } = body;
 
     try {
       const event = await updateEvent(id, ctx.tenantId, {
@@ -40,6 +43,8 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         locationUrl,
         target,
         talkId,
+        prayerLeaderMemberId,
+        foodAssignment,
         actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event });

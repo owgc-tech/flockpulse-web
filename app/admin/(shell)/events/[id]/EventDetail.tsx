@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventDetailRow, EventTypeOption, GroupOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
+import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
 import { getMapsUrl } from '@/src/features/events/event.types';
 
 interface Props {
   event: EventDetailRow;
   eventTypes: EventTypeOption[];
   groups: GroupOption[];
+  members: MemberOption[];
   token: string;
 }
 
@@ -27,7 +28,7 @@ const RESPONSE_LABELS = {
   NOT_RESPONDED: 'Not responded',
 } as const;
 
-export default function EventDetail({ event, eventTypes, groups, token }: Props) {
+export default function EventDetail({ event, eventTypes, groups, members, token }: Props) {
   const router = useRouter();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterFilter, setRosterFilter] = useState<'ALL' | keyof typeof RESPONSE_LABELS>('ALL');
@@ -43,8 +44,19 @@ export default function EventDetail({ event, eventTypes, groups, token }: Props)
 
   const eventType = eventTypes.find(t => t.id === event.event_type_id);
   const groupById = new Map(groups.map(g => [g.id, g]));
+  const memberById = new Map(members.map(m => [m.id, m]));
   const groupNames = (event.target.group_ids ?? []).map(id => groupById.get(id)?.name ?? 'Unknown group');
   const memberCount = (event.target.member_ids ?? []).length;
+
+  // FP-107: always-optional, no event-type gating. A cross-tenant id inside food_assignment
+  // (which has no write-time trigger, same precedent as target) is simply not found in the
+  // members/groups maps here and silently excluded from display — not rejected.
+  const prayerLeader = event.prayer_leader_member_id ? memberById.get(event.prayer_leader_member_id) : null;
+  const foodGroupNames = (event.food_assignment?.group_ids ?? []).map(id => groupById.get(id)?.name).filter((n): n is string => !!n);
+  const foodMemberNames = (event.food_assignment?.member_ids ?? [])
+    .map(id => memberById.get(id))
+    .filter((m): m is NonNullable<typeof m> => !!m)
+    .map(m => `${m.first_name} ${m.last_name}`);
 
   const canCancel = event.effective_status !== 'CANCELLED' && event.effective_status !== 'LOCKED';
   const canPublish = event.status === 'DRAFT';
@@ -170,6 +182,20 @@ export default function EventDetail({ event, eventTypes, groups, token }: Props)
               {groupNames.length > 0 && memberCount > 0 ? ' + ' : ''}
               {memberCount > 0 ? `${memberCount} individual member${memberCount === 1 ? '' : 's'}` : ''}
               {groupNames.length === 0 && memberCount === 0 ? '—' : ''}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500 dark:text-zinc-400">Prayer Leader</dt>
+            <dd className="text-zinc-900 dark:text-zinc-100">
+              {prayerLeader ? `${prayerLeader.first_name} ${prayerLeader.last_name}` : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500 dark:text-zinc-400">Food Assignment</dt>
+            <dd className="text-zinc-900 dark:text-zinc-100">
+              {[...foodGroupNames, ...foodMemberNames].length > 0
+                ? [...foodGroupNames, ...foodMemberNames].join(', ')
+                : '—'}
             </dd>
           </div>
         </dl>

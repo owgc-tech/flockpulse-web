@@ -18,6 +18,9 @@ export interface EventListRow {
   location_url: string | null;
   target: EventTarget;
   event_type_id: string;
+  // Always-optional, no event-type gating (FP-107) — purely informational assignment metadata.
+  prayer_leader_member_id: string | null;
+  food_assignment: EventTarget | null;
   created_at: string;
 }
 

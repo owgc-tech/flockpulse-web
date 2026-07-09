@@ -9,6 +9,11 @@ import type {
 import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS } from '@/src/features/events/event.types';
 import RepeatsFields from './RepeatsFields';
 import ConvertToSeriesSection from './ConvertToSeriesSection';
+import GroupMemberMultiSelect from './GroupMemberMultiSelect';
+
+function toggleId(prev: string[], id: string): string[] {
+  return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+}
 
 interface Props {
   token: string;
@@ -37,6 +42,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [endDatetime, setEndDatetime] = useState(initialEvent ? toLocalInputValue(initialEvent.end_datetime) : '');
   const [groupIds, setGroupIds] = useState<string[]>(initialEvent?.target.group_ids ?? []);
   const [memberIds, setMemberIds] = useState<string[]>(initialEvent?.target.member_ids ?? []);
+
+  // FP-107: always-optional, no event-type gating — Prayer Leader and Food Assignment.
+  const [prayerLeaderMemberId, setPrayerLeaderMemberId] = useState(initialEvent?.prayer_leader_member_id ?? '');
+  const [foodGroupIds, setFoodGroupIds] = useState<string[]>(initialEvent?.food_assignment?.group_ids ?? []);
+  const [foodMemberIds, setFoodMemberIds] = useState<string[]>(initialEvent?.food_assignment?.member_ids ?? []);
 
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [modules, setModules] = useState<ModuleOption[]>([]);
@@ -103,10 +113,16 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const overCap = impliedCount !== null && impliedCount > cap;
 
   function toggleGroup(id: string) {
-    setGroupIds(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]);
+    setGroupIds(prev => toggleId(prev, id));
   }
   function toggleMember(id: string) {
-    setMemberIds(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
+    setMemberIds(prev => toggleId(prev, id));
+  }
+  function toggleFoodGroup(id: string) {
+    setFoodGroupIds(prev => toggleId(prev, id));
+  }
+  function toggleFoodMember(id: string) {
+    setFoodMemberIds(prev => toggleId(prev, id));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -148,6 +164,10 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           locationUrl: locationUrl || null,
           target: { group_ids: groupIds, member_ids: memberIds },
           talkId: isFormation && talkId ? talkId : null,
+          // FP-107: not templated onto series-generated occurrences (deliberate scope
+          // boundary), so these are only ever sent on the non-series create/update path.
+          prayerLeaderMemberId: prayerLeaderMemberId || null,
+          foodAssignment: { group_ids: foodGroupIds, member_ids: foodMemberIds },
         };
 
     try {
@@ -260,24 +280,34 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Target — groups</p>
-        <div className="flex flex-wrap gap-2">
-          {groups.map(g => (
-            <label key={g.id} className="flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950">
-              <input type="checkbox" checked={groupIds.includes(g.id)} onChange={() => toggleGroup(g.id)} />
-              {g.name}
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">Target — individual members</p>
-        <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
-          {members.map(m => (
-            <label key={m.id} className="flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950">
-              <input type="checkbox" checked={memberIds.includes(m.id)} onChange={() => toggleMember(m.id)} />
-              {m.first_name} {m.last_name}
-            </label>
-          ))}
-        </div>
+        <GroupMemberMultiSelect
+          groups={groups} members={members}
+          groupIds={groupIds} memberIds={memberIds}
+          onToggleGroup={toggleGroup} onToggleMember={toggleMember}
+          groupsLabel="Target — groups" membersLabel="Target — individual members"
+        />
+      </div>
+
+      <div className={fieldClass}>
+        <label className={labelClass}>
+          Prayer Leader <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
+        </label>
+        <select className={inputClass} value={prayerLeaderMemberId} onChange={e => setPrayerLeaderMemberId(e.target.value)}>
+          <option value="">None</option>
+          {members.map(m => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Food Assignment <span className="font-normal">(optional)</span>
+        </p>
+        <GroupMemberMultiSelect
+          groups={groups} members={members}
+          groupIds={foodGroupIds} memberIds={foodMemberIds}
+          onToggleGroup={toggleFoodGroup} onToggleMember={toggleFoodMember}
+          groupsLabel="Food Assignment — groups" membersLabel="Food Assignment — individual members"
+        />
       </div>
 
       {!isEdit && (
