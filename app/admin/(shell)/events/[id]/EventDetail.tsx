@@ -76,6 +76,24 @@ export default function EventDetail({ event, eventTypes, groups, token }: Props)
     router.refresh();
   }
 
+  async function handleCancelRemaining() {
+    if (!event.recurrence_series_id) return;
+    if (!confirm(
+      'Cancel every remaining occurrence in this recurring series? This is irreversible and ' +
+      'affects multiple events at once — past and already-completed occurrences are left untouched.'
+    )) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/event-series/${event.recurrence_series_id}/cancel-remaining`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) { setError(body?.error?.message ?? 'Failed to cancel remaining occurrences'); return; }
+    router.refresh();
+  }
+
   const visibleRoster = rosterFilter === 'ALL' ? roster : roster.filter(r => r.response === rosterFilter);
 
   return (
@@ -101,6 +119,21 @@ export default function EventDetail({ event, eventTypes, groups, token }: Props)
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           {error}
+        </div>
+      )}
+
+      {event.recurrence_series_id && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
+          <div className="flex items-center justify-between">
+            <span>Part of a recurring series.</span>
+            <button
+              onClick={handleCancelRemaining}
+              disabled={busy}
+              className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+            >
+              Cancel remaining occurrences in this series
+            </button>
+          </div>
         </div>
       )}
 

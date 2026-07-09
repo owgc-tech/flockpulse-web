@@ -25,6 +25,7 @@ export interface EventDetailRow extends EventListRow {
   talk_id: string | null;
   version: number;
   updated_at: string;
+  recurrence_series_id: string | null;
 }
 
 export interface EventTypeOption {
@@ -75,4 +76,104 @@ export interface RosterEntry {
 export function getMapsUrl(locationAddress: string, locationUrl: string | null): string {
   if (locationUrl) return locationUrl;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
+}
+
+// ── FP-63: recurring series ──────────────────────────────────────────────────
+
+export type SeriesFrequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
+
+// Cap is a ceiling the admin can choose up to, never a forced default (DIP-FP-63-FP-68
+// Grounding Check). Enforced both client-side (live estimate) and server-side (authoritative).
+export const SERIES_FREQUENCY_CAPS: Record<SeriesFrequency, number> = {
+  WEEKLY: 52,
+  FORTNIGHTLY: 26,
+  MONTHLY: 12,
+};
+
+export interface OccurrenceDates {
+  start: Date;
+  end: Date;
+}
+
+// Advances firstStart by `occurrenceIndex` intervals of the given frequency. Weekly/Fortnightly
+// use fixed 7/14-day steps. Monthly advances by calendar month on the same day-of-month as
+// firstStart, clamped to the last day of the target month where it doesn't exist
+// (e.g. Jan 31 -> Feb 28) — per the DIP's explicit assumption about day-of-month handling.
+function addOccurrenceInterval(firstStart: Date, frequency: SeriesFrequency, occurrenceIndex: number): Date {
+  if (frequency === 'WEEKLY') {
+    const d = new Date(firstStart);
+    d.setDate(d.getDate() + 7 * occurrenceIndex);
+    return d;
+  }
+  if (frequency === 'FORTNIGHTLY') {
+    const d = new Date(firstStart);
+    d.setDate(d.getDate() + 14 * occurrenceIndex);
+    return d;
+  }
+  // MONTHLY — reset to the 1st before adding months to avoid intermediate-month rollover
+  // artifacts, then clamp the day-of-month to whatever the target month actually has.
+  const day = firstStart.getDate();
+  const target = new Date(firstStart);
+  target.setDate(1);
+  target.setMonth(target.getMonth() + occurrenceIndex);
+  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, daysInTargetMonth));
+  target.setHours(firstStart.getHours(), firstStart.getMinutes(), firstStart.getSeconds(), firstStart.getMilliseconds());
+  return target;
+}
+
+// Single-sourced occurrence-date computation (DIP-FP-63-FP-68 Grounding Check: the cap-validation
+// math and the actual generation must be the same code path). Used identically by EventForm.tsx's
+// live "ends on date" estimate and event-series.service.ts's authoritative payload construction —
+// same function, two runtime contexts, never two implementations.
+export function computeOccurrenceDates(
+  firstStart: Date,
+  firstEnd: Date,
+  frequency: SeriesFrequency,
+  mode: 'COUNT' | 'UNTIL',
+  countOrUntil: number | Date
+): OccurrenceDates[] {
+  const durationMs = firstEnd.getTime() - firstStart.getTime();
+  const occurrences: OccurrenceDates[] = [];
+  const hardSafetyCap = 1000; // guards against runaway loops on bad input (e.g. untilDate far in the future)
+
+  if (mode === 'COUNT') {
+    const count = countOrUntil as number;
+    for (let i = 0; i < count; i++) {
+      const start = addOccurrenceInterval(firstStart, frequency, i);
+      occurrences.push({ start, end: new Date(start.getTime() + durationMs) });
+    }
+  } else {
+    const untilDate = countOrUntil as Date;
+    for (let i = 0; i < hardSafetyCap; i++) {
+      const start = addOccurrenceInterval(firstStart, frequency, i);
+      if (start.getTime() > untilDate.getTime()) break;
+      occurrences.push({ start, end: new Date(start.getTime() + durationMs) });
+    }
+  }
+
+  return occurrences;
+}
+
+export interface EventSeriesRow {
+  id: string;
+  tenant_id: string;
+  frequency: SeriesFrequency;
+  occurrence_count: number;
+  day_of_week: number | null;
+  created_by: string | null;
+  name: string;
+  event_type_id: string;
+  location_name: string;
+  location_address: string;
+  location_url: string | null;
+  target: EventTarget;
+  talk_id: string | null;
+  created_at: string;
+}
+
+export interface CancelRemainingResult {
+  cancelled: number;
+  skipped: number;
+  failures: Array<{ event_id: string; message: string }>;
 }

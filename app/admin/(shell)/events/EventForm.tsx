@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   EventDetailRow, EventTypeOption, GroupOption, MemberOption,
-  CourseOption, ModuleOption, TalkOption,
+  CourseOption, ModuleOption, TalkOption, SeriesFrequency,
 } from '@/src/features/events/event.types';
-import { getMapsUrl } from '@/src/features/events/event.types';
+import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS } from '@/src/features/events/event.types';
 
 interface Props {
   token: string;
@@ -46,6 +46,14 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // FP-63: Repeats — Create mode only, never Edit (individual occurrences are edited
+  // normally afterward, not as a series).
+  const [repeats, setRepeats] = useState(false);
+  const [frequency, setFrequency] = useState<SeriesFrequency>('WEEKLY');
+  const [repeatMode, setRepeatMode] = useState<'COUNT' | 'UNTIL'>('COUNT');
+  const [repeatCount, setRepeatCount] = useState(4);
+  const [repeatUntil, setRepeatUntil] = useState('');
+
   const selectedEventType = eventTypes.find(t => t.id === eventTypeId);
   const isFormation = selectedEventType?.code === 'FORMATION';
 
@@ -76,6 +84,22 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       .catch(() => setTalks([]));
   }, [moduleId, token]);
 
+  // Live client-side estimate of the implied occurrence count for "ends on date" — uses the
+  // same computeOccurrenceDates() the server uses authoritatively, so this estimate can never
+  // disagree with what actually gets generated. Final validation still happens server-side.
+  const cap = SERIES_FREQUENCY_CAPS[frequency];
+  let impliedCount: number | null = null;
+  if (repeats && startDatetime && endDatetime) {
+    if (repeatMode === 'COUNT') {
+      impliedCount = repeatCount;
+    } else if (repeatUntil) {
+      impliedCount = computeOccurrenceDates(
+        new Date(startDatetime), new Date(endDatetime), frequency, 'UNTIL', new Date(repeatUntil)
+      ).length;
+    }
+  }
+  const overCap = impliedCount !== null && impliedCount > cap;
+
   function toggleGroup(id: string) {
     setGroupIds(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]);
   }
@@ -86,22 +110,46 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (repeats && overCap) {
+      setError(`Occurrence count exceeds the cap of ${cap} for ${frequency.toLowerCase()} events`);
+      return;
+    }
+
     setIsPending(true);
 
-    const payload = {
-      eventTypeId,
-      name,
-      startDatetime: new Date(startDatetime).toISOString(),
-      endDatetime: new Date(endDatetime).toISOString(),
-      locationName,
-      locationAddress,
-      locationUrl: locationUrl || null,
-      target: { group_ids: groupIds, member_ids: memberIds },
-      talkId: isFormation && talkId ? talkId : null,
-    };
+    const useSeries = !isEdit && repeats;
+
+    const payload = useSeries
+      ? {
+          eventTypeId,
+          name,
+          startDatetime: new Date(startDatetime).toISOString(),
+          endDatetime: new Date(endDatetime).toISOString(),
+          locationName,
+          locationAddress,
+          locationUrl: locationUrl || null,
+          target: { group_ids: groupIds, member_ids: memberIds },
+          talkId: isFormation && talkId ? talkId : null,
+          frequency,
+          mode: repeatMode,
+          count: repeatMode === 'COUNT' ? repeatCount : undefined,
+          untilDate: repeatMode === 'UNTIL' ? new Date(repeatUntil).toISOString() : undefined,
+        }
+      : {
+          eventTypeId,
+          name,
+          startDatetime: new Date(startDatetime).toISOString(),
+          endDatetime: new Date(endDatetime).toISOString(),
+          locationName,
+          locationAddress,
+          locationUrl: locationUrl || null,
+          target: { group_ids: groupIds, member_ids: memberIds },
+          talkId: isFormation && talkId ? talkId : null,
+        };
 
     try {
-      const url = isEdit ? `/api/events/${initialEvent!.id}` : '/api/events';
+      const url = isEdit ? `/api/events/${initialEvent!.id}` : useSeries ? '/api/event-series' : '/api/events';
       const method = isEdit ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
@@ -112,6 +160,10 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       if (!res.ok) {
         setError(body?.error?.message ?? 'Failed to save event');
         setIsPending(false);
+        return;
+      }
+      if (useSeries) {
+        router.push('/admin/events');
         return;
       }
       const savedId = isEdit ? initialEvent!.id : body.data.id;
@@ -225,6 +277,62 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           ))}
         </div>
       </div>
+
+      {!isEdit && (
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <input type="checkbox" checked={repeats} onChange={e => setRepeats(e.target.checked)} />
+            Repeats
+          </label>
+
+          {repeats && (
+            <div className="flex flex-col gap-3">
+              <div className={fieldClass}>
+                <label className={labelClass}>Frequency</label>
+                <select className={inputClass} value={frequency} onChange={e => setFrequency(e.target.value as SeriesFrequency)}>
+                  <option value="WEEKLY">Weekly (up to 52)</option>
+                  <option value="FORTNIGHTLY">Fortnightly (up to 26)</option>
+                  <option value="MONTHLY">Monthly (up to 12)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-4">
+                <label className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input type="radio" checked={repeatMode === 'COUNT'} onChange={() => setRepeatMode('COUNT')} />
+                  Repeat N times
+                </label>
+                <label className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+                  <input type="radio" checked={repeatMode === 'UNTIL'} onChange={() => setRepeatMode('UNTIL')} />
+                  Ends on date
+                </label>
+              </div>
+
+              {repeatMode === 'COUNT' ? (
+                <div className={fieldClass}>
+                  <label className={labelClass}>Number of occurrences</label>
+                  <input
+                    type="number" min={1} max={cap} className={inputClass}
+                    value={repeatCount} onChange={e => setRepeatCount(Number(e.target.value))}
+                  />
+                </div>
+              ) : (
+                <div className={fieldClass}>
+                  <label className={labelClass}>Ends on</label>
+                  <input type="date" className={inputClass} value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
+                </div>
+              )}
+
+              {impliedCount !== null && (
+                <p className={`text-xs ${overCap ? 'text-red-600 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                  {overCap
+                    ? `${impliedCount} occurrences would be generated — exceeds the cap of ${cap} for ${frequency.toLowerCase()} events.`
+                    : `${impliedCount} occurrence${impliedCount === 1 ? '' : 's'} will be generated.`}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="submit"
