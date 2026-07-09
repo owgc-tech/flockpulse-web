@@ -29,6 +29,8 @@ export interface CreateEventInput {
   startDatetime: string;
   endDatetime: string;
   locationName: string;
+  locationAddress: string;
+  locationUrl?: string | null;
   target: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
   actorMemberId?: string | null;
@@ -54,6 +56,8 @@ export async function createEvent(input: CreateEventInput) {
     p_start_datetime: input.startDatetime,
     p_end_datetime: input.endDatetime,
     p_location_name: input.locationName,
+    p_location_address: input.locationAddress,
+    p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
     p_actor_member_id: input.actorMemberId ?? null,
@@ -119,6 +123,8 @@ export interface UpdateEventInput {
   startDatetime?: string;
   endDatetime?: string;
   locationName?: string;
+  locationAddress?: string;
+  locationUrl?: string | null;
   target?: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
   actorMemberId?: string | null;
@@ -184,6 +190,8 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.startDatetime !== undefined) patch.start_datetime = input.startDatetime;
   if (input.endDatetime !== undefined) patch.end_datetime = input.endDatetime;
   if (input.locationName !== undefined) patch.location_name = input.locationName;
+  if (input.locationAddress !== undefined) patch.location_address = input.locationAddress;
+  if (input.locationUrl !== undefined) patch.location_url = input.locationUrl;
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
 
@@ -265,10 +273,127 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, target, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, created_at')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
   if (error) throw error;
-  return data;
+
+  const events = data ?? [];
+  const db = serviceClient();
+
+  // Reuse get_event_effective_status() per row rather than reimplementing the
+  // DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation logic in TypeScript.
+  const withEffectiveStatus = await Promise.all(
+    events.map(async (e: { id: string }) => {
+      const { data: effectiveStatus, error: statusError } = await db.rpc('get_event_effective_status', {
+        p_event_id: e.id,
+      });
+      if (statusError) throw statusError;
+      return { ...e, effective_status: effectiveStatus as string };
+    })
+  );
+
+  return withEffectiveStatus;
+}
+
+export async function getEventById(id: string, tenantId: string) {
+  const { data: event, error } = await serviceClient()
+    .from('events')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (error || !event) {
+    const err = new Error('Event not found') as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const { data: effectiveStatus, error: statusError } = await serviceClient().rpc('get_event_effective_status', {
+    p_event_id: id,
+  });
+  if (statusError) throw statusError;
+
+  return { ...event, effective_status: effectiveStatus as string };
+}
+
+export async function cancelEvent(id: string, tenantId: string, actorMemberId?: string | null) {
+  const { data, error } = await serviceClient().rpc('cancel_event_with_audit', {
+    p_event_id: id,
+    p_tenant_id: tenantId,
+    p_actor_member_id: actorMemberId ?? null,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('not found for tenant')) {
+      const err = new Error('Event not found') as Error & { code: string };
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    if (msg.includes('cannot be cancelled from status')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'INVALID_STATE_TRANSITION';
+      throw err;
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
+}
+
+export interface RosterEntry {
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  response: 'ACCEPTED' | 'DECLINED' | 'NOT_RESPONDED';
+  rsvp_reason: string | null;
+}
+
+// Strictly RSVP-scoped (FP-67 Design Decision) — does not pull in self-report or
+// official attendance data. event_attendees is the full invited roster; rsvps is
+// each member's response, if any. Both sides tenant-scoped.
+export async function getEventRoster(eventId: string, tenantId: string): Promise<RosterEntry[]> {
+  const db = serviceClient();
+
+  const event = await getEventById(eventId, tenantId); // NOT_FOUND if missing/cross-tenant
+  void event;
+
+  const { data: attendees, error: attendeesError } = await db
+    .from('event_attendees')
+    .select('member_id, members(first_name, last_name)')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+
+  if (attendeesError) throw attendeesError;
+
+  const { data: rsvps, error: rsvpError } = await db
+    .from('rsvps')
+    .select('member_id, rsvp_status, rsvp_reason')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+
+  if (rsvpError) throw rsvpError;
+
+  const rsvpByMember = new Map(
+    (rsvps ?? []).map(r => [r.member_id as string, r as { rsvp_status: string; rsvp_reason: string | null }])
+  );
+
+  return (attendees ?? []).map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
+    const member = Array.isArray(a.members) ? a.members[0] : a.members;
+    const rsvp = rsvpByMember.get(a.member_id);
+    const response: RosterEntry['response'] =
+      !rsvp ? 'NOT_RESPONDED' : rsvp.rsvp_status === 'YES' ? 'ACCEPTED' : 'DECLINED';
+
+    return {
+      member_id: a.member_id,
+      first_name: member?.first_name ?? '',
+      last_name: member?.last_name ?? '',
+      response,
+      rsvp_reason: rsvp?.rsvp_reason ?? null,
+    };
+  });
 }
