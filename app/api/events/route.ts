@@ -16,7 +16,7 @@ export const POST = (req: NextRequest) =>
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { eventTypeId, name, startDatetime, endDatetime, locationName, target } = body;
+    const { eventTypeId, name, startDatetime, endDatetime, locationName, target, talkId } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, target required', 400);
     }
@@ -30,12 +30,15 @@ export const POST = (req: NextRequest) =>
         endDatetime,
         locationName,
         target,
+        talkId,
+        actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event }, { status: 201 });
     } catch (err: unknown) {
-      if ((err as { code?: string }).code === 'INVALID_DATETIME') {
-        return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
-      }
+      const code = (err as { code?: string }).code;
+      if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
+      if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
+      if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
       throw err;
     }
   }));
