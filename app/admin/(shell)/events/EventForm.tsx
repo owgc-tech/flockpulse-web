@@ -334,13 +334,21 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-      >
-        {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create event'}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        >
+          {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create event'}
+        </button>
+        <a
+          href={isEdit ? `/admin/events/${initialEvent!.id}` : '/admin/events'}
+          className="rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+        >
+          Cancel
+        </a>
+      </div>
     </form>
   );
 }
