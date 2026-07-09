@@ -29,7 +29,7 @@ export interface CreateEventInput {
   startDatetime: string;
   endDatetime: string;
   locationName: string;
-  target: { group_id: string } | Record<string, unknown>;
+  target: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
   actorMemberId?: string | null;
 }
@@ -119,7 +119,7 @@ export interface UpdateEventInput {
   startDatetime?: string;
   endDatetime?: string;
   locationName?: string;
-  target?: Record<string, unknown>;
+  target?: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
   actorMemberId?: string | null;
 }
