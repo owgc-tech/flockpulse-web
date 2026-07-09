@@ -1,12 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
-import { listMembers, createMember, updateMember, softDeleteMember } from '@/src/features/members/service';
+import { listMembers, getMemberById, createMember, updateMember, softDeleteMember } from '@/src/features/members/service';
 
 const requireAdmin = requireRole('ADMIN');
 
+// GET /api/members — list (FP-69 List screen passes includeDeleted=true to show status)
+// GET /api/members?id=... — single member, for FP-72 Edit-screen prefill
 export async function GET(req: NextRequest) {
   return withAuth(req, async (_, ctx) => {
-    const members = await listMembers(ctx.tenantId);
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      try {
+        const member = await getMemberById(id, ctx.tenantId);
+        return NextResponse.json({ data: member });
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+          return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+        }
+        throw err;
+      }
+    }
+
+    const includeDeleted = searchParams.get('includeDeleted') === 'true';
+    const members = await listMembers(ctx.tenantId, includeDeleted);
     return NextResponse.json({ data: members });
   });
 }
@@ -44,13 +62,20 @@ export const PATCH = (req: NextRequest) =>
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const member = await updateMember(id, ctx.tenantId, {
-      firstName: body.firstName,
-      lastName: body.lastName,
-      email: body.email,
-      role: body.role,
-    });
-    return NextResponse.json({ data: member });
+    try {
+      const member = await updateMember(id, ctx.tenantId, {
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        role: body.role,
+      });
+      return NextResponse.json({ data: member });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+        return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      throw err;
+    }
   }));
 
 export const DELETE = (req: NextRequest) =>
@@ -59,6 +84,16 @@ export const DELETE = (req: NextRequest) =>
     const id = searchParams.get('id');
     if (!id) return errorResponse('MISSING_PARAM', 'id query param required', 400);
 
-    await softDeleteMember(id, ctx.tenantId);
-    return NextResponse.json({ data: { id, deleted: true } });
+    // TODO(FP-74): block deactivation while LEADER assignments still point here (Group C
+    // hasn't landed yet — shipping without this guard is a known, temporary gap, not an
+    // oversight, per FP-72's own AC).
+    try {
+      await softDeleteMember(id, ctx.tenantId);
+      return NextResponse.json({ data: { id, deleted: true } });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+        return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      throw err;
+    }
   }));
