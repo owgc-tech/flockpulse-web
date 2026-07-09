@@ -186,6 +186,7 @@ async function main() {
       startDatetime: future,
       endDatetime: futureEnd,
       locationName: 'Test Venue',
+      locationAddress: '123 Test St',
       target,
     });
     createdEventIds.push(ev.id);
@@ -275,6 +276,7 @@ async function main() {
       startDatetime: future,
       endDatetime: futureEnd,
       locationName: 'Test Venue',
+      locationAddress: '123 Test St',
       target: {},
       talkId,
       actorMemberId: m1,

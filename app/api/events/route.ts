@@ -16,9 +16,9 @@ export const POST = (req: NextRequest) =>
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { eventTypeId, name, startDatetime, endDatetime, locationName, target, talkId } = body;
-    if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !target) {
-      return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, target required', 400);
+    const { eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId } = body;
+    if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
+      return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
     }
 
     try {
@@ -29,6 +29,8 @@ export const POST = (req: NextRequest) =>
         startDatetime,
         endDatetime,
         locationName,
+        locationAddress,
+        locationUrl,
         target,
         talkId,
         actorMemberId: ctx.memberId,
