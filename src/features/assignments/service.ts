@@ -151,3 +151,28 @@ export async function getMyAssignedMembers(tenantId: string, leaderMemberId: str
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => row.members);
 }
+
+// FP-71: Group Edit's Membership section — the group's current active membership.
+// Returns the assignment id alongside member info so the frontend's Remove action can call
+// the existing DELETE /api/assignments?id=<assignmentId> directly — no new write path.
+export async function getGroupMembers(groupId: string, tenantId: string) {
+  const { data, error } = await serviceClient()
+    .from('assignments')
+    .select(`
+      id,
+      member_id,
+      members!assignments_member_id_fkey (
+        id, email, first_name, last_name, role
+      )
+    `)
+    .eq('tenant_id', tenantId)
+    .eq('group_id', groupId)
+    .eq('assignment_type', 'GROUP')
+    .is('deleted_at', null);
+
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    assignment_id: row.id,
+    ...(row.members as Record<string, unknown>),
+  }));
+}
