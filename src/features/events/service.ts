@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { validateTalkIdForEvent } from '@/src/features/formation/talk.service';
+import { getMembersAssignedToLeader } from '@/src/features/assignments/service';
 
 function serviceClient() {
   return createClient(
@@ -304,6 +305,21 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   return updated;
 }
 
+// Reuse get_event_effective_status() per row rather than reimplementing the
+// DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation logic in TypeScript.
+async function attachEffectiveStatus<T extends { id: string }>(events: T[]): Promise<(T & { effective_status: string })[]> {
+  const db = serviceClient();
+  return Promise.all(
+    events.map(async (e) => {
+      const { data: effectiveStatus, error: statusError } = await db.rpc('get_event_effective_status', {
+        p_event_id: e.id,
+      });
+      if (statusError) throw statusError;
+      return { ...e, effective_status: effectiveStatus as string };
+    })
+  );
+}
+
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
@@ -313,22 +329,67 @@ export async function listEvents(tenantId: string) {
 
   if (error) throw error;
 
-  const events = data ?? [];
+  return attachEffectiveStatus(data ?? []);
+}
+
+// FP-94/FP-66: member-scoped "my events" — event_attendees is the materialized
+// invite list (populated by handle_event_scheduling() on publish), so this is
+// the source of truth for "what's this member invited to" with zero manual
+// target-matching. DRAFT events never get an event_attendees row, so they're
+// excluded automatically. CANCELLED is deliberately not filtered out (FP-66 AC).
+export async function listEventsForMember(tenantId: string, memberId: string) {
   const db = serviceClient();
 
-  // Reuse get_event_effective_status() per row rather than reimplementing the
-  // DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation logic in TypeScript.
-  const withEffectiveStatus = await Promise.all(
-    events.map(async (e: { id: string }) => {
-      const { data: effectiveStatus, error: statusError } = await db.rpc('get_event_effective_status', {
-        p_event_id: e.id,
-      });
-      if (statusError) throw statusError;
-      return { ...e, effective_status: effectiveStatus as string };
-    })
+  const { data: attendeeRows, error: attendeeError } = await db
+    .from('event_attendees')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId);
+
+  if (attendeeError) throw attendeeError;
+
+  const eventIds = (attendeeRows ?? []).map((r: { event_id: string }) => r.event_id);
+  if (eventIds.length === 0) return [];
+
+  const { data: events, error: eventsError } = await db
+    .from('events')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, created_at')
+    .eq('tenant_id', tenantId)
+    .in('id', eventIds)
+    .order('start_datetime', { ascending: true });
+
+  if (eventsError) throw eventsError;
+
+  const withEffectiveStatus = await attachEffectiveStatus(events ?? []);
+
+  // "Upcoming" (FP-94 AC) = not fully concluded. CANCELLED passes through
+  // regardless of timing per FP-66's AC that cancelled events stay visible.
+  const upcoming = withEffectiveStatus.filter(
+    (e) => e.effective_status !== 'COMPLETED' && e.effective_status !== 'LOCKED'
+  );
+  if (upcoming.length === 0) return [];
+
+  const { data: rsvps, error: rsvpError } = await db
+    .from('rsvps')
+    .select('event_id, rsvp_status, rsvp_reason')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .in('event_id', upcoming.map((e) => e.id));
+
+  if (rsvpError) throw rsvpError;
+
+  const rsvpByEvent = new Map(
+    (rsvps ?? []).map((r: { event_id: string; rsvp_status: string; rsvp_reason: string | null }) => [r.event_id, r])
   );
 
-  return withEffectiveStatus;
+  return upcoming.map((e) => {
+    const rsvp = rsvpByEvent.get(e.id);
+    return {
+      ...e,
+      rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | undefined) ?? null,
+      rsvp_reason: rsvp?.rsvp_reason ?? null,
+    };
+  });
 }
 
 export async function getEventById(id: string, tenantId: string) {
@@ -390,7 +451,11 @@ export interface RosterEntry {
 // Strictly RSVP-scoped (FP-67 Design Decision) — does not pull in self-report or
 // official attendance data. event_attendees is the full invited roster; rsvps is
 // each member's response, if any. Both sides tenant-scoped.
-export async function getEventRoster(eventId: string, tenantId: string): Promise<RosterEntry[]> {
+//
+// FP-95: scopeToLeaderMemberId, when provided, filters the roster down to members
+// assigned to that leader via getMembersAssignedToLeader() — reused as-is, not
+// reimplemented. Omitted (Admin callers) preserves FP-67's full-roster behavior.
+export async function getEventRoster(eventId: string, tenantId: string, scopeToLeaderMemberId?: string): Promise<RosterEntry[]> {
   const db = serviceClient();
 
   const event = await getEventById(eventId, tenantId); // NOT_FOUND if missing/cross-tenant
@@ -404,6 +469,13 @@ export async function getEventRoster(eventId: string, tenantId: string): Promise
 
   if (attendeesError) throw attendeesError;
 
+  let scopedAttendees = attendees ?? [];
+  if (scopeToLeaderMemberId) {
+    const assignedMembers = await getMembersAssignedToLeader(scopeToLeaderMemberId, tenantId);
+    const assignedIds = new Set(assignedMembers.map((m) => (m as { id: string }).id));
+    scopedAttendees = scopedAttendees.filter((a: { member_id: string }) => assignedIds.has(a.member_id));
+  }
+
   const { data: rsvps, error: rsvpError } = await db
     .from('rsvps')
     .select('member_id, rsvp_status, rsvp_reason')
@@ -416,7 +488,7 @@ export async function getEventRoster(eventId: string, tenantId: string): Promise
     (rsvps ?? []).map(r => [r.member_id as string, r as { rsvp_status: string; rsvp_reason: string | null }])
   );
 
-  return (attendees ?? []).map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
+  return scopedAttendees.map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
     const member = Array.isArray(a.members) ? a.members[0] : a.members;
     const rsvp = rsvpByMember.get(a.member_id);
     const response: RosterEntry['response'] =
