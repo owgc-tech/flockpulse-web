@@ -9,9 +9,10 @@ interface Props {
   member: MemberRow;
   members: MemberRow[]; // active members only, for the Pastoral Leader dropdown
   currentLeaderMemberId: string | null;
+  assignedMemberCount: number; // members currently assigned to this member as Pastoral Leader
 }
 
-export default function MemberEditForm({ token, member, members, currentLeaderMemberId }: Props) {
+export default function MemberEditForm({ token, member, members, currentLeaderMemberId, assignedMemberCount }: Props) {
   const router = useRouter();
 
   const [firstName, setFirstName] = useState(member.first_name);
@@ -158,6 +159,22 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
             {leaderOptions.map(m => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
           </select>
         </div>
+
+        {!isDeactivated && (
+          <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              {assignedMemberCount > 0
+                ? `${assignedMemberCount} member${assignedMemberCount === 1 ? '' : 's'} currently assigned to ${member.first_name} as Pastoral Leader.`
+                : 'No members currently assigned.'}
+            </span>
+            <a
+              href={`/admin/members/${member.id}/reassign`}
+              className="shrink-0 rounded-full border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-white dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Bulk Reassign{assignedMemberCount > 0 ? ` (${assignedMemberCount})` : ''}
+            </a>
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <button
