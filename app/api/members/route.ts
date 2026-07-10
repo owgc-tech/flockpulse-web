@@ -84,15 +84,23 @@ export const DELETE = (req: NextRequest) =>
     const id = searchParams.get('id');
     if (!id) return errorResponse('MISSING_PARAM', 'id query param required', 400);
 
-    // TODO(FP-74): block deactivation while LEADER assignments still point here (Group C
-    // hasn't landed yet — shipping without this guard is a known, temporary gap, not an
-    // oversight, per FP-72's own AC).
+    // FP-74: deactivation is now blocked at the DB level (trigger_block_member_deactivation_
+    // if_assigned_leader) while the member is still someone's active Pastoral Leader —
+    // resolution path is the new bulk-reassign screen for this member.
     try {
       await softDeleteMember(id, ctx.tenantId);
       return NextResponse.json({ data: { id, deleted: true } });
     } catch (err: unknown) {
-      if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND_IN_TENANT') {
         return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      if (code === 'INVALID_STATE_TRANSITION') {
+        const assignedMemberCount = (err as { assignedMemberCount?: number }).assignedMemberCount;
+        return NextResponse.json(
+          { error: { code, message: (err as Error).message, assignedMemberCount } },
+          { status: 409 }
+        );
       }
       throw err;
     }

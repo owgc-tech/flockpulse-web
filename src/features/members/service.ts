@@ -127,7 +127,24 @@ export async function softDeleteMember(id: string, tenantId: string) {
   // matched — a nonexistent/foreign-tenant/already-deactivated id looked identical to a real
   // deactivation. Checking rows-affected via .select().single() and mapping the PGRST116
   // "no rows" case to NOT_FOUND_IN_TENANT closes that gap.
-  if (error || !data) {
+  if (error) {
+    // FP-74: mirrors talk.service.ts's exact pattern for FP-29's analogous guard —
+    // code === 'P0001' (Postgres's generic "raised exception" SQLSTATE) then a message
+    // substring match, mapped to the same INVALID_STATE_TRANSITION code. The affected-member
+    // count is parsed out of the trigger's own message and attached structurally so the route
+    // doesn't need to re-parse free text.
+    if (error.code === 'P0001' && error.message?.includes('still assigned as Pastoral Leader')) {
+      const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
+      err.code = 'INVALID_STATE_TRANSITION';
+      const match = error.message.match(/to (\d+) member/);
+      if (match) err.assignedMemberCount = parseInt(match[1], 10);
+      throw err;
+    }
+    const err = new Error('Member not found for this tenant') as Error & { code: string };
+    err.code = 'NOT_FOUND_IN_TENANT';
+    throw err;
+  }
+  if (!data) {
     const err = new Error('Member not found for this tenant') as Error & { code: string };
     err.code = 'NOT_FOUND_IN_TENANT';
     throw err;

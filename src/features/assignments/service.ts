@@ -176,3 +176,44 @@ export async function getGroupMembers(groupId: string, tenantId: string) {
     ...(row.members as Record<string, unknown>),
   }));
 }
+
+// FP-73/FP-74: admin-facing lookup — same query as getMyAssignedMembers() (which already
+// accepts an arbitrary leaderMemberId, not only the caller's own), aliased with a name that
+// reads correctly for an Admin looking up ANY leader's assignees, not just their own. Backs
+// both the Bulk Reassign screen ("N members currently assigned") and the blocked-deactivation
+// UI (who's affected).
+export async function getMembersAssignedToLeader(leaderMemberId: string, tenantId: string) {
+  return getMyAssignedMembers(tenantId, leaderMemberId);
+}
+
+// FP-73: atomic bulk reassignment — thin wrapper over bulk_reassign_leader_members_with_audit(),
+// which loops set_member_pastoral_leader() per affected member inside one transaction (no new
+// assignment mechanism, per FP-73's own AC).
+export async function bulkReassignLeaderMembers(
+  outgoingLeaderId: string, incomingLeaderId: string, tenantId: string, actorMemberId: string
+) {
+  const { data, error } = await serviceClient().rpc('bulk_reassign_leader_members_with_audit', {
+    p_outgoing_leader_id: outgoingLeaderId,
+    p_incoming_leader_id: incomingLeaderId,
+    p_tenant_id: tenantId,
+    p_actor_member_id: actorMemberId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('VALIDATION_ERROR')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    if (msg.includes('CROSS_TENANT_ACCESS')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'CROSS_TENANT_ACCESS';
+      throw err;
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as { reassigned_count: number };
+}
