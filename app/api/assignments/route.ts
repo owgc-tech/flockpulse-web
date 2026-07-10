@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import {
   listAssignments,
+  getMembersAssignedToLeader,
   createGroupAssignment,
   createLeaderAssignment,
   softDeleteAssignment,
@@ -9,7 +10,22 @@ import {
 
 const requireAdmin = requireRole('ADMIN');
 
+// GET /api/assignments — all tenant assignments, open to any authenticated role (unchanged).
+// GET /api/assignments?leaderMemberId=... — Admin only (FP-73/FP-74): who's currently
+// assigned to an arbitrary leader, backing the Bulk Reassign screen and the
+// blocked-deactivation UI. Gated separately from the base GET, which returns everything to
+// any role — this lookup targets one specific leader's roster and is an Admin-only workflow.
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const leaderMemberId = searchParams.get('leaderMemberId');
+
+  if (leaderMemberId) {
+    return withAuth(req, requireAdmin(async (_, ctx) => {
+      const members = await getMembersAssignedToLeader(leaderMemberId, ctx.tenantId);
+      return NextResponse.json({ data: members });
+    }));
+  }
+
   return withAuth(req, async (_, ctx) => {
     const assignments = await listAssignments(ctx.tenantId);
     return NextResponse.json({ data: assignments });

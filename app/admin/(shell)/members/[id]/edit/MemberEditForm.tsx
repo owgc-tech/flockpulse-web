@@ -23,6 +23,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
   const [isPending, setIsPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedCount, setBlockedCount] = useState<number | null>(null);
 
   const isDeactivated = member.deleted_at !== null;
   // A member can't be their own Pastoral Leader.
@@ -74,15 +75,23 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     if (!confirm(`Deactivate ${member.first_name} ${member.last_name}? They will no longer appear in active member lists.`)) return;
     setBusy(true);
     setError(null);
-    // TODO(FP-74): block deactivation while LEADER assignments still point here — Group C
-    // hasn't landed yet, so this is a known, temporary gap, not an oversight.
+    setBlockedCount(null);
     const res = await fetch(`/api/members?id=${member.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
     const body = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) { setError(body?.error?.message ?? 'Failed to deactivate member'); return; }
+    if (!res.ok) {
+      // FP-74: still assigned as another member's Pastoral Leader — surface the Bulk Reassign
+      // screen as the resolution path, per the story's AC, instead of the generic error banner.
+      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION') {
+        setBlockedCount(body.error.assignedMemberCount ?? null);
+        return;
+      }
+      setError(body?.error?.message ?? 'Failed to deactivate member');
+      return;
+    }
     router.push('/admin/members');
   }
 
@@ -170,9 +179,18 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
       {!isDeactivated && (
         <div className="rounded-xl border border-red-200 bg-white p-6 dark:border-red-800 dark:bg-zinc-950">
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-            Deactivating a member removes them from active member lists. This does not currently block
-            deactivation if the member is still someone&apos;s assigned Pastoral Leader.
+            Deactivating a member removes them from active member lists. Deactivation is blocked
+            while the member is still someone&apos;s assigned Pastoral Leader.
           </p>
+          {blockedCount !== null && (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              {member.first_name} {member.last_name} is still assigned as Pastoral Leader to {blockedCount} member{blockedCount === 1 ? '' : 's'}.
+              Reassign {blockedCount === 1 ? 'them' : 'them all'} first via{' '}
+              <a href={`/admin/members/${member.id}/reassign`} className="font-medium underline hover:no-underline">
+                Bulk Reassign
+              </a>.
+            </div>
+          )}
           <button
             onClick={handleDeactivate}
             disabled={busy}
