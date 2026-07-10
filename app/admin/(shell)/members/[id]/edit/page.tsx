@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getMemberById, listMembers } from '@/src/features/members/service';
-import { getActiveLeaderAssignment } from '@/src/features/assignments/service';
+import { getActiveLeaderAssignment, getMembersAssignedToLeader } from '@/src/features/assignments/service';
 import type { MemberRow } from '@/src/features/members/member.types';
 import MemberEditForm from './MemberEditForm';
 
@@ -26,9 +26,10 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
 
   // listMembers() defaults to active-only — the Pastoral Leader dropdown should only offer
   // active members, matching what trigger_validate_assignment_tenant() itself enforces.
-  const [members, currentLeaderAssignment] = await Promise.all([
+  const [members, currentLeaderAssignment, assignedMembers] = await Promise.all([
     listMembers(tenantId),
     getActiveLeaderAssignment(id, tenantId),
+    getMembersAssignedToLeader(id, tenantId),
   ]);
 
   return (
@@ -39,6 +40,7 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
           member={member}
           members={(members ?? []) as unknown as MemberRow[]}
           currentLeaderMemberId={currentLeaderAssignment?.leader_member_id ?? null}
+          assignedMemberCount={(assignedMembers ?? []).length}
         />
       </div>
     </div>
