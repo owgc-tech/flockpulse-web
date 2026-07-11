@@ -112,6 +112,98 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
   return data;
 }
 
+export interface UpdateMyProfileInput {
+  firstName?: string;
+  lastName?: string;
+  gender?: 'MALE' | 'FEMALE';
+  maritalStatus?: 'SINGLE' | 'MARRIED' | 'WIDOWED' | 'DIVORCED' | 'SEPARATED';
+  birthdate?: string;
+}
+
+// FP-112: self-service profile read — same five fields complete_registration() collects,
+// plus the member's own group memberships (folded in here rather than a second endpoint,
+// same "one purpose-built response" pattern as reminder-context).
+export async function getMyProfile(memberId: string, tenantId: string) {
+  const db = serviceClient();
+
+  const { data: member, error } = await db
+    .from('members')
+    .select('id, first_name, last_name, email, gender, marital_status, birthdate')
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (error || !member) {
+    const err = new Error('Member not found for this tenant') as Error & { code: string };
+    err.code = 'NOT_FOUND_IN_TENANT';
+    throw err;
+  }
+
+  const { data: assignmentRows, error: assignmentsError } = await db
+    .from('assignments')
+    .select('groups!assignments_group_id_fkey (id, name)')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .eq('assignment_type', 'GROUP')
+    .is('deleted_at', null);
+
+  if (assignmentsError) throw assignmentsError;
+
+  const groups = (assignmentRows ?? []).map((row: Record<string, unknown>) => {
+    const group = row.groups as { id: string; name: string } | { id: string; name: string }[] | null;
+    return Array.isArray(group) ? group[0] : group;
+  }).filter((g): g is { id: string; name: string } => g != null);
+
+  return { ...member, groups };
+}
+
+// FP-112: application-layer enforcement of the members_update_self RLS policy's documented
+// intent — only these five fields are ever accepted, mirroring exactly what
+// complete_registration()/update_registration()'s own validation already enforces.
+export async function updateMyProfile(memberId: string, tenantId: string, input: UpdateMyProfileInput) {
+  if (input.gender !== undefined && !['MALE', 'FEMALE'].includes(input.gender)) {
+    const err = new Error('gender must be MALE or FEMALE') as Error & { code: string };
+    err.code = 'INVALID_VALUE';
+    throw err;
+  }
+  if (input.maritalStatus !== undefined && !['SINGLE', 'MARRIED', 'WIDOWED', 'DIVORCED', 'SEPARATED'].includes(input.maritalStatus)) {
+    const err = new Error('maritalStatus must be SINGLE, MARRIED, WIDOWED, DIVORCED, or SEPARATED') as Error & { code: string };
+    err.code = 'INVALID_VALUE';
+    throw err;
+  }
+  if (input.birthdate !== undefined && new Date(input.birthdate) > new Date()) {
+    const err = new Error('birthdate cannot be in the future') as Error & { code: string };
+    err.code = 'INVALID_VALUE';
+    throw err;
+  }
+
+  const update: Record<string, unknown> = {};
+  if (input.firstName !== undefined) update.first_name = input.firstName;
+  if (input.lastName !== undefined) update.last_name = input.lastName;
+  if (input.gender !== undefined) update.gender = input.gender;
+  if (input.maritalStatus !== undefined) update.marital_status = input.maritalStatus;
+  if (input.birthdate !== undefined) update.birthdate = input.birthdate;
+
+  const { data, error } = await serviceClient()
+    .from('members')
+    .update(update)
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .select('id, first_name, last_name, email, gender, marital_status, birthdate')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      const err = new Error('Member not found for this tenant') as Error & { code: string };
+      err.code = 'NOT_FOUND_IN_TENANT';
+      throw err;
+    }
+    throw error;
+  }
+  return data;
+}
+
 // Soft-delete only — no hard-delete path exists by design.
 export async function softDeleteMember(id: string, tenantId: string) {
   const { data, error } = await serviceClient()
