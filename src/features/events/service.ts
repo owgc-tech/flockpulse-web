@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { validateTalkIdForEvent } from '@/src/features/formation/talk.service';
 import { getMembersAssignedToLeader } from '@/src/features/assignments/service';
+import { getTalk } from '@/src/features/formation/talk.repository';
+import { getModule } from '@/src/features/formation/module.repository';
+import { getCourse } from '@/src/features/formation/course.repository';
 
 function serviceClient() {
   return createClient(
@@ -412,6 +415,44 @@ export async function getEventById(id: string, tenantId: string) {
   if (statusError) throw statusError;
 
   return { ...event, effective_status: effectiveStatus as string };
+}
+
+export interface EventReminderFormation {
+  course_name: string;
+  module_name: string;
+  talk_name: string;
+  talk_description: string | null;
+}
+
+// FP-96: resolves the Course/Module/Talk chain server-side so the mobile reminder
+// notification never needs to chain three calls at fire time. Name resolution is
+// alias-or-name at each level; only the Talk contributes its description.
+// Any missing/soft-deleted link in the chain is treated the same as no talk_id —
+// formation is omitted cleanly, no error (matches FP-96's own "no Talk assigned" AC).
+export async function getEventReminderContext(eventId: string, tenantId: string) {
+  const event = await getEventById(eventId, tenantId); // NOT_FOUND if missing/cross-tenant
+
+  if (!event.talk_id) {
+    return { ...event, formation: null };
+  }
+
+  const talk = await getTalk(event.talk_id, tenantId);
+  if (!talk) return { ...event, formation: null };
+
+  const talkModule = await getModule(talk.module_id, tenantId);
+  if (!talkModule) return { ...event, formation: null };
+
+  const course = await getCourse(talkModule.course_id, tenantId);
+  if (!course) return { ...event, formation: null };
+
+  const formation: EventReminderFormation = {
+    course_name: course.alias || course.name,
+    module_name: talkModule.alias || talkModule.name,
+    talk_name: talk.alias || talk.name,
+    talk_description: talk.description,
+  };
+
+  return { ...event, formation };
 }
 
 export async function cancelEvent(id: string, tenantId: string, actorMemberId?: string | null) {
