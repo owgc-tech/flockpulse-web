@@ -1,7 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-export type Role = 'ADMIN' | 'LEADER' | 'MEMBER';
+// DIP-FP-113-web: SR_COORDINATOR/COORDINATOR/COMMUNITY_SERVANT are
+// Admin-tier synonyms (identical access to ADMIN); PASTORAL_LEADER is a
+// Leader-tier synonym (identical access to LEADER, permanently coexisting
+// with it, not replacing it).
+export type Role =
+  | 'ADMIN'
+  | 'LEADER'
+  | 'MEMBER'
+  | 'SR_COORDINATOR'
+  | 'COORDINATOR'
+  | 'COMMUNITY_SERVANT'
+  | 'PASTORAL_LEADER';
 
 export interface AuthContext {
   userId: string;
@@ -16,7 +27,29 @@ export type RouteHandler = (
   params?: Record<string, string>
 ) => Promise<NextResponse>;
 
-const ROLE_HIERARCHY: Record<Role, number> = { ADMIN: 3, LEADER: 2, MEMBER: 1 };
+const ROLE_HIERARCHY: Record<Role, number> = {
+  ADMIN: 3,
+  SR_COORDINATOR: 3,
+  COORDINATOR: 3,
+  COMMUNITY_SERVANT: 3,
+  LEADER: 2,
+  PASTORAL_LEADER: 2,
+  MEMBER: 1,
+};
+
+// requireRole()'s rank comparison already makes "at least this rank" checks
+// safe across the new synonyms with zero changes at any call site. This
+// covers the different case a couple of routes need: "is this caller
+// specifically at Leader-tier (not Admin-tier)" for RBAC *scoping*, not
+// gating — e.g. "scope the roster to the caller's own assigned members
+// unless they're Admin-tier, in which case show everyone." A literal
+// `role === 'LEADER'` there would silently treat a PASTORAL_LEADER account
+// as if it were Admin-tier (falls through to the unscoped branch) — this is
+// rank-based instead, so it's correct for any current or future role added
+// at LEADER's rank, not just PASTORAL_LEADER specifically.
+export function isExactlyLeaderTier(role: Role): boolean {
+  return ROLE_HIERARCHY[role] === ROLE_HIERARCHY.LEADER;
+}
 
 export function errorResponse(code: string, message: string, status: number): NextResponse {
   return NextResponse.json({ error: { code, message } }, { status });

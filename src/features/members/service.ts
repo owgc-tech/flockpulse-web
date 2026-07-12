@@ -7,20 +7,30 @@ function serviceClient() {
   );
 }
 
+// DIP-FP-113-web: kept in sync with src/lib/auth/middleware.ts's Role type.
+type MemberRoleValue =
+  | 'ADMIN'
+  | 'LEADER'
+  | 'MEMBER'
+  | 'SR_COORDINATOR'
+  | 'COORDINATOR'
+  | 'COMMUNITY_SERVANT'
+  | 'PASTORAL_LEADER';
+
 export interface CreateMemberInput {
   tenantId: string;
   userId: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'ADMIN' | 'LEADER' | 'MEMBER';
+  role: MemberRoleValue;
 }
 
 export interface UpdateMemberInput {
   firstName?: string;
   lastName?: string;
   email?: string;
-  role?: 'ADMIN' | 'LEADER' | 'MEMBER';
+  role?: MemberRoleValue;
 }
 
 // includeDeleted defaults to false for existing callers (event target/food-assignment

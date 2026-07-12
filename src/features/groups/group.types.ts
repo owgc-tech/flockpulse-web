@@ -14,5 +14,6 @@ export interface GroupMemberRow {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'ADMIN' | 'LEADER' | 'MEMBER';
+  // DIP-FP-113-web: kept in sync with src/lib/auth/middleware.ts's Role type.
+  role: 'ADMIN' | 'LEADER' | 'MEMBER' | 'SR_COORDINATOR' | 'COORDINATOR' | 'COMMUNITY_SERVANT' | 'PASTORAL_LEADER';
 }
