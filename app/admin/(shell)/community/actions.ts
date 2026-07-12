@@ -2,7 +2,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { updateTenantSettings, uploadTenantLogo } from '@/src/features/tenant/service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
+// Editing Community stays Admin-tier-only (DIP-FP-114-web) — isAdminTier() also
+// fixes the FP-113 Admin-tier-synonym gap the old literal `role !== 'ADMIN'` had.
 async function getAdminContext(token: string): Promise<{ tenantId: string; memberId: string } | null> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,9 +16,9 @@ async function getAdminContext(token: string): Promise<{ tenantId: string; membe
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
   const memberId = user.app_metadata?.member_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
 
-  if (!tenantId || !memberId || role !== 'ADMIN') return null;
+  if (!tenantId || !memberId || !role || !isAdminTier(role)) return null;
   return { tenantId, memberId };
 }
 

@@ -9,13 +9,15 @@ interface Props {
   initialLogoUrl: string | null;
   initialTagline: string | null;
   initialDescription: string | null;
+  // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
+  canEdit: boolean;
 }
 
 const TAGLINE_MAX = 150;
 const DESCRIPTION_MAX = 500;
 
 export default function CommunitySettingsForm({
-  token, communityName, initialLogoUrl, initialTagline, initialDescription,
+  token, communityName, initialLogoUrl, initialTagline, initialDescription, canEdit,
 }: Props) {
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [tagline, setTagline] = useState(initialTagline ?? '');
@@ -81,90 +83,113 @@ export default function CommunitySettingsForm({
       {/* Logo */}
       <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Community Logo</h2>
-        <form onSubmit={handleLogoUpload} className="flex flex-col gap-4">
-          {previewUrl && (
+        {canEdit ? (
+          <form onSubmit={handleLogoUpload} className="flex flex-col gap-4">
+            {previewUrl && (
+              <img
+                src={previewUrl}
+                alt="Logo preview"
+                className="h-20 w-20 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700"
+              />
+            )}
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Upload logo</label>
+              <input
+                ref={fileRef}
+                name="logo"
+                type="file"
+                accept="image/png,image/jpeg"
+                onChange={handleFileChange}
+                className="text-sm text-zinc-700 dark:text-zinc-300 file:mr-3 file:rounded-full file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-700 dark:file:bg-zinc-800 dark:file:text-zinc-300"
+              />
+              <p className="text-xs text-zinc-400">Square image, minimum 256×256 px, PNG or JPG, max 2 MB</p>
+            </div>
+            {logoError && <p className="text-sm text-red-600 dark:text-red-400">{logoError}</p>}
+            {logoSaved && <p className="text-sm text-green-600 dark:text-green-400">Logo updated.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Uploading…' : 'Upload logo'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          previewUrl && (
             <img
               src={previewUrl}
-              alt="Logo preview"
+              alt="Logo"
               className="h-20 w-20 rounded-lg object-cover border border-zinc-200 dark:border-zinc-700"
             />
-          )}
-          <div className="flex flex-col gap-1.5">
-            <label className={labelClass}>Upload logo</label>
-            <input
-              ref={fileRef}
-              name="logo"
-              type="file"
-              accept="image/png,image/jpeg"
-              onChange={handleFileChange}
-              className="text-sm text-zinc-700 dark:text-zinc-300 file:mr-3 file:rounded-full file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-zinc-700 dark:file:bg-zinc-800 dark:file:text-zinc-300"
-            />
-            <p className="text-xs text-zinc-400">Square image, minimum 256×256 px, PNG or JPG, max 2 MB</p>
-          </div>
-          {logoError && <p className="text-sm text-red-600 dark:text-red-400">{logoError}</p>}
-          {logoSaved && <p className="text-sm text-green-600 dark:text-green-400">Logo updated.</p>}
-          <div>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              {isPending ? 'Uploading…' : 'Upload logo'}
-            </button>
-          </div>
-        </form>
+          )
+        )}
       </div>
 
       {/* Community Details — tagline + description, one save */}
       <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Community Details</h2>
-        <form onSubmit={handleDetailsSave} className="flex flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <label className={labelClass}>
-              Tagline{' '}
-              <span className="font-normal text-zinc-400">(optional, shown below your community name)</span>
-            </label>
-            <textarea
-              name="tagline"
-              rows={2}
-              maxLength={TAGLINE_MAX}
-              value={tagline}
-              onChange={e => { setTagline(e.target.value); setDetailsSaved(false); }}
-              className={`${inputClass} resize-none`}
-              placeholder="e.g. Serving the city of Portland since 1998"
-            />
-            <p className="text-right text-xs text-zinc-400">{tagline.length}/{TAGLINE_MAX}</p>
-          </div>
+        {canEdit ? (
+          <form onSubmit={handleDetailsSave} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>
+                Tagline{' '}
+                <span className="font-normal text-zinc-400">(optional, shown below your community name)</span>
+              </label>
+              <textarea
+                name="tagline"
+                rows={2}
+                maxLength={TAGLINE_MAX}
+                value={tagline}
+                onChange={e => { setTagline(e.target.value); setDetailsSaved(false); }}
+                className={`${inputClass} resize-none`}
+                placeholder="e.g. Serving the city of Portland since 1998"
+              />
+              <p className="text-right text-xs text-zinc-400">{tagline.length}/{TAGLINE_MAX}</p>
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className={labelClass}>
-              Description{' '}
-              <span className="font-normal text-zinc-400">(optional, longer description of your community)</span>
-            </label>
-            <textarea
-              name="description"
-              rows={4}
-              maxLength={DESCRIPTION_MAX}
-              value={description}
-              onChange={e => { setDescription(e.target.value); setDetailsSaved(false); }}
-              className={`${inputClass} resize-none`}
-              placeholder="Tell members about your community — its history, mission, or values."
-            />
-            <p className="text-right text-xs text-zinc-400">{description.length}/{DESCRIPTION_MAX}</p>
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>
+                Description{' '}
+                <span className="font-normal text-zinc-400">(optional, longer description of your community)</span>
+              </label>
+              <textarea
+                name="description"
+                rows={4}
+                maxLength={DESCRIPTION_MAX}
+                value={description}
+                onChange={e => { setDescription(e.target.value); setDetailsSaved(false); }}
+                className={`${inputClass} resize-none`}
+                placeholder="Tell members about your community — its history, mission, or values."
+              />
+              <p className="text-right text-xs text-zinc-400">{description.length}/{DESCRIPTION_MAX}</p>
+            </div>
 
-          {detailsError && <p className="text-sm text-red-600 dark:text-red-400">{detailsError}</p>}
-          {detailsSaved && <p className="text-sm text-green-600 dark:text-green-400">Details saved.</p>}
-          <div>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              {isPending ? 'Saving…' : 'Save details'}
-            </button>
+            {detailsError && <p className="text-sm text-red-600 dark:text-red-400">{detailsError}</p>}
+            {detailsSaved && <p className="text-sm text-green-600 dark:text-green-400">Details saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save details'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-4 text-sm text-zinc-700 dark:text-zinc-300">
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Tagline</p>
+              <p>{tagline || '—'}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Description</p>
+              <p>{description || '—'}</p>
+            </div>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );

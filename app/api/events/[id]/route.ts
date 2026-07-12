@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getEventById, updateEvent } from '@/src/features/events/service';
 
-const requireAdmin = requireRole('ADMIN');
+// DIP-FP-114-web: rank-based, not a literal `role === 'LEADER'` — see
+// isExactlyLeaderTier's own doc comment for why this must be rank-based
+// (a PASTORAL_LEADER caller needs the same ownership scoping a LEADER gets).
+const requireLeader = requireRole('LEADER');
 
 export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string }> }) =>
   withAuth(req, async (_, ctx) => {
@@ -21,7 +24,7 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
   });
 
 export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: string }> }) =>
-  withAuth(req, requireAdmin(async (req, ctx) => {
+  withAuth(req, requireLeader(async (req, ctx) => {
     const { id } = await params;
     if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
 
@@ -46,11 +49,12 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         prayerLeaderMemberId,
         foodAssignment,
         actorMemberId: ctx.memberId,
-      });
+      }, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
       return NextResponse.json({ data: event });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', 'Event not found', 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
       if (code === 'INVALID_STATE') return errorResponse('INVALID_STATE', (err as Error).message, 422);
       if (code === 'IMMUTABLE_FIELD') return errorResponse('IMMUTABLE_FIELD', (err as Error).message, 422);
       if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);

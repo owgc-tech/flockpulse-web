@@ -93,14 +93,39 @@ export async function createEvent(input: CreateEventInput) {
   if (error) throw error;
 
   const row = Array.isArray(data) ? data[0] : data;
+
+  // DIP-FP-114-web: creator tracking, set via a follow-up UPDATE rather than
+  // threading a new param through insert_event_with_audit() — changing that
+  // RPC's RETURNS TABLE shape would require a DROP FUNCTION (Postgres doesn't
+  // allow CREATE OR REPLACE to change a function's return shape), which is a
+  // needlessly bigger and riskier change than one extra scoped UPDATE. Known
+  // tradeoff: the RPC's own audit-log "create" snapshot (already captured
+  // before this UPDATE runs) won't include created_by_member_id — acceptable
+  // since no web UI surfaces audit logs today, and ownership isn't really
+  // "what changed" in the event's own data anyway.
+  if (input.actorMemberId) {
+    const { data: withCreator, error: creatorError } = await serviceClient()
+      .from('events')
+      .update({ created_by_member_id: input.actorMemberId })
+      .eq('id', row.id)
+      .eq('tenant_id', input.tenantId)
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, created_at, created_by_member_id')
+      .single();
+    if (creatorError) throw creatorError;
+    return withCreator;
+  }
+
   return row;
 }
 
-export async function publishEvent(id: string, tenantId: string) {
+// DIP-FP-114-web: scopeToOwnerMemberId mirrors updateEvent()/cancelEvent()'s
+// ownership check — Leader-tier can only publish drafts they created themselves;
+// otherwise create() would be pointless (a draft only Admin-tier could ever publish).
+export async function publishEvent(id: string, tenantId: string, scopeToOwnerMemberId?: string) {
   // Fetch current state to validate transition.
   const { data: event, error: fetchError } = await serviceClient()
     .from('events')
-    .select('id, status, name, start_datetime, end_datetime, location_name, event_type_id, target')
+    .select('id, status, name, start_datetime, end_datetime, location_name, event_type_id, target, created_by_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -108,6 +133,12 @@ export async function publishEvent(id: string, tenantId: string) {
   if (fetchError || !event) {
     const err = new Error('Event not found') as Error & { code: string };
     err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (scopeToOwnerMemberId && event.created_by_member_id !== scopeToOwnerMemberId) {
+    const err = new Error('You may only publish events you created') as Error & { code: string };
+    err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
 
@@ -159,13 +190,17 @@ export interface UpdateEventInput {
   actorMemberId?: string | null;
 }
 
-export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput) {
+// DIP-FP-114-web: scopeToOwnerMemberId, when provided (non-Admin-tier callers),
+// enforces created_by_member_id === scopeToOwnerMemberId — mirrors the
+// scopeToLeaderMemberId opt-in pattern already established on getEventRoster()
+// below. Omitted (Admin-tier callers) preserves unrestricted behavior.
+export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput, scopeToOwnerMemberId?: string) {
   const db = serviceClient();
 
   // Fetch current event state.
   const { data: event, error: fetchError } = await db
     .from('events')
-    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target')
+    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target, created_by_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -173,6 +208,12 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (fetchError || !event) {
     const err = new Error('Event not found') as Error & { code: string };
     err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  if (scopeToOwnerMemberId && event.created_by_member_id !== scopeToOwnerMemberId) {
+    const err = new Error('You may only edit events you created') as Error & { code: string };
+    err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
 
@@ -398,7 +439,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, created_by_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -455,7 +496,19 @@ export async function getEventReminderContext(eventId: string, tenantId: string)
   return { ...event, formation };
 }
 
-export async function cancelEvent(id: string, tenantId: string, actorMemberId?: string | null) {
+// DIP-FP-114-web: scopeToOwnerMemberId mirrors updateEvent()'s ownership check —
+// requires a pre-fetch (getEventById) only when provided, since the RPC itself
+// has no notion of caller identity to enforce this against.
+export async function cancelEvent(id: string, tenantId: string, actorMemberId?: string | null, scopeToOwnerMemberId?: string) {
+  if (scopeToOwnerMemberId) {
+    const event = await getEventById(id, tenantId); // throws NOT_FOUND if missing/cross-tenant
+    if (event.created_by_member_id !== scopeToOwnerMemberId) {
+      const err = new Error('You may only cancel events you created') as Error & { code: string };
+      err.code = 'FORBIDDEN_SCOPE';
+      throw err;
+    }
+  }
+
   const { data, error } = await serviceClient().rpc('cancel_event_with_audit', {
     p_event_id: id,
     p_tenant_id: tenantId,

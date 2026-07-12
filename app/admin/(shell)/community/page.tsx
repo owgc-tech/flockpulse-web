@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getTenantSettings } from '@/src/features/tenant/service';
+import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import CommunitySettingsForm from './CommunitySettingsForm';
 
 export default async function CommunityPage() {
@@ -9,10 +10,13 @@ export default async function CommunityPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: read-accessible to Leader-tier; editing stays Admin-tier-only
+  // (canEdit hides the logo-upload/details-save forms; updateCommunityDetailsAction/
+  // uploadLogoAction already independently reject non-Admin-tier callers).
+  if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
   const settings = await getTenantSettings(tenantId);
 
@@ -31,6 +35,7 @@ export default async function CommunityPage() {
           initialLogoUrl={settings.logo_url ?? null}
           initialTagline={settings.tagline ?? null}
           initialDescription={settings.description ?? null}
+          canEdit={isAdminTier(role)}
         />
       </div>
     </div>

@@ -7,8 +7,11 @@ import { createTalk, updateTalk, reorderTalks, listTalksByModule } from '@/src/f
 import type { CourseRow } from '@/src/features/formation/course.types';
 import type { ModuleRow } from '@/src/features/formation/module.types';
 import type { TalkRow } from '@/src/features/formation/talk.types';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
 // ── Auth helper — identical pattern to app/admin/invite/actions.ts ──────────
+// Formation stays Admin-tier-only (DIP-FP-114-web) — isAdminTier() also fixes
+// the FP-113 Admin-tier-synonym gap the old literal `role !== 'ADMIN'` had.
 async function getAdminContext(token: string): Promise<{ tenantId: string; memberId: string } | null> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,9 +22,9 @@ async function getAdminContext(token: string): Promise<{ tenantId: string; membe
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
   const memberId = user.app_metadata?.member_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
 
-  if (!tenantId || !memberId || role !== 'ADMIN') return null;
+  if (!tenantId || !memberId || !role || !isAdminTier(role)) return null;
   return { tenantId, memberId };
 }
 

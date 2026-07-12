@@ -29,6 +29,9 @@ export interface EventDetailRow extends EventListRow {
   version: number;
   updated_at: string;
   recurrence_series_id: string | null;
+  // DIP-FP-114-web: null for events created before this column existed —
+  // no Leader-tier account can edit/cancel those, only Admin-tier can.
+  created_by_member_id: string | null;
 }
 
 export interface EventTypeOption {

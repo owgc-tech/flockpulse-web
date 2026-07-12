@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getMemberById, listMembers } from '@/src/features/members/service';
 import { getActiveLeaderAssignment, getMembersAssignedToLeader } from '@/src/features/assignments/service';
 import type { MemberRow } from '@/src/features/members/member.types';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import MemberEditForm from './MemberEditForm';
 
 export default async function MemberEditPage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,10 +13,11 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Members stays fully Admin-tier-only, excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   let member: MemberRow;
   try {

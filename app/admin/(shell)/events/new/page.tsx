@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventForm from '../EventForm';
 
 export default async function CreateEventPage() {
@@ -11,10 +12,12 @@ export default async function CreateEventPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Leader-tier may create events — creator tracking scopes
+  // their subsequent edit/publish/cancel rights to what they create here.
+  if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
   const [eventTypes, groups, members] = await Promise.all([
     listEventTypes(tenantId),

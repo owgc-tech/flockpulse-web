@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listDeletedTalks } from '@/src/features/formation/talk.service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import DeletedTalksTable from './DeletedTalksTable';
 
 export default async function DeletedTalksPage() {
@@ -9,10 +10,12 @@ export default async function DeletedTalksPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Restore stays fully Admin-tier-only (Formation-adjacent
+  // recovery tool), excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   const talks = await listDeletedTalks(tenantId);
 

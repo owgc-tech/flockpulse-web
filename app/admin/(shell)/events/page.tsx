@@ -4,6 +4,7 @@ import { listEvents } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import type { EventListRow } from '@/src/features/events/event.types';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventsTable from './EventsTable';
 
 // Server Component — resolves auth, fetches events/event-types/groups, then passes
@@ -15,10 +16,12 @@ export default async function EventsPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Events is read-accessible to Leader-tier (own-created events
+  // remain mutable — enforced by the API layer and reflected in EventDetail's UI).
+  if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
   const [events, eventTypes, groups] = await Promise.all([
     listEvents(tenantId),

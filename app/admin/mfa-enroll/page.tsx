@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import MFAEnrollForm from './MFAEnrollForm';
 
 // This page is NOT behind the proxy's MFA-trust check — it's the enrollment
@@ -10,8 +11,9 @@ export default async function MFAEnrollPage() {
 
   if (!user) redirect('/login');
 
-  const role = user.app_metadata?.role as string | undefined;
-  if (role !== 'ADMIN') redirect('/login');
+  // DIP-FP-114-web: rank-based — MFA enrollment is mandatory for Leader-tier too.
+  const role = user.app_metadata?.role as Role | undefined;
+  if (!role || !isLeaderTierOrAbove(role)) redirect('/login');
 
   // If they already have a verified factor, skip enrollment.
   const { data: factorData } = await supabase.auth.mfa.listFactors();
@@ -25,7 +27,7 @@ export default async function MFAEnrollPage() {
           Set up two-factor authentication
         </h1>
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          Two-factor authentication is required for all Admin accounts. You only need to do this once.
+          Two-factor authentication is required for all Admin and Leadership accounts. You only need to do this once.
         </p>
         <MFAEnrollForm />
       </div>

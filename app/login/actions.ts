@@ -2,6 +2,7 @@
 
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 
 export interface LoginState {
   error?: string;
@@ -24,13 +25,17 @@ export async function loginAction(
     return { error: 'Invalid email or password.' };
   }
 
-  const role = data.user?.app_metadata?.role as string | undefined;
-  if (role !== 'ADMIN') {
+  // DIP-FP-114-web: rank-based (Admin-tier or Leader-tier), not a literal
+  // `role !== 'ADMIN'` — widens login to Leader-tier while still correctly
+  // covering FP-113's Admin-tier synonyms (SR_COORDINATOR/COORDINATOR/
+  // COMMUNITY_SERVANT), which the old literal check would have rejected.
+  const role = data.user?.app_metadata?.role as Role | undefined;
+  if (!role || !isLeaderTierOrAbove(role)) {
     await supabase.auth.signOut();
-    return { error: 'This account does not have Admin access.' };
+    return { error: 'This account does not have access to the Leadership sign-in.' };
   }
 
-  // Check MFA enrollment — mandatory for all Admins.
+  // Check MFA enrollment — mandatory for all Admin-tier and Leader-tier accounts.
   // listFactors() returns factors registered for the current session's user.
   const { data: factorData } = await supabase.auth.mfa.listFactors();
   const hasVerifiedFactor = factorData?.totp?.some(f => f.status === 'verified') ?? false;

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { createEvent, listEvents } from '@/src/features/events/service';
 
-const requireAdmin = requireRole('ADMIN');
+// DIP-FP-114-web: Leader-tier can create events (scoped to their own via
+// created_by_member_id, set server-side from ctx.memberId — never client-supplied).
+const requireLeader = requireRole('LEADER');
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (_, ctx) => {
@@ -12,7 +14,7 @@ export async function GET(req: NextRequest) {
 }
 
 export const POST = (req: NextRequest) =>
-  withAuth(req, requireAdmin(async (req, ctx) => {
+  withAuth(req, requireLeader(async (req, ctx) => {
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
