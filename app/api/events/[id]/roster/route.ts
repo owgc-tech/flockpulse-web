@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getEventRoster } from '@/src/features/events/service';
 
 const requireLeader = requireRole('LEADER');
@@ -14,7 +14,11 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
 
     try {
-      const roster = await getEventRoster(id, ctx.tenantId, ctx.role === 'LEADER' ? ctx.memberId : undefined);
+      // DIP-FP-113-web: rank-based, not a literal `role === 'LEADER'` — a
+      // PASTORAL_LEADER caller must get the same scoped-to-own-members
+      // roster a LEADER gets, not fall through to the Admin-tier
+      // unscoped (undefined) case.
+      const roster = await getEventRoster(id, ctx.tenantId, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
       return NextResponse.json({ data: roster });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === 'NOT_FOUND') {

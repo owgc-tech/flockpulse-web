@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getAssignedMemberIds } from '@/src/features/confirmations/confirmation.repository';
 import { computeCourseProgress, computeAllCoursesProgress } from '@/src/features/formation/formation-completion.service';
 
@@ -20,13 +20,16 @@ export async function GET(req: NextRequest) {
     if (ctx.role === 'MEMBER' && requestedMemberId !== ctx.memberId) {
       return errorResponse('FORBIDDEN_SCOPE', 'Members may only query their own progress', 403);
     }
-    if (ctx.role === 'LEADER' && requestedMemberId !== ctx.memberId) {
+    // DIP-FP-113-web: rank-based, not a literal `role === 'LEADER'` — a
+    // PASTORAL_LEADER account must be scoped the same as LEADER, not fall
+    // through to the Admin-tier "unrestricted" case below.
+    if (isExactlyLeaderTier(ctx.role) && requestedMemberId !== ctx.memberId) {
       const assignedIds = await getAssignedMemberIds(ctx.tenantId, ctx.memberId);
       if (!assignedIds.includes(requestedMemberId)) {
         return errorResponse('FORBIDDEN_SCOPE', 'Leaders may only query their own assigned members', 403);
       }
     }
-    // ADMIN: unrestricted within tenant — no extra check needed
+    // Admin-tier: unrestricted within tenant — no extra check needed
 
     const items = courseId
       ? [await computeCourseProgress(requestedMemberId, courseId, ctx.tenantId)]

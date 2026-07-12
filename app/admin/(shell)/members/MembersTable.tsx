@@ -6,7 +6,20 @@ interface Props {
   members: MemberRow[];
 }
 
-const ROLE_LABELS: Record<MemberRole, string> = { ADMIN: 'Admin', LEADER: 'Leader', MEMBER: 'Member' };
+// DIP-FP-113-web: labels for the four new role values, added only because
+// ROLE_LABELS is an exhaustive Record<MemberRole, string> that no longer
+// compiles without them once MemberRole widened — not new UI in the sense
+// of FP-114's scope (no account can hold these values yet; nothing creates
+// them until that story lands), just what's needed for this file to build.
+const ROLE_LABELS: Record<MemberRole, string> = {
+  ADMIN: 'Admin',
+  LEADER: 'Leader',
+  MEMBER: 'Member',
+  SR_COORDINATOR: 'Sr. Coordinator',
+  COORDINATOR: 'Coordinator',
+  COMMUNITY_SERVANT: 'Community Servant',
+  PASTORAL_LEADER: 'Pastoral Leader',
+};
 
 export default function MembersTable({ members }: Props) {
   return (
