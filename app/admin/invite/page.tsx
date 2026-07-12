@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listGroups } from '@/src/features/groups/service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import InviteForm from './InviteForm';
 
 // Server Component — resolves the calling Admin's auth token and groups list,
@@ -13,10 +14,14 @@ export default async function InvitePage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: sending invitations stays Admin-tier-only, excluded for
+  // Leader-tier — isAdminTier() also fixes the FP-113 Admin-tier-synonym gap
+  // the old literal `role !== 'ADMIN'` check had (SR_COORDINATOR/COORDINATOR/
+  // COMMUNITY_SERVANT would have been incorrectly blocked here too).
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   const groups = await listGroups(tenantId);
 

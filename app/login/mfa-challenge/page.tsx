@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import MFAChallengeForm from './MFAChallengeForm';
 
 export default async function MFAChallengePage({
@@ -12,8 +13,10 @@ export default async function MFAChallengePage({
 
   if (!user) redirect('/login');
 
-  const role = user.app_metadata?.role as string | undefined;
-  if (role !== 'ADMIN') redirect('/login');
+  // DIP-FP-114-web: rank-based — Leader-tier must also pass through MFA
+  // challenge to reach the admin shell, same as Admin-tier.
+  const role = user.app_metadata?.role as Role | undefined;
+  if (!role || !isLeaderTierOrAbove(role)) redirect('/login');
 
   const { next = '/admin/invitations' } = await searchParams;
 

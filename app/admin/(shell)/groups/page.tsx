@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listGroups } from '@/src/features/groups/service';
 import type { GroupRow } from '@/src/features/groups/group.types';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import GroupsTable from './GroupsTable';
 
 // Server Component — resolves auth, fetches groups (including deactivated, so the List can
@@ -13,10 +14,11 @@ export default async function GroupsPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Groups stays fully Admin-tier-only, excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   const groups = await listGroups(tenantId, true);
 

@@ -51,6 +51,20 @@ export function isExactlyLeaderTier(role: Role): boolean {
   return ROLE_HIERARCHY[role] === ROLE_HIERARCHY.LEADER;
 }
 
+// DIP-FP-114-web: rank-based equivalents of the "is this caller in tier X"
+// checks needed outside requireRole()'s gating use case — e.g. Server Component
+// page guards, which run their own auth check independent of the API route
+// layer and can't use requireRole() directly. Mirrors is_admin_tier()/
+// is_leader_tier_or_above() added at the RLS layer in FP-113 — same rank
+// logic, kept in one place at each layer rather than re-derived ad hoc.
+export function isAdminTier(role: Role): boolean {
+  return ROLE_HIERARCHY[role] === ROLE_HIERARCHY.ADMIN;
+}
+
+export function isLeaderTierOrAbove(role: Role): boolean {
+  return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY.LEADER;
+}
+
 export function errorResponse(code: string, message: string, status: number): NextResponse {
   return NextResponse.json({ error: { code, message } }, { status });
 }

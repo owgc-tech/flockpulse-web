@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getTenantSettings } from '@/src/features/tenant/service';
 import AdminSidebar from '@/src/components/admin/AdminSidebar';
 import CommunityBanner from '@/src/components/admin/CommunityBanner';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 
 export default async function AdminShellLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
@@ -10,9 +11,12 @@ export default async function AdminShellLayout({ children }: { children: React.R
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
 
-  if (!tenantId || role !== 'ADMIN') redirect('/login');
+  // DIP-FP-114-web: rank-based (Admin-tier or Leader-tier) — this is the outer
+  // "can reach the shell at all" gate. Per-section exclusion (Formation/Groups/
+  // Members/Restore) happens one level down, in each page's own guard.
+  if (!tenantId || !role || !isLeaderTierOrAbove(role)) redirect('/login');
 
   let settings: { name: string; logo_url: string | null; tagline: string | null } | null = null;
   try {
@@ -29,7 +33,7 @@ export default async function AdminShellLayout({ children }: { children: React.R
         tagline={settings?.tagline ?? null}
       />
       <div className="flex flex-1 overflow-hidden">
-        <AdminSidebar />
+        <AdminSidebar role={role} />
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>

@@ -7,6 +7,8 @@ interface Props {
   initialInvitations: InvitationDisplayRow[];
   token: string;
   tenantName?: string;
+  // DIP-FP-114-web: Admin-tier only — Leader-tier gets read-only access, no Revoke.
+  canManage: boolean;
 }
 
 const STATUS_LABELS: Record<InvitationStatus, string> = {
@@ -23,7 +25,7 @@ const STATUS_CLASSES: Record<InvitationStatus, string> = {
 
 const ROLE_LABELS: Record<string, string> = { ADMIN: 'Admin', LEADER: 'Leader', MEMBER: 'Member' };
 
-export default function InvitationsTable({ initialInvitations, token, tenantName }: Props) {
+export default function InvitationsTable({ initialInvitations, token, tenantName, canManage }: Props) {
   const [invitations, setInvitations] = useState<InvitationDisplayRow[]>(initialInvitations);
 
   // Keep the login screen's community name greeting up to date.
@@ -111,7 +113,7 @@ export default function InvitationsTable({ initialInvitations, token, tenantName
                 <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Invited by</th>
                 <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Invited</th>
                 <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Responded</th>
-                <th className="px-4 py-3"></th>
+                {canManage && <th className="px-4 py-3"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -132,17 +134,19 @@ export default function InvitationsTable({ initialInvitations, token, tenantName
                   <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                     {inv.responded_at ? new Date(inv.responded_at).toLocaleDateString() : '—'}
                   </td>
-                  <td className="px-4 py-3">
-                    {inv.status === 'PENDING' && (
-                      <button
-                        onClick={() => handleRevoke(inv.id, inv.email)}
-                        disabled={revoking === inv.id || isPending}
-                        className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950"
-                      >
-                        {revoking === inv.id ? 'Revoking…' : 'Revoke'}
-                      </button>
-                    )}
-                  </td>
+                  {canManage && (
+                    <td className="px-4 py-3">
+                      {inv.status === 'PENDING' && (
+                        <button
+                          onClick={() => handleRevoke(inv.id, inv.email)}
+                          disabled={revoking === inv.id || isPending}
+                          className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950"
+                        >
+                          {revoking === inv.id ? 'Revoking…' : 'Revoke'}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -11,6 +11,9 @@ interface Props {
   groups: GroupOption[];
   members: MemberOption[];
   token: string;
+  // DIP-FP-114-web: Admin-tier OR the event's own creator. Leader-tier viewing
+  // an event they didn't create gets the roster/details read-only, no mutation controls.
+  canManage: boolean;
 }
 
 const STATUS_LABELS: Record<EffectiveStatus, string> = {
@@ -28,7 +31,7 @@ const RESPONSE_LABELS = {
   NOT_RESPONDED: 'Not responded',
 } as const;
 
-export default function EventDetail({ event, eventTypes, groups, members, token }: Props) {
+export default function EventDetail({ event, eventTypes, groups, members, token, canManage }: Props) {
   const router = useRouter();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterFilter, setRosterFilter] = useState<'ALL' | keyof typeof RESPONSE_LABELS>('ALL');
@@ -58,8 +61,8 @@ export default function EventDetail({ event, eventTypes, groups, members, token 
     .filter((m): m is NonNullable<typeof m> => !!m)
     .map(m => `${m.first_name} ${m.last_name}`);
 
-  const canCancel = event.effective_status !== 'CANCELLED' && event.effective_status !== 'LOCKED';
-  const canPublish = event.status === 'DRAFT';
+  const canCancel = canManage && event.effective_status !== 'CANCELLED' && event.effective_status !== 'LOCKED';
+  const canPublish = canManage && event.status === 'DRAFT';
 
   async function handlePublish() {
     setBusy(true);
@@ -126,12 +129,14 @@ export default function EventDetail({ event, eventTypes, groups, members, token 
           <span className="inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
             {STATUS_LABELS[event.effective_status]}
           </span>
-          <a
-            href={`/admin/events/${event.id}/edit`}
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-          >
-            Edit
-          </a>
+          {canManage && (
+            <a
+              href={`/admin/events/${event.id}/edit`}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Edit
+            </a>
+          )}
         </div>
       </div>
 
@@ -145,13 +150,15 @@ export default function EventDetail({ event, eventTypes, groups, members, token 
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
           <div className="flex items-center justify-between">
             <span>Part of a recurring series.</span>
-            <button
-              onClick={handleCancelRemaining}
-              disabled={busy}
-              className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
-            >
-              Cancel remaining occurrences in this series
-            </button>
+            {canManage && (
+              <button
+                onClick={handleCancelRemaining}
+                disabled={busy}
+                className="rounded-full border border-red-300 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+              >
+                Cancel remaining occurrences in this series
+              </button>
+            )}
           </div>
         </div>
       )}

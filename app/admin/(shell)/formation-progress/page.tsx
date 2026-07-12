@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
+import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import FormationProgressBrowser from './FormationProgressBrowser';
 
 export default async function FormationProgressPage() {
@@ -9,10 +10,15 @@ export default async function FormationProgressPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const memberId = user.app_metadata?.member_id as string | undefined;
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !memberId) redirect('/login');
+  // DIP-FP-114-web: read-accessible to Leader-tier; "Record completion" is
+  // Admin-tier-only, enforced both here (canRecord prop) and in
+  // recordManualCompletionAction itself (the server action has no other
+  // caller-identity check, so the UI hide alone would not be a real boundary).
+  if (!tenantId || !role || !isLeaderTierOrAbove(role) || !memberId || !token) redirect('/login');
 
   const members = await listMembers(tenantId);
 
@@ -28,6 +34,8 @@ export default async function FormationProgressPage() {
         members={members ?? []}
         tenantId={tenantId}
         adminMemberId={memberId}
+        token={token}
+        canRecord={isAdminTier(role)}
       />
     </div>
   );

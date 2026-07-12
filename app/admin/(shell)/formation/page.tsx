@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listCourses } from '@/src/features/formation/course.service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import FormationBrowser from './FormationBrowser';
 
 export default async function FormationPage() {
@@ -9,10 +10,11 @@ export default async function FormationPage() {
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Formation stays fully Admin-tier-only, excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   const courses = await listCourses(tenantId);
 

@@ -4,6 +4,7 @@ import { getGroupById } from '@/src/features/groups/service';
 import { getGroupMembers } from '@/src/features/assignments/service';
 import { listMembers } from '@/src/features/members/service';
 import type { GroupRow } from '@/src/features/groups/group.types';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import GroupEditForm from './GroupEditForm';
 
 export default async function GroupEditPage({ params }: { params: Promise<{ id: string }> }) {
@@ -13,10 +14,11 @@ export default async function GroupEditPage({ params }: { params: Promise<{ id: 
   if (error || !user) redirect('/login');
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
-  const role = user.app_metadata?.role as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
-  if (!tenantId || role !== 'ADMIN' || !token) redirect('/login');
+  // DIP-FP-114-web: Groups stays fully Admin-tier-only, excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
   let group: GroupRow;
   try {

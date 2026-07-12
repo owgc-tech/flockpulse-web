@@ -16,6 +16,9 @@ interface Props {
   members: Member[];
   tenantId: string;
   adminMemberId: string;
+  token: string;
+  // DIP-FP-114-web: Admin-tier only — Leader-tier gets read-only progress viewing.
+  canRecord: boolean;
 }
 
 function memberDisplayName(m: Member) {
@@ -23,7 +26,7 @@ function memberDisplayName(m: Member) {
   return name || m.email;
 }
 
-export default function FormationProgressBrowser({ members, tenantId, adminMemberId }: Props) {
+export default function FormationProgressBrowser({ members, tenantId, adminMemberId, token, canRecord }: Props) {
   const [search, setSearch] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [progress, setProgress] = useState<CourseProgress[] | null>(null);
@@ -45,7 +48,7 @@ export default function FormationProgressBrowser({ members, tenantId, adminMembe
     setLoadError(null);
     startTransition(async () => {
       try {
-        const result = await getMemberProgressAction(memberId, tenantId);
+        const result = await getMemberProgressAction(token, memberId, tenantId);
         setProgress(result);
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : 'Failed to load progress');
@@ -104,6 +107,8 @@ export default function FormationProgressBrowser({ members, tenantId, adminMembe
             tenantId={tenantId}
             adminMemberId={adminMemberId}
             memberId={selectedMemberId}
+            token={token}
+            canRecord={canRecord}
             onRefresh={() => handleSelectMember(selectedMemberId!)}
           />
         )}
@@ -119,10 +124,12 @@ interface ProgressTreeProps {
   tenantId: string;
   adminMemberId: string;
   memberId: string;
+  token: string;
+  canRecord: boolean;
   onRefresh: () => void;
 }
 
-function ProgressTree({ progress, tenantId, adminMemberId, memberId, onRefresh }: ProgressTreeProps) {
+function ProgressTree({ progress, tenantId, adminMemberId, memberId, token, canRecord, onRefresh }: ProgressTreeProps) {
   if (progress.length === 0) {
     return <p className="text-sm text-zinc-400">No courses found for this tenant.</p>;
   }
@@ -136,6 +143,8 @@ function ProgressTree({ progress, tenantId, adminMemberId, memberId, onRefresh }
           tenantId={tenantId}
           adminMemberId={adminMemberId}
           memberId={memberId}
+          token={token}
+          canRecord={canRecord}
           onRefresh={onRefresh}
         />
       ))}
@@ -145,11 +154,13 @@ function ProgressTree({ progress, tenantId, adminMemberId, memberId, onRefresh }
 
 // ── Course Row ────────────────────────────────────────────────────────────────
 
-function CourseRow({ course, tenantId, adminMemberId, memberId, onRefresh }: {
+function CourseRow({ course, tenantId, adminMemberId, memberId, token, canRecord, onRefresh }: {
   course: CourseProgress;
   tenantId: string;
   adminMemberId: string;
   memberId: string;
+  token: string;
+  canRecord: boolean;
   onRefresh: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -185,6 +196,8 @@ function CourseRow({ course, tenantId, adminMemberId, memberId, onRefresh }: {
               tenantId={tenantId}
               adminMemberId={adminMemberId}
               memberId={memberId}
+              token={token}
+              canRecord={canRecord}
               onRefresh={onRefresh}
             />
           ))}
@@ -196,11 +209,13 @@ function CourseRow({ course, tenantId, adminMemberId, memberId, onRefresh }: {
 
 // ── Module Row ────────────────────────────────────────────────────────────────
 
-function ModuleRow({ mod, tenantId, adminMemberId, memberId, onRefresh }: {
+function ModuleRow({ mod, tenantId, adminMemberId, memberId, token, canRecord, onRefresh }: {
   mod: CourseProgress['modules'][0];
   tenantId: string;
   adminMemberId: string;
   memberId: string;
+  token: string;
+  canRecord: boolean;
   onRefresh: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -231,6 +246,8 @@ function ModuleRow({ mod, tenantId, adminMemberId, memberId, onRefresh }: {
               tenantId={tenantId}
               adminMemberId={adminMemberId}
               memberId={memberId}
+              token={token}
+              canRecord={canRecord}
               onRefresh={onRefresh}
             />
           ))}
@@ -246,11 +263,13 @@ function ModuleRow({ mod, tenantId, adminMemberId, memberId, onRefresh }: {
 
 // ── Talk Row ──────────────────────────────────────────────────────────────────
 
-function TalkRow({ talk, tenantId, adminMemberId, memberId, onRefresh }: {
+function TalkRow({ talk, tenantId, adminMemberId, memberId, token, canRecord, onRefresh }: {
   talk: CourseProgress['modules'][0]['talks'][0];
   tenantId: string;
   adminMemberId: string;
   memberId: string;
+  token: string;
+  canRecord: boolean;
   onRefresh: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -262,7 +281,7 @@ function TalkRow({ talk, tenantId, adminMemberId, memberId, onRefresh }: {
     setFormError(null);
     startTransition(async () => {
       const result = await recordManualCompletionAction(
-        tenantId, adminMemberId, memberId, talk.talk_id, completedAt
+        token, tenantId, adminMemberId, memberId, talk.talk_id, completedAt
       );
       if (result.success) {
         setShowForm(false);
@@ -284,7 +303,7 @@ function TalkRow({ talk, tenantId, adminMemberId, memberId, onRefresh }: {
           )}
           <span className="text-sm text-zinc-700 dark:text-zinc-300">{talk.talk_name}</span>
         </div>
-        {!talk.completed && (
+        {!talk.completed && canRecord && (
           <button
             onClick={() => { setShowForm(s => !s); setFormError(null); }}
             className="ml-2 rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
@@ -294,7 +313,7 @@ function TalkRow({ talk, tenantId, adminMemberId, memberId, onRefresh }: {
         )}
       </div>
 
-      {showForm && !talk.completed && (
+      {showForm && !talk.completed && canRecord && (
         <div className="mb-2 ml-5 flex items-end gap-2 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
           <div className="flex flex-col gap-1">
             <label className="text-xs text-zinc-500">Completion date</label>
