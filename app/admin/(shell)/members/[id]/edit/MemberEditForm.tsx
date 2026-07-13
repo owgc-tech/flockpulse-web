@@ -145,7 +145,11 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
           <label className={labelClass}>Role</label>
           <select className={inputClass} value={role} onChange={e => setRole(e.target.value as MemberRole)}>
             <option value="MEMBER">Member</option>
+            <option value="PASTORAL_LEADER">Pastoral Leader</option>
             <option value="LEADER">Leader</option>
+            <option value="COMMUNITY_SERVANT">Community Servant</option>
+            <option value="COORDINATOR">Coordinator</option>
+            <option value="SR_COORDINATOR">Sr. Coordinator</option>
             <option value="ADMIN">Admin</option>
           </select>
         </div>
