@@ -3,6 +3,10 @@ export type ConfirmationDecision = 'CONFIRM' | 'REJECT';
 export interface PendingConfirmationRow {
   self_report_id: string;
   event_id: string;
+  event_name: string;
+  event_start_datetime: string;
+  event_end_datetime: string;
+  event_location_name: string;
   member_id: string;
   member_first_name: string;
   member_last_name: string;
