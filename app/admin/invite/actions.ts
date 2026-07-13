@@ -30,6 +30,10 @@ export interface InviteActionState {
   error?: string;
 }
 
+const VALID_INVITE_ROLES: MemberRole[] = [
+  'MEMBER', 'PASTORAL_LEADER', 'LEADER', 'COMMUNITY_SERVANT', 'COORDINATOR', 'SR_COORDINATOR', 'ADMIN',
+];
+
 export async function sendInviteAction(
   token: string,
   _prev: InviteActionState,
@@ -43,7 +47,7 @@ export async function sendInviteAction(
   const groupId = (formData.get('groupId') as string) || null;
 
   if (!email || !email.includes('@')) return { error: 'A valid email is required' };
-  if (!['ADMIN', 'LEADER', 'MEMBER'].includes(role)) return { error: 'Invalid role' };
+  if (!VALID_INVITE_ROLES.includes(role)) return { error: 'Invalid role' };
 
   try {
     const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/register/set-password`;
