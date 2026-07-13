@@ -75,13 +75,35 @@ export async function getPendingConfirmations(
     rsvpMap.set(`${r.event_id}:${r.member_id}`, { rsvp_status: r.rsvp_status, rsvp_reason: r.rsvp_reason });
   }
 
+  // DIP-FP-99-adj-1: PendingConfirmationRow never carried event info before
+  // this — only event_id — even though eventIds (above) was already
+  // collected for the RSVP fetch. Joined in here the same tenant-scoped way
+  // as every other query in this function.
+  const { data: eventData, error: eventError } = await serviceClient()
+    .from('events')
+    .select('id, name, start_datetime, end_datetime, location_name')
+    .eq('tenant_id', tenantId)
+    .in('id', eventIds);
+
+  if (eventError) throw eventError;
+
+  const eventMap = new Map<string, { name: string; start_datetime: string; end_datetime: string; location_name: string }>();
+  for (const e of (eventData ?? []) as { id: string; name: string; start_datetime: string; end_datetime: string; location_name: string }[]) {
+    eventMap.set(e.id, e);
+  }
+
   return rows.map(row => {
     const member = row['members'] as { first_name: string; last_name: string } | null;
     const rsvp   = rsvpMap.get(`${row['event_id']}:${row['member_id']}`);
+    const event  = eventMap.get(row['event_id'] as string);
 
     return {
       self_report_id:    row['id'] as string,
       event_id:          row['event_id'] as string,
+      event_name:            event?.name ?? '',
+      event_start_datetime:  event?.start_datetime ?? '',
+      event_end_datetime:    event?.end_datetime ?? '',
+      event_location_name:   event?.location_name ?? '',
       member_id:         row['member_id'] as string,
       member_first_name: member?.first_name ?? '',
       member_last_name:  member?.last_name  ?? '',
