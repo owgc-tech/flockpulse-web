@@ -92,6 +92,13 @@ export async function createMember(input: CreateMemberInput) {
   return data;
 }
 
+// DIP-FP-113-adj-2: role edits from this endpoint previously only updated the
+// members row — the viewer's JWT app_metadata.role (what every RLS policy and
+// requireRole() check actually reads) stayed stale until their next natural
+// token refresh. Syncing it here follows the exact same get-then-merge-then-
+// write pattern already used by invitation.service.ts and
+// registration.service.ts, so tenant_id/member_id/group_id already set on the
+// auth user are preserved rather than clobbered.
 export async function updateMember(id: string, tenantId: string, input: UpdateMemberInput) {
   const update: Record<string, unknown> = {};
   if (input.firstName !== undefined) update.first_name = input.firstName;
@@ -99,13 +106,15 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
   if (input.email !== undefined) update.email = input.email;
   if (input.role !== undefined) update.role = input.role;
 
-  const { data, error } = await serviceClient()
+  const db = serviceClient();
+
+  const { data, error } = await db
     .from('members')
     .update(update)
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .select('id, email, first_name, last_name, role')
+    .select('id, user_id, email, first_name, last_name, role')
     .single();
 
   // PGRST116 = PostgREST "no rows returned" for .single() — a nonexistent id, a foreign-tenant
@@ -119,7 +128,27 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
     }
     throw error;
   }
-  return data;
+
+  if (input.role !== undefined) {
+    const { data: userData, error: getUserError } = await db.auth.admin.getUserById(data.user_id);
+    if (getUserError || !userData?.user) {
+      const err = new Error('Member updated but role metadata sync failed: could not load auth user') as Error & { code: string };
+      err.code = 'METADATA_WRITE_FAILED';
+      throw err;
+    }
+    const existingMeta = userData.user.app_metadata as Record<string, unknown>;
+    const { error: metaError } = await db.auth.admin.updateUserById(data.user_id, {
+      app_metadata: { ...existingMeta, role: input.role },
+    });
+    if (metaError) {
+      const err = new Error(`Member updated but role metadata sync failed: ${metaError.message}`) as Error & { code: string };
+      err.code = 'METADATA_WRITE_FAILED';
+      throw err;
+    }
+  }
+
+  const { user_id: _userId, ...memberWithoutUserId } = data;
+  return memberWithoutUserId;
 }
 
 export interface UpdateMyProfileInput {
