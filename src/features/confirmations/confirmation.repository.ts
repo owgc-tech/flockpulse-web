@@ -25,7 +25,8 @@ export async function getAssignedMemberIds(
 
 export async function getPendingConfirmations(
   tenantId: string,
-  memberIdFilter: string[] | null
+  memberIdFilter: string[] | null,
+  excludeMemberId: string
 ): Promise<PendingConfirmationRow[]> {
   if (memberIdFilter !== null && memberIdFilter.length === 0) return [];
 
@@ -45,7 +46,8 @@ export async function getPendingConfirmations(
       members!member_id ( first_name, last_name )
     `)
     .eq('tenant_id', tenantId)
-    .eq('confirmation_status', 'PENDING_CONFIRMATION');
+    .eq('confirmation_status', 'PENDING_CONFIRMATION')
+    .neq('member_id', excludeMemberId);
 
   if (memberIdFilter !== null) {
     query = query.in('member_id', memberIdFilter);
