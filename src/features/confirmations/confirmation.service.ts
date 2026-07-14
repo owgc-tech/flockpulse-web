@@ -41,7 +41,7 @@ export async function listPendingConfirmations(
   }
   // ADMIN: memberIdFilter stays null → no filter applied
 
-  return getPendingConfirmations(tenantId, memberIdFilter);
+  return getPendingConfirmations(tenantId, memberIdFilter, callerId);
 }
 
 export async function submitConfirmation(
@@ -57,6 +57,11 @@ export async function submitConfirmation(
   const selfReport = await getSelfReportForConfirmation(tenantId, selfReportId);
   if (!selfReport) {
     throw serviceError('NOT_FOUND', 'Self-report not found');
+  }
+
+  // Nobody confirms their own self-report — applies equally to Leader and Admin.
+  if (selfReport.member_id === callerId) {
+    throw serviceError('FORBIDDEN_SCOPE', 'You cannot confirm your own self-report');
   }
 
   // Step 2: Leader scope check — Leader can only confirm for assigned members.
