@@ -351,7 +351,9 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
 
 // Reuse get_event_effective_status() per row rather than reimplementing the
 // DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation logic in TypeScript.
-async function attachEffectiveStatus<T extends { id: string }>(events: T[]): Promise<(T & { effective_status: string })[]> {
+// DIP-FP-119-web: exported so self-report.repository.ts can reuse it rather
+// than duplicating status-derivation logic.
+export async function attachEffectiveStatus<T extends { id: string }>(events: T[]): Promise<(T & { effective_status: string })[]> {
   const db = serviceClient();
   return Promise.all(
     events.map(async (e) => {

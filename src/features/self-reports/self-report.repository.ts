@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import type { SelfReportRow } from './self-report.types';
+import { attachEffectiveStatus } from '@/src/features/events/service';
+import type { SelfReportRow, PendingSelfReportRow } from './self-report.types';
 
 function serviceClient() {
   return createClient(
@@ -105,6 +106,63 @@ export async function callSubmitSelfReportNo(
 
   const row = Array.isArray(data) ? data[0] : data;
   return row as { self_report_id: string; attendance_id: string; submitted_at: string };
+}
+
+// DIP-FP-119-web: mirrors listEventsForMember()'s event_attendees -> events ->
+// attachEffectiveStatus() pattern (events/service.ts), then narrows to
+// COMPLETED (excludes CANCELLED for free — see DIP Grounding Check) and
+// bulk-excludes events this member has already self-reported for.
+export async function getPendingSelfReports(
+  tenantId: string,
+  memberId: string
+): Promise<PendingSelfReportRow[]> {
+  const db = serviceClient();
+
+  const { data: attendeeRows, error: attendeeError } = await db
+    .from('event_attendees')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId);
+
+  if (attendeeError) throw attendeeError;
+
+  const eventIds = (attendeeRows ?? []).map((r: { event_id: string }) => r.event_id);
+  if (eventIds.length === 0) return [];
+
+  const { data: events, error: eventsError } = await db
+    .from('events')
+    .select('id, name, status, start_datetime, end_datetime, location_name')
+    .eq('tenant_id', tenantId)
+    .in('id', eventIds);
+
+  if (eventsError) throw eventsError;
+
+  const withEffectiveStatus = await attachEffectiveStatus(events ?? []);
+  const completed = withEffectiveStatus.filter((e) => e.effective_status === 'COMPLETED');
+  if (completed.length === 0) return [];
+
+  const { data: existingReports, error: reportsError } = await db
+    .from('member_attendance_reports')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .in('event_id', completed.map((e) => e.id));
+
+  if (reportsError) throw reportsError;
+
+  const reportedEventIds = new Set(
+    (existingReports ?? []).map((r: { event_id: string }) => r.event_id)
+  );
+
+  return completed
+    .filter((e) => !reportedEventIds.has(e.id))
+    .map((e) => ({
+      event_id: e.id,
+      event_name: e.name,
+      event_start_datetime: e.start_datetime,
+      event_end_datetime: e.end_datetime,
+      event_location_name: e.location_name,
+    }));
 }
 
 export async function getSelfReportById(id: string): Promise<SelfReportRow> {

@@ -35,3 +35,12 @@ export interface SelfReportResponse {
   confirmation_status: ConfirmationStatus;
   submitted_at: string;
 }
+
+// DIP-FP-119-web: shape for GET /api/self-reports/pending.
+export interface PendingSelfReportRow {
+  event_id: string;
+  event_name: string;
+  event_start_datetime: string;
+  event_end_datetime: string;
+  event_location_name: string;
+}
