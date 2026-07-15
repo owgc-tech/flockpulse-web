@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
-import { getEventById } from '@/src/features/events/service';
+import { getEventById, listMeetingResources } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
@@ -30,10 +30,11 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     redirect('/admin/events');
   }
 
-  const [eventTypes, groups, members] = await Promise.all([
+  const [eventTypes, groups, members, meetingResources] = await Promise.all([
     listEventTypes(tenantId),
     listGroups(tenantId),
     listMembers(tenantId),
+    listMeetingResources(tenantId),
   ]);
 
   const canManage = isAdminTier(role) || event.created_by_member_id === memberId;
@@ -41,7 +42,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-3xl">
-        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} token={token} canManage={canManage} />
+        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} meetingResources={meetingResources} token={token} canManage={canManage} />
       </div>
     </div>
   );

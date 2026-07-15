@@ -20,7 +20,7 @@ export const POST = (req: NextRequest) =>
 
     const {
       eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
-      prayerLeaderMemberId, foodAssignment,
+      prayerLeaderMemberId, foodAssignment, onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
     } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
@@ -40,6 +40,9 @@ export const POST = (req: NextRequest) =>
         talkId,
         prayerLeaderMemberId,
         foodAssignment,
+        onlineMeetingResourceId,
+        onlineMeetingUrl,
+        onlineMeetingPlatformLabel,
         actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event }, { status: 201 });
@@ -48,6 +51,17 @@ export const POST = (req: NextRequest) =>
       if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
       if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
       if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
+      // DIP-FP-120-web: 409 with the structured conflict detail (when the
+      // pre-check found one) so the client can render "This account is
+      // already booked for [Event Name] on [date/time] by [Name]" — the rare
+      // race-condition path (meetingResourceRaceError()) has no `conflict`
+      // detail, only the generic message, and that's expected.
+      if (code === 'MEETING_RESOURCE_CONFLICT') {
+        return NextResponse.json(
+          { error: { code, message: (err as Error).message, conflict: (err as { conflict?: unknown }).conflict ?? null } },
+          { status: 409 }
+        );
+      }
       throw err;
     }
   }));

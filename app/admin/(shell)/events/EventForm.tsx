@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   EventDetailRow, EventTypeOption, GroupOption, MemberOption,
-  CourseOption, ModuleOption, TalkOption, SeriesFrequency,
+  CourseOption, ModuleOption, TalkOption, SeriesFrequency, MeetingResourceOption,
 } from '@/src/features/events/event.types';
 import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS } from '@/src/features/events/event.types';
 import RepeatsFields from './RepeatsFields';
@@ -48,6 +48,22 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [foodGroupIds, setFoodGroupIds] = useState<string[]>(initialEvent?.food_assignment?.group_ids ?? []);
   const [foodMemberIds, setFoodMemberIds] = useState<string[]>(initialEvent?.food_assignment?.member_ids ?? []);
 
+  // DIP-FP-120-web: online meeting — additive to the still-required physical
+  // location above, never a replacement. Tracked-Zoom and freeform-other are
+  // mutually exclusive at the app layer (a single mode toggle), not a DB
+  // constraint — see Grounding Check.
+  type OnlineMeetingMode = 'NONE' | 'ZOOM' | 'OTHER';
+  const initialOnlineMeetingMode: OnlineMeetingMode = initialEvent?.online_meeting_resource_id
+    ? 'ZOOM'
+    : initialEvent?.online_meeting_url || initialEvent?.online_meeting_platform_label
+      ? 'OTHER'
+      : 'NONE';
+  const [onlineMeetingMode, setOnlineMeetingMode] = useState<OnlineMeetingMode>(initialOnlineMeetingMode);
+  const [onlineMeetingResourceId, setOnlineMeetingResourceId] = useState(initialEvent?.online_meeting_resource_id ?? '');
+  const [onlineMeetingUrl, setOnlineMeetingUrl] = useState(initialEvent?.online_meeting_url ?? '');
+  const [onlineMeetingPlatformLabel, setOnlineMeetingPlatformLabel] = useState(initialEvent?.online_meeting_platform_label ?? '');
+  const [meetingResources, setMeetingResources] = useState<MeetingResourceOption[]>([]);
+
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [modules, setModules] = useState<ModuleOption[]>([]);
   const [talks, setTalks] = useState<TalkOption[]>([]);
@@ -68,6 +84,16 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
   const selectedEventType = eventTypes.find(t => t.id === eventTypeId);
   const isFormation = selectedEventType?.code === 'FORMATION';
+
+  // DIP-FP-120-web: meeting_resources dropdown options — loaded unconditionally
+  // (unlike Course, which only loads for the Formation event type) since Online
+  // Meeting has no event-type gating.
+  useEffect(() => {
+    fetch('/api/meeting-resources', { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(body => setMeetingResources(body.data ?? []))
+      .catch(() => setMeetingResources([]));
+  }, [token]);
 
   // Load Course list once, only when the Formation cascade is shown.
   useEffect(() => {
@@ -168,6 +194,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           // boundary), so these are only ever sent on the non-series create/update path.
           prayerLeaderMemberId: prayerLeaderMemberId || null,
           foodAssignment: { group_ids: foodGroupIds, member_ids: foodMemberIds },
+          // DIP-FP-120-web: same series-scope boundary as Prayer Leader/Food
+          // Assignment above — not templated onto series-generated occurrences.
+          onlineMeetingResourceId: onlineMeetingMode === 'ZOOM' ? (onlineMeetingResourceId || null) : null,
+          onlineMeetingUrl: onlineMeetingMode === 'OTHER' ? (onlineMeetingUrl.trim() || null) : null,
+          onlineMeetingPlatformLabel: onlineMeetingMode === 'OTHER' ? (onlineMeetingPlatformLabel.trim() || null) : null,
         };
 
     try {
@@ -180,7 +211,20 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error?.message ?? 'Failed to save event');
+        // DIP-FP-120-web: MEETING_RESOURCE_CONFLICT's `conflict` field carries
+        // the structured detail (conflicting event name/time/booker) the
+        // pre-check found — render that inline instead of the bare message
+        // when present. It's null for the rare race-condition path, where
+        // body.error.message is already the right generic fallback text.
+        const conflict = body?.error?.conflict;
+        if (body?.error?.code === 'MEETING_RESOURCE_CONFLICT' && conflict) {
+          setError(
+            `This account is already booked for "${conflict.eventName}" on ` +
+            `${new Date(conflict.startDatetime).toLocaleString()} by ${conflict.bookedByName}.`
+          );
+        } else {
+          setError(body?.error?.message ?? 'Failed to save event');
+        }
         setIsPending(false);
         return;
       }
@@ -276,6 +320,65 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           >
             Preview navigation link →
           </a>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Online Meeting <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — additive to the location above, not a replacement)</span>
+        </p>
+        <div className="flex gap-4">
+          {(['NONE', 'ZOOM', 'OTHER'] as const).map(mode => (
+            <label key={mode} className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+              <input
+                type="radio"
+                name="onlineMeetingMode"
+                checked={onlineMeetingMode === mode}
+                onChange={() => setOnlineMeetingMode(mode)}
+              />
+              {mode === 'NONE' ? 'None' : mode === 'ZOOM' ? 'Zoom account' : 'Other platform'}
+            </label>
+          ))}
+        </div>
+
+        {onlineMeetingMode === 'ZOOM' && (
+          <div className={fieldClass}>
+            <label className={labelClass}>Zoom account</label>
+            <select
+              className={inputClass}
+              value={onlineMeetingResourceId}
+              onChange={e => setOnlineMeetingResourceId(e.target.value)}
+              required
+            >
+              <option value="" disabled>Select…</option>
+              {meetingResources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {onlineMeetingMode === 'OTHER' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className={fieldClass}>
+              <label className={labelClass}>Platform name</label>
+              <input
+                className={inputClass}
+                value={onlineMeetingPlatformLabel}
+                onChange={e => setOnlineMeetingPlatformLabel(e.target.value)}
+                placeholder="e.g. Google Meet"
+                required
+              />
+            </div>
+            <div className={fieldClass}>
+              <label className={labelClass}>Join link</label>
+              <input
+                className={inputClass}
+                value={onlineMeetingUrl}
+                onChange={e => setOnlineMeetingUrl(e.target.value)}
+                placeholder="https://…"
+                required
+              />
+            </div>
+          </div>
         )}
       </div>
 

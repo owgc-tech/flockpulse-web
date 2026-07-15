@@ -42,6 +42,27 @@ async function validatePrayerLeaderMemberId(memberId: string, tenantId: string):
   }
 }
 
+export interface MeetingResourceOption {
+  id: string;
+  name: string;
+  join_url: string;
+}
+
+// DIP-FP-120-web: tenant-scoped list for the "Online Meeting" dropdown —
+// any authenticated member can read it (GET /api/meeting-resources has no
+// role restriction), so this returns every meeting_resources row for the
+// tenant, no filtering.
+export async function listMeetingResources(tenantId: string): Promise<MeetingResourceOption[]> {
+  const { data, error } = await serviceClient()
+    .from('meeting_resources')
+    .select('id, name, join_url')
+    .eq('tenant_id', tenantId)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export interface CreateEventInput {
   tenantId: string;
   eventTypeId: string;
@@ -55,7 +76,90 @@ export interface CreateEventInput {
   talkId?: string | null;
   prayerLeaderMemberId?: string | null;
   foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
+  onlineMeetingResourceId?: string | null;
+  onlineMeetingUrl?: string | null;
+  onlineMeetingPlatformLabel?: string | null;
   actorMemberId?: string | null;
+}
+
+// DIP-FP-120-web: the pre-check that gives a normal double-booking attempt a
+// genuinely useful message (conflicting event name/time/booker) — the
+// EXCLUDE constraint itself remains the real, race-condition-free
+// enforcement (see migration 20260717000040), but a raw 23P01 from that
+// constraint carries no row detail, only a SQLSTATE.
+export interface MeetingResourceConflict {
+  eventId: string;
+  eventName: string;
+  startDatetime: string;
+  endDatetime: string;
+  bookedByName: string;
+}
+
+export async function findMeetingResourceConflict(
+  tenantId: string,
+  resourceId: string,
+  startDatetime: string,
+  endDatetime: string,
+  excludeEventId?: string
+): Promise<MeetingResourceConflict | null> {
+  const db = serviceClient();
+
+  let query = db
+    .from('events')
+    .select('id, name, start_datetime, end_datetime, members!created_by_member_id(first_name, last_name)')
+    .eq('tenant_id', tenantId)
+    .eq('online_meeting_resource_id', resourceId)
+    .neq('status', 'CANCELLED')
+    .lt('start_datetime', endDatetime)
+    .gt('end_datetime', startDatetime);
+
+  if (excludeEventId) {
+    query = query.neq('id', excludeEventId);
+  }
+
+  const { data, error } = await query.limit(1);
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const row = data[0] as {
+    id: string;
+    name: string;
+    start_datetime: string;
+    end_datetime: string;
+    members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
+  };
+  const member = Array.isArray(row.members) ? row.members[0] : row.members;
+
+  return {
+    eventId: row.id,
+    eventName: row.name,
+    startDatetime: row.start_datetime,
+    endDatetime: row.end_datetime,
+    bookedByName: member ? `${member.first_name} ${member.last_name}` : 'Unknown',
+  };
+}
+
+function meetingResourceConflictError(conflict: MeetingResourceConflict): Error & { code: string; conflict: MeetingResourceConflict } {
+  const err = new Error(
+    `This account is already booked for ${conflict.eventName} on ${conflict.startDatetime} by ${conflict.bookedByName}`
+  ) as Error & { code: string; conflict: MeetingResourceConflict };
+  err.code = 'MEETING_RESOURCE_CONFLICT';
+  err.conflict = conflict;
+  return err;
+}
+
+// The rare race-condition path: two simultaneous submissions both pass the
+// pre-check, and the DB's EXCLUDE constraint (the real enforcement) rejects
+// the second one at write time. No conflicting-event detail is available
+// here — that's expected, not a bug to chase (see DIP Grounding Check).
+function isMeetingResourceExclusionViolation(error: { code?: string }): boolean {
+  return error.code === '23P01';
+}
+
+function meetingResourceRaceError(): Error & { code: string } {
+  const err = new Error('This account was just booked by someone else — please try again') as Error & { code: string };
+  err.code = 'MEETING_RESOURCE_CONFLICT';
+  return err;
 }
 
 export async function createEvent(input: CreateEventInput) {
@@ -74,6 +178,16 @@ export async function createEvent(input: CreateEventInput) {
     await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, input.tenantId);
   }
 
+  // DIP-FP-120-web: pre-check gives a genuinely useful conflict message in
+  // the normal case; the EXCLUDE constraint (Section 7 below) is the real,
+  // race-condition-free enforcement.
+  if (input.onlineMeetingResourceId) {
+    const conflict = await findMeetingResourceConflict(
+      input.tenantId, input.onlineMeetingResourceId, input.startDatetime, input.endDatetime
+    );
+    if (conflict) throw meetingResourceConflictError(conflict);
+  }
+
   const { data, error } = await serviceClient().rpc('insert_event_with_audit', {
     p_tenant_id: input.tenantId,
     p_event_type_id: input.eventTypeId,
@@ -87,10 +201,16 @@ export async function createEvent(input: CreateEventInput) {
     p_talk_id: input.talkId ?? null,
     p_prayer_leader_member_id: input.prayerLeaderMemberId ?? null,
     p_food_assignment: input.foodAssignment ?? null,
+    p_online_meeting_resource_id: input.onlineMeetingResourceId ?? null,
+    p_online_meeting_url: input.onlineMeetingUrl ?? null,
+    p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
-  if (error) throw error;
+  if (error) {
+    if (isMeetingResourceExclusionViolation(error)) throw meetingResourceRaceError();
+    throw error;
+  }
 
   const row = Array.isArray(data) ? data[0] : data;
 
@@ -109,7 +229,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, created_at, created_by_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at, created_by_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -187,6 +307,9 @@ export interface UpdateEventInput {
   talkId?: string | null;
   prayerLeaderMemberId?: string | null;
   foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
+  onlineMeetingResourceId?: string | null;
+  onlineMeetingUrl?: string | null;
+  onlineMeetingPlatformLabel?: string | null;
   actorMemberId?: string | null;
 }
 
@@ -200,7 +323,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   // Fetch current event state.
   const { data: event, error: fetchError } = await db
     .from('events')
-    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target, created_by_member_id')
+    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target, created_by_member_id, online_meeting_resource_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -261,6 +384,24 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     throw err;
   }
 
+  // DIP-FP-120-web: pre-check runs against the *effective* resource
+  // (whichever this update leaves in place, whether or not this specific
+  // request touched onlineMeetingResourceId) and the effective new
+  // start/end computed above — update_event_with_audit()'s UPDATE rewrites
+  // every constraint-relevant column on every call regardless of which
+  // patch keys were provided, so the EXCLUDE constraint always re-validates
+  // the full row; this pre-check mirrors that so a time-only edit that now
+  // collides with another event's reservation still gets the detailed
+  // message instead of falling through to the generic race fallback.
+  const effectiveOnlineMeetingResourceId =
+    input.onlineMeetingResourceId !== undefined ? input.onlineMeetingResourceId : event.online_meeting_resource_id;
+  if (effectiveOnlineMeetingResourceId) {
+    const conflict = await findMeetingResourceConflict(
+      tenantId, effectiveOnlineMeetingResourceId, newStart, newEnd, id
+    );
+    if (conflict) throw meetingResourceConflictError(conflict);
+  }
+
   // Build the patch payload for update_event_with_audit().
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) patch.name = input.name;
@@ -273,6 +414,9 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
   if (input.prayerLeaderMemberId !== undefined) patch.prayer_leader_member_id = input.prayerLeaderMemberId;
   if (input.foodAssignment !== undefined) patch.food_assignment = input.foodAssignment;
+  if (input.onlineMeetingResourceId !== undefined) patch.online_meeting_resource_id = input.onlineMeetingResourceId;
+  if (input.onlineMeetingUrl !== undefined) patch.online_meeting_url = input.onlineMeetingUrl;
+  if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,
@@ -281,7 +425,10 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
-  if (updateError) throw updateError;
+  if (updateError) {
+    if (isMeetingResourceExclusionViolation(updateError)) throw meetingResourceRaceError();
+    throw updateError;
+  }
 
   const updated = Array.isArray(updateRows) ? updateRows[0] : updateRows;
 
@@ -369,7 +516,7 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
@@ -399,7 +546,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -441,7 +588,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, created_by_member_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_by_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
