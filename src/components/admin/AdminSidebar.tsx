@@ -12,6 +12,7 @@ const NAV = [
   { href: '/admin/events', label: 'Events', adminOnly: false },
   { href: '/admin/formation', label: 'Formation', adminOnly: true },
   { href: '/admin/formation-progress', label: 'Formation Progress', adminOnly: false },
+  { href: '/admin/reports', label: 'Reports', adminOnly: false },
   { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   { href: '/admin/community', label: 'Community', adminOnly: false },
   {
