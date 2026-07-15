@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
+import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, MeetingResourceOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
 import { getMapsUrl } from '@/src/features/events/event.types';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   eventTypes: EventTypeOption[];
   groups: GroupOption[];
   members: MemberOption[];
+  meetingResources: MeetingResourceOption[];
   token: string;
   // DIP-FP-114-web: Admin-tier OR the event's own creator. Leader-tier viewing
   // an event they didn't create gets the roster/details read-only, no mutation controls.
@@ -31,7 +32,7 @@ const RESPONSE_LABELS = {
   NOT_RESPONDED: 'Not responded',
 } as const;
 
-export default function EventDetail({ event, eventTypes, groups, members, token, canManage }: Props) {
+export default function EventDetail({ event, eventTypes, groups, members, meetingResources, token, canManage }: Props) {
   const router = useRouter();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterFilter, setRosterFilter] = useState<'ALL' | keyof typeof RESPONSE_LABELS>('ALL');
@@ -54,6 +55,15 @@ export default function EventDetail({ event, eventTypes, groups, members, token,
   // FP-107: always-optional, no event-type gating. A cross-tenant id inside food_assignment
   // (which has no write-time trigger, same precedent as target) is simply not found in the
   // members/groups maps here and silently excluded from display — not rejected.
+  // DIP-FP-120-web: tracked-Zoom resolves through the meetingResources list
+  // (join_url lives on meeting_resources, not on the event row); freeform
+  // "other platform" carries its own url/label directly on the event.
+  const meetingResource = event.online_meeting_resource_id
+    ? meetingResources.find(r => r.id === event.online_meeting_resource_id)
+    : null;
+  const onlineMeetingLabel = meetingResource?.name ?? event.online_meeting_platform_label;
+  const onlineMeetingLink = meetingResource?.join_url ?? event.online_meeting_url;
+
   const prayerLeader = event.prayer_leader_member_id ? memberById.get(event.prayer_leader_member_id) : null;
   const foodGroupNames = (event.food_assignment?.group_ids ?? []).map(id => groupById.get(id)?.name).filter((n): n is string => !!n);
   const foodMemberNames = (event.food_assignment?.member_ids ?? [])
@@ -180,6 +190,16 @@ export default function EventDetail({ event, eventTypes, groups, members, token,
               <a href={getMapsUrl(event.location_address, event.location_url)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
                 {event.location_address}
               </a>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500 dark:text-zinc-400">Online Meeting</dt>
+            <dd className="text-zinc-900 dark:text-zinc-100">
+              {onlineMeetingLink ? (
+                <a href={onlineMeetingLink} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
+                  {onlineMeetingLabel ?? 'Join link'}
+                </a>
+              ) : '—'}
             </dd>
           </div>
           <div>

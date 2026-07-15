@@ -21,6 +21,13 @@ export interface EventListRow {
   // Always-optional, no event-type gating (FP-107) — purely informational assignment metadata.
   prayer_leader_member_id: string | null;
   food_assignment: EventTarget | null;
+  // DIP-FP-120-web: online_meeting_resource_id (tracked Zoom account) and
+  // online_meeting_url/online_meeting_platform_label (freeform "other
+  // platform") are mutually exclusive at the app layer only — additive to
+  // the still-required physical location above, never a replacement for it.
+  online_meeting_resource_id: string | null;
+  online_meeting_url: string | null;
+  online_meeting_platform_label: string | null;
   created_at: string;
 }
 
@@ -38,6 +45,25 @@ export interface EventTypeOption {
   id: string;
   name: string;
   code: string;
+}
+
+// Matches flockpulse-web's GET /api/meeting-resources response exactly.
+export interface MeetingResourceOption {
+  id: string;
+  name: string;
+  join_url: string;
+}
+
+// DIP-FP-120-web: shape of the { error: { code, message, conflict } } body
+// a 409 MEETING_RESOURCE_CONFLICT response carries — conflict is null for
+// the rare race-condition path (see events/service.ts's
+// meetingResourceRaceError()), populated for the normal pre-check path.
+export interface MeetingResourceConflictDetail {
+  eventId: string;
+  eventName: string;
+  startDatetime: string;
+  endDatetime: string;
+  bookedByName: string;
 }
 
 export interface GroupOption {
