@@ -219,11 +219,15 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         const conflict = body?.error?.conflict;
         if (body?.error?.code === 'MEETING_RESOURCE_CONFLICT' && conflict) {
           setError(
-            `This account is already booked for "${conflict.eventName}" on ` +
+            `Zoom account selected is already booked for "${conflict.eventName}" on ` +
             `${new Date(conflict.startDatetime).toLocaleString()} by ${conflict.bookedByName}.`
           );
+          // FP-120-adj-1: scroll the error banner into view — it renders at
+          // the top of the form, easy to miss on a long form without this.
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           setError(body?.error?.message ?? 'Failed to save event');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         setIsPending(false);
         return;
