@@ -15,6 +15,7 @@ const NAV = [
   { href: '/admin/reports', label: 'Reports', adminOnly: false },
   { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   { href: '/admin/community', label: 'Community', adminOnly: false },
+  { href: '/admin/audit-logs', label: 'Audit Logs', adminOnly: true },
   {
     href: '/admin/restore',
     label: 'Record Restorations',
