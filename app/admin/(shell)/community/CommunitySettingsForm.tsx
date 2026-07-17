@@ -13,6 +13,9 @@ interface Props {
   initialDescription: string | null;
   initialAttendanceWindowHours: number;
   initialRsvpClosureDaysDefault: number;
+  initialRsvpNudgeDays1: number;
+  initialRsvpNudgeDays2: number;
+  initialRsvpNudgeDays3: number;
   // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
   canEdit: boolean;
 }
@@ -23,7 +26,8 @@ const NAME_MAX = 150;
 
 export default function CommunitySettingsForm({
   token, communityName, initialLogoUrl, initialTagline, initialDescription,
-  initialAttendanceWindowHours, initialRsvpClosureDaysDefault, canEdit,
+  initialAttendanceWindowHours, initialRsvpClosureDaysDefault,
+  initialRsvpNudgeDays1, initialRsvpNudgeDays2, initialRsvpNudgeDays3, canEdit,
 }: Props) {
   const [name, setName] = useState(communityName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
@@ -31,6 +35,9 @@ export default function CommunitySettingsForm({
   const [description, setDescription] = useState(initialDescription ?? '');
   const [attendanceWindowHours, setAttendanceWindowHours] = useState(String(initialAttendanceWindowHours));
   const [rsvpClosureDaysDefault, setRsvpClosureDaysDefault] = useState(String(initialRsvpClosureDaysDefault));
+  const [rsvpNudgeDays1, setRsvpNudgeDays1] = useState(String(initialRsvpNudgeDays1));
+  const [rsvpNudgeDays2, setRsvpNudgeDays2] = useState(String(initialRsvpNudgeDays2));
+  const [rsvpNudgeDays3, setRsvpNudgeDays3] = useState(String(initialRsvpNudgeDays3));
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSaved, setNameSaved] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -272,6 +279,51 @@ export default function CommunitySettingsForm({
               <p className="text-xs text-zinc-400">RSVP closes this many days before an event starts — 0 = at event start</p>
             </div>
 
+            <div className="flex flex-col gap-2">
+              <label className={labelClass}>RSVP nudge reminders (days before closure)</label>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-zinc-500 dark:text-zinc-400">1st nudge</label>
+                  <input
+                    name="rsvpNudgeDays1"
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={rsvpNudgeDays1}
+                    onChange={e => { setRsvpNudgeDays1(e.target.value); setRsvpSettingsSaved(false); }}
+                    className={inputClass}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-zinc-500 dark:text-zinc-400">2nd nudge</label>
+                  <input
+                    name="rsvpNudgeDays2"
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={rsvpNudgeDays2}
+                    onChange={e => { setRsvpNudgeDays2(e.target.value); setRsvpSettingsSaved(false); }}
+                    className={inputClass}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-zinc-500 dark:text-zinc-400">3rd nudge</label>
+                  <input
+                    name="rsvpNudgeDays3"
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={rsvpNudgeDays3}
+                    onChange={e => { setRsvpNudgeDays3(e.target.value); setRsvpSettingsSaved(false); }}
+                    className={inputClass}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <label className={labelClass}>Attendance Reporting and Confirmation Window (hours)</label>
               <input
@@ -304,6 +356,10 @@ export default function CommunitySettingsForm({
             <div>
               <p className="text-zinc-500 dark:text-zinc-400">RSVP closure default (days)</p>
               <p>{rsvpClosureDaysDefault}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">RSVP nudge reminders (days before closure)</p>
+              <p>{rsvpNudgeDays1}, {rsvpNudgeDays2}, {rsvpNudgeDays3}</p>
             </div>
             <div>
               <p className="text-zinc-500 dark:text-zinc-400">Attendance Reporting and Confirmation Window (hours)</p>

@@ -7,6 +7,7 @@ import {
   checkBlockedByGuard,
   upsertRsvp,
 } from './rsvp.repository';
+import { computeRsvpClosureAt } from './rsvp-window';
 import type { RsvpResponse, SubmitRsvpInput } from './rsvp.types';
 
 function serviceError(code: string, message: string): Error & { code: string } {
@@ -58,10 +59,9 @@ export async function submitRsvp(
     getEventClosureInfo(eventId),
     getTenantRsvpClosureDaysDefault(tenantId),
   ]);
-  const closureDays = closureInfo?.rsvp_closure_days ?? tenantDefaultDays;
   if (closureInfo) {
-    const cutoff = new Date(closureInfo.start_datetime).getTime() - closureDays * 24 * 60 * 60 * 1000;
-    if (Date.now() >= cutoff) {
+    const closureAt = computeRsvpClosureAt(closureInfo.start_datetime, closureInfo.rsvp_closure_days, tenantDefaultDays);
+    if (Date.now() >= new Date(closureAt).getTime()) {
       throw serviceError('RSVP_CLOSED', 'RSVP window is closed for this event');
     }
   }
