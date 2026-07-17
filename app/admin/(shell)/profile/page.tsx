@@ -4,9 +4,9 @@ import { getMyProfile } from '@/src/features/members/service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import ProfileForm from './ProfileForm';
 
-// FP-135: standalone route (not under app/admin/(shell)) — reached via the
-// avatar popover's "View and Edit Profile" link, so it does its own auth
-// check the same way app/admin/mfa-enroll/page.tsx does.
+// FP-135: under app/admin/(shell) — inherits the shell's sidebar/banner chrome
+// and outer auth gate, matching every other admin page (Community, Reports,
+// Audit Logs). Reached via the avatar popover's "View and Edit Profile" link.
 export default async function ProfilePage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -22,12 +22,14 @@ export default async function ProfilePage() {
   const profile = await getMyProfile(memberId, tenantId);
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-zinc-50 px-4 py-16 dark:bg-black">
-      <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h1 className="mb-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">My Profile</h1>
-        <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          View and edit your personal details.
-        </p>
+    <div className="px-6 py-8">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-8">
+          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">My Profile</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            View and edit your personal details.
+          </p>
+        </div>
         <ProfileForm
           token={token}
           email={profile.email}
@@ -39,6 +41,6 @@ export default async function ProfilePage() {
           groups={profile.groups}
         />
       </div>
-    </main>
+    </div>
   );
 }
