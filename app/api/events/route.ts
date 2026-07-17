@@ -21,6 +21,7 @@ export const POST = (req: NextRequest) =>
     const {
       eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
       prayerLeaderMemberId, foodAssignment, onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
+      rsvpClosureDays,
     } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
@@ -43,12 +44,14 @@ export const POST = (req: NextRequest) =>
         onlineMeetingResourceId,
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,
+        rsvpClosureDays,
         actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event }, { status: 201 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
+      if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
       if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
       if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
       // DIP-FP-120-web: 409 with the structured conflict detail (when the

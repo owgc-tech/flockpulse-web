@@ -34,6 +34,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     const {
       name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
       prayerLeaderMemberId, foodAssignment, onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
+      rsvpClosureDays,
     } = body;
 
     try {
@@ -51,6 +52,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         onlineMeetingResourceId,
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,
+        rsvpClosureDays,
         actorMemberId: ctx.memberId,
       }, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
       return NextResponse.json({ data: event });
@@ -61,6 +63,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
       if (code === 'INVALID_STATE') return errorResponse('INVALID_STATE', (err as Error).message, 422);
       if (code === 'IMMUTABLE_FIELD') return errorResponse('IMMUTABLE_FIELD', (err as Error).message, 422);
       if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
+      if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
       if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
       // DIP-FP-120-web: see app/api/events/route.ts's POST handler for the
       // identical rationale — 409 with structured conflict detail when

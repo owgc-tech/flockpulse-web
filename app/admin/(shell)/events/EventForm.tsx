@@ -48,6 +48,14 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [foodGroupIds, setFoodGroupIds] = useState<string[]>(initialEvent?.food_assignment?.group_ids ?? []);
   const [foodMemberIds, setFoodMemberIds] = useState<string[]>(initialEvent?.food_assignment?.member_ids ?? []);
 
+  // FP-133: nullable per-event override of the tenant's RSVP closure default —
+  // empty string means "use the tenant default" (null on the wire).
+  const [rsvpClosureDays, setRsvpClosureDays] = useState(
+    initialEvent?.rsvp_closure_days !== undefined && initialEvent?.rsvp_closure_days !== null
+      ? String(initialEvent.rsvp_closure_days)
+      : ''
+  );
+
   // DIP-FP-120-web: online meeting — additive to the still-required physical
   // location above, never a replacement. Tracked-Zoom and freeform-other are
   // mutually exclusive at the app layer (a single mode toggle), not a DB
@@ -199,6 +207,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           onlineMeetingResourceId: onlineMeetingMode === 'ZOOM' ? (onlineMeetingResourceId || null) : null,
           onlineMeetingUrl: onlineMeetingMode === 'OTHER' ? (onlineMeetingUrl.trim() || null) : null,
           onlineMeetingPlatformLabel: onlineMeetingMode === 'OTHER' ? (onlineMeetingPlatformLabel.trim() || null) : null,
+          // FP-133: same series-scope boundary as above — not templated onto
+          // series-generated occurrences.
+          rsvpClosureDays: rsvpClosureDays.trim() === '' ? null : Number(rsvpClosureDays),
         };
 
     try {
@@ -403,6 +414,21 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           <option value="">None</option>
           {members.map(m => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
         </select>
+      </div>
+
+      <div className={fieldClass}>
+        <label className={labelClass}>
+          RSVP closes (days before start) <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — empty uses the community default)</span>
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={90}
+          className={inputClass}
+          value={rsvpClosureDays}
+          onChange={e => setRsvpClosureDays(e.target.value)}
+          placeholder="Community default"
+        />
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">

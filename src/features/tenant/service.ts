@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const TAGLINE_MAX = 150;
 const DESCRIPTION_MAX = 500;
+const NAME_MAX = 150;
 const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
 
@@ -21,7 +22,7 @@ function err(code: string, message: string): Error & { code: string } {
 export async function getTenantSettings(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('tenants')
-    .select('id, name, attendance_window_hours, logo_url, tagline, description, created_at')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, logo_url, tagline, description, created_at')
     .eq('id', tenantId)
     .single();
 
@@ -30,6 +31,7 @@ export async function getTenantSettings(tenantId: string) {
     id: string;
     name: string;
     attendance_window_hours: number;
+    rsvp_closure_days_default: number;
     logo_url: string | null;
     tagline: string | null;
     description: string | null;
@@ -39,9 +41,23 @@ export async function getTenantSettings(tenantId: string) {
 
 export async function updateTenantSettings(
   tenantId: string,
-  input: { attendanceWindowHours?: number; tagline?: string | null; description?: string | null }
+  input: {
+    name?: string;
+    attendanceWindowHours?: number;
+    rsvpClosureDaysDefault?: number;
+    tagline?: string | null;
+    description?: string | null;
+  }
 ) {
   const patch: Record<string, unknown> = {};
+
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (trimmed.length === 0 || trimmed.length > NAME_MAX) {
+      throw err('VALIDATION_ERROR', `Community name must be 1–${NAME_MAX} characters`);
+    }
+    patch.name = trimmed;
+  }
 
   if (input.attendanceWindowHours !== undefined) {
     if (
@@ -52,6 +68,17 @@ export async function updateTenantSettings(
       throw err('INVALID_VALUE', 'attendance_window_hours must be an integer between 1 and 720');
     }
     patch.attendance_window_hours = input.attendanceWindowHours;
+  }
+
+  if (input.rsvpClosureDaysDefault !== undefined) {
+    if (
+      !Number.isInteger(input.rsvpClosureDaysDefault) ||
+      input.rsvpClosureDaysDefault < 0 ||
+      input.rsvpClosureDaysDefault > 90
+    ) {
+      throw err('INVALID_VALUE', 'rsvp_closure_days_default must be an integer between 0 and 90');
+    }
+    patch.rsvp_closure_days_default = input.rsvpClosureDaysDefault;
   }
 
   if (input.tagline !== undefined) {
@@ -76,7 +103,7 @@ export async function updateTenantSettings(
     .from('tenants')
     .update(patch)
     .eq('id', tenantId)
-    .select('id, name, attendance_window_hours, logo_url, tagline, description')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, logo_url, tagline, description')
     .single();
 
   if (error) throw error;

@@ -28,6 +28,9 @@ export interface EventListRow {
   online_meeting_resource_id: string | null;
   online_meeting_url: string | null;
   online_meeting_platform_label: string | null;
+  // FP-133: nullable per-event override of the tenant's rsvp_closure_days_default —
+  // null means "use the tenant default."
+  rsvp_closure_days: number | null;
   created_at: string;
 }
 

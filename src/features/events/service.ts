@@ -79,7 +79,17 @@ export interface CreateEventInput {
   onlineMeetingResourceId?: string | null;
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
+  rsvpClosureDays?: number | null;
   actorMemberId?: string | null;
+}
+
+function validateRsvpClosureDays(value: number | null | undefined): void {
+  if (value === undefined || value === null) return;
+  if (!Number.isInteger(value) || value < 0 || value > 90) {
+    const err = new Error('rsvp_closure_days must be an integer between 0 and 90') as Error & { code: string };
+    err.code = 'INVALID_VALUE';
+    throw err;
+  }
 }
 
 // DIP-FP-120-web: the pre-check that gives a normal double-booking attempt a
@@ -168,6 +178,7 @@ export async function createEvent(input: CreateEventInput) {
     err.code = 'INVALID_DATETIME';
     throw err;
   }
+  validateRsvpClosureDays(input.rsvpClosureDays);
 
   // App-layer validation — defense-in-depth on top of DB triggers.
   await validateEventTypeId(input.eventTypeId, input.tenantId);
@@ -204,6 +215,7 @@ export async function createEvent(input: CreateEventInput) {
     p_online_meeting_resource_id: input.onlineMeetingResourceId ?? null,
     p_online_meeting_url: input.onlineMeetingUrl ?? null,
     p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
+    p_rsvp_closure_days: input.rsvpClosureDays ?? null,
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
@@ -229,7 +241,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at, created_by_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -310,6 +322,7 @@ export interface UpdateEventInput {
   onlineMeetingResourceId?: string | null;
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
+  rsvpClosureDays?: number | null;
   actorMemberId?: string | null;
 }
 
@@ -319,6 +332,7 @@ export interface UpdateEventInput {
 // below. Omitted (Admin-tier callers) preserves unrestricted behavior.
 export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput, scopeToOwnerMemberId?: string) {
   const db = serviceClient();
+  validateRsvpClosureDays(input.rsvpClosureDays);
 
   // Fetch current event state.
   const { data: event, error: fetchError } = await db
@@ -417,6 +431,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.onlineMeetingResourceId !== undefined) patch.online_meeting_resource_id = input.onlineMeetingResourceId;
   if (input.onlineMeetingUrl !== undefined) patch.online_meeting_url = input.onlineMeetingUrl;
   if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;
+  if (input.rsvpClosureDays !== undefined) patch.rsvp_closure_days = input.rsvpClosureDays;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,
@@ -516,7 +531,7 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
@@ -546,7 +561,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -588,7 +603,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, created_by_member_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();

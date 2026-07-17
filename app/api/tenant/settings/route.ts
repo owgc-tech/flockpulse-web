@@ -18,12 +18,15 @@ export const PATCH = (req: NextRequest) =>
 
     try {
       const settings = await updateTenantSettings(ctx.tenantId, {
+        name: body.name,
         attendanceWindowHours: body.attendanceWindowHours,
+        rsvpClosureDaysDefault: body.rsvpClosureDaysDefault,
       });
       return NextResponse.json({ data: settings });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
+      if (code === 'VALIDATION_ERROR') return errorResponse('VALIDATION_ERROR', (err as Error).message, 422);
       if (code === 'NO_FIELDS') return errorResponse('NO_FIELDS', (err as Error).message, 400);
       throw err;
     }
