@@ -72,8 +72,17 @@ export async function updateCommunityRsvpSettingsAction(
 
   const attendanceWindowHours = Number(formData.get('attendanceWindowHours'));
   const rsvpClosureDaysDefault = Number(formData.get('rsvpClosureDaysDefault'));
+  const rsvpNudgeDays1 = Number(formData.get('rsvpNudgeDays1'));
+  const rsvpNudgeDays2 = Number(formData.get('rsvpNudgeDays2'));
+  const rsvpNudgeDays3 = Number(formData.get('rsvpNudgeDays3'));
   try {
-    await updateTenantSettings(ctx.tenantId, { attendanceWindowHours, rsvpClosureDaysDefault });
+    await updateTenantSettings(ctx.tenantId, {
+      attendanceWindowHours,
+      rsvpClosureDaysDefault,
+      rsvpNudgeDays1,
+      rsvpNudgeDays2,
+      rsvpNudgeDays3,
+    });
     return {};
   } catch (e) { return { error: mapError(e) }; }
 }

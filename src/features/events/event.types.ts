@@ -31,6 +31,9 @@ export interface EventListRow {
   // FP-133: nullable per-event override of the tenant's rsvp_closure_days_default —
   // null means "use the tenant default."
   rsvp_closure_days: number | null;
+  // FP-134: server-computed cutoff (start_datetime − effective rsvp_closure_days), not a
+  // persisted column — see rsvp-window.ts's computeRsvpClosureAt().
+  rsvp_closure_at: string;
   created_at: string;
 }
 

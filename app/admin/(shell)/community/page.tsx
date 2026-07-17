@@ -37,6 +37,9 @@ export default async function CommunityPage() {
           initialDescription={settings.description ?? null}
           initialAttendanceWindowHours={settings.attendance_window_hours}
           initialRsvpClosureDaysDefault={settings.rsvp_closure_days_default}
+          initialRsvpNudgeDays1={settings.rsvp_nudge_days_1}
+          initialRsvpNudgeDays2={settings.rsvp_nudge_days_2}
+          initialRsvpNudgeDays3={settings.rsvp_nudge_days_3}
           canEdit={isAdminTier(role)}
         />
       </div>

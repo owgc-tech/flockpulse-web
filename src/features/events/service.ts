@@ -4,6 +4,8 @@ import { getMembersAssignedToLeader } from '@/src/features/assignments/service';
 import { getTalk } from '@/src/features/formation/talk.repository';
 import { getModule } from '@/src/features/formation/module.repository';
 import { getCourse } from '@/src/features/formation/course.repository';
+import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
+import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
 
 function serviceClient() {
   return createClient(
@@ -577,12 +579,15 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
   );
   if (upcoming.length === 0) return [];
 
-  const { data: rsvps, error: rsvpError } = await db
-    .from('rsvps')
-    .select('event_id, rsvp_status, rsvp_reason')
-    .eq('tenant_id', tenantId)
-    .eq('member_id', memberId)
-    .in('event_id', upcoming.map((e) => e.id));
+  const [{ data: rsvps, error: rsvpError }, tenantDefaultDays] = await Promise.all([
+    db
+      .from('rsvps')
+      .select('event_id, rsvp_status, rsvp_reason')
+      .eq('tenant_id', tenantId)
+      .eq('member_id', memberId)
+      .in('event_id', upcoming.map((e) => e.id)),
+    getTenantRsvpClosureDaysDefault(tenantId),
+  ]);
 
   if (rsvpError) throw rsvpError;
 
@@ -596,6 +601,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
       ...e,
       rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | undefined) ?? null,
       rsvp_reason: rsvp?.rsvp_reason ?? null,
+      rsvp_closure_at: computeRsvpClosureAt(e.start_datetime, e.rsvp_closure_days, tenantDefaultDays),
     };
   });
 }
@@ -614,12 +620,17 @@ export async function getEventById(id: string, tenantId: string) {
     throw err;
   }
 
-  const { data: effectiveStatus, error: statusError } = await serviceClient().rpc('get_event_effective_status', {
-    p_event_id: id,
-  });
+  const [{ data: effectiveStatus, error: statusError }, tenantDefaultDays] = await Promise.all([
+    serviceClient().rpc('get_event_effective_status', { p_event_id: id }),
+    getTenantRsvpClosureDaysDefault(tenantId),
+  ]);
   if (statusError) throw statusError;
 
-  return { ...event, effective_status: effectiveStatus as string };
+  return {
+    ...event,
+    effective_status: effectiveStatus as string,
+    rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
+  };
 }
 
 export interface EventReminderFormation {
