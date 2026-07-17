@@ -7,7 +7,7 @@ export default function LoginPage() {
         <img
           src="/flockpulse-logo.png"
           alt="FlockPulse"
-          className="-ml-3 mb-4 h-auto w-36"
+          className="mb-4 h-auto w-full"
         />
         <h1 className="mb-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Leadership sign in</h1>
         <LoginForm />
