@@ -44,6 +44,33 @@ export async function getEventEffectiveStatus(eventId: string): Promise<string |
   return data ?? null;
 }
 
+// FP-133: fetches the event's start time and per-event RSVP closure override
+// (null = use the tenant default) for the closure-cutoff computation in
+// submitRsvp().
+export async function getEventClosureInfo(
+  eventId: string
+): Promise<{ start_datetime: string; rsvp_closure_days: number | null } | null> {
+  const { data } = await serviceClient()
+    .from('events')
+    .select('start_datetime, rsvp_closure_days')
+    .eq('id', eventId)
+    .single();
+
+  return data ?? null;
+}
+
+// FP-133: tenant-level default for the closure cutoff — 0 preserves today's
+// behavior (cutoff = event start).
+export async function getTenantRsvpClosureDaysDefault(tenantId: string): Promise<number> {
+  const { data } = await serviceClient()
+    .from('tenants')
+    .select('rsvp_closure_days_default')
+    .eq('id', tenantId)
+    .single();
+
+  return data?.rsvp_closure_days_default ?? 0;
+}
+
 export async function checkBlockedByGuard(eventId: string): Promise<boolean> {
   // First real caller of block_actions_on_cancelled_or_locked() — built in FP-13
   // migration 20260629000005. Returns true if event is CANCELLED or LOCKED.

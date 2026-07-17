@@ -35,6 +35,8 @@ export default async function CommunityPage() {
           initialLogoUrl={settings.logo_url ?? null}
           initialTagline={settings.tagline ?? null}
           initialDescription={settings.description ?? null}
+          initialAttendanceWindowHours={settings.attendance_window_hours}
+          initialRsvpClosureDaysDefault={settings.rsvp_closure_days_default}
           canEdit={isAdminTier(role)}
         />
       </div>

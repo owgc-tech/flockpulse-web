@@ -49,6 +49,35 @@ export async function updateCommunityDetailsAction(
   } catch (e) { return { error: mapError(e) }; }
 }
 
+export async function updateCommunityNameAction(
+  token: string,
+  formData: FormData
+): Promise<CommunityActionResult> {
+  const ctx = await getAdminContext(token);
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const name = (formData.get('name') as string | null) ?? '';
+  try {
+    await updateTenantSettings(ctx.tenantId, { name });
+    return {};
+  } catch (e) { return { error: mapError(e) }; }
+}
+
+export async function updateCommunityRsvpSettingsAction(
+  token: string,
+  formData: FormData
+): Promise<CommunityActionResult> {
+  const ctx = await getAdminContext(token);
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const attendanceWindowHours = Number(formData.get('attendanceWindowHours'));
+  const rsvpClosureDaysDefault = Number(formData.get('rsvpClosureDaysDefault'));
+  try {
+    await updateTenantSettings(ctx.tenantId, { attendanceWindowHours, rsvpClosureDaysDefault });
+    return {};
+  } catch (e) { return { error: mapError(e) }; }
+}
+
 export async function uploadLogoAction(
   token: string,
   formData: FormData

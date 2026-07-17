@@ -1,7 +1,9 @@
 'use client';
 
 import { useRef, useState, useTransition } from 'react';
-import { updateCommunityDetailsAction, uploadLogoAction } from './actions';
+import {
+  updateCommunityDetailsAction, updateCommunityNameAction, updateCommunityRsvpSettingsAction, uploadLogoAction,
+} from './actions';
 
 interface Props {
   token: string;
@@ -9,23 +11,34 @@ interface Props {
   initialLogoUrl: string | null;
   initialTagline: string | null;
   initialDescription: string | null;
+  initialAttendanceWindowHours: number;
+  initialRsvpClosureDaysDefault: number;
   // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
   canEdit: boolean;
 }
 
 const TAGLINE_MAX = 150;
 const DESCRIPTION_MAX = 500;
+const NAME_MAX = 150;
 
 export default function CommunitySettingsForm({
-  token, communityName, initialLogoUrl, initialTagline, initialDescription, canEdit,
+  token, communityName, initialLogoUrl, initialTagline, initialDescription,
+  initialAttendanceWindowHours, initialRsvpClosureDaysDefault, canEdit,
 }: Props) {
+  const [name, setName] = useState(communityName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [tagline, setTagline] = useState(initialTagline ?? '');
   const [description, setDescription] = useState(initialDescription ?? '');
+  const [attendanceWindowHours, setAttendanceWindowHours] = useState(String(initialAttendanceWindowHours));
+  const [rsvpClosureDaysDefault, setRsvpClosureDaysDefault] = useState(String(initialRsvpClosureDaysDefault));
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameSaved, setNameSaved] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
   const [logoSaved, setLogoSaved] = useState(false);
+  const [rsvpSettingsError, setRsvpSettingsError] = useState<string | null>(null);
+  const [rsvpSettingsSaved, setRsvpSettingsSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialLogoUrl);
@@ -66,18 +79,65 @@ export default function CommunitySettingsForm({
     });
   }
 
+  function handleNameSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setNameError(null);
+    setNameSaved(false);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await updateCommunityNameAction(token, fd);
+      if (res.error) { setNameError(res.error); return; }
+      setNameSaved(true);
+    });
+  }
+
+  function handleRsvpSettingsSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setRsvpSettingsError(null);
+    setRsvpSettingsSaved(false);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await updateCommunityRsvpSettingsAction(token, fd);
+      if (res.error) { setRsvpSettingsError(res.error); return; }
+      setRsvpSettingsSaved(true);
+    });
+  }
+
   const inputClass = 'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 w-full';
   const labelClass = 'text-sm font-medium text-zinc-700 dark:text-zinc-300';
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Community name — read only */}
+      {/* Community name */}
       <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Community Name</h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Community name is set during registration and cannot be changed here.
-        </p>
-        <p className="mt-2 text-base font-medium text-zinc-900 dark:text-zinc-100">{communityName}</p>
+        {canEdit ? (
+          <form onSubmit={handleNameSave} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <input
+                name="name"
+                value={name}
+                onChange={e => { setName(e.target.value); setNameSaved(false); }}
+                maxLength={NAME_MAX}
+                required
+                className={inputClass}
+              />
+            </div>
+            {nameError && <p className="text-sm text-red-600 dark:text-red-400">{nameError}</p>}
+            {nameSaved && <p className="text-sm text-green-600 dark:text-green-400">Name saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save name'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-base font-medium text-zinc-900 dark:text-zinc-100">{communityName}</p>
+        )}
       </div>
 
       {/* Logo */}
@@ -187,6 +247,67 @@ export default function CommunitySettingsForm({
             <div>
               <p className="text-zinc-500 dark:text-zinc-400">Description</p>
               <p>{description || '—'}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* RSVP & Attendance */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">RSVP &amp; Attendance</h2>
+        {canEdit ? (
+          <form onSubmit={handleRsvpSettingsSave} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Attendance window (hours)</label>
+              <input
+                name="attendanceWindowHours"
+                type="number"
+                min={1}
+                max={720}
+                value={attendanceWindowHours}
+                onChange={e => { setAttendanceWindowHours(e.target.value); setRsvpSettingsSaved(false); }}
+                className={inputClass}
+                required
+              />
+              <p className="text-xs text-zinc-400">Hours after an event ends before attendance locks</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>RSVP closure default (days)</label>
+              <input
+                name="rsvpClosureDaysDefault"
+                type="number"
+                min={0}
+                max={90}
+                value={rsvpClosureDaysDefault}
+                onChange={e => { setRsvpClosureDaysDefault(e.target.value); setRsvpSettingsSaved(false); }}
+                className={inputClass}
+                required
+              />
+              <p className="text-xs text-zinc-400">RSVP closes this many days before an event starts — 0 = at event start</p>
+            </div>
+
+            {rsvpSettingsError && <p className="text-sm text-red-600 dark:text-red-400">{rsvpSettingsError}</p>}
+            {rsvpSettingsSaved && <p className="text-sm text-green-600 dark:text-green-400">RSVP &amp; attendance settings saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save settings'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-4 text-sm text-zinc-700 dark:text-zinc-300">
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Attendance window (hours)</p>
+              <p>{attendanceWindowHours}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">RSVP closure default (days)</p>
+              <p>{rsvpClosureDaysDefault}</p>
             </div>
           </div>
         )}

@@ -2,6 +2,8 @@ import {
   isExpectedAttendee,
   getEventExistsForTenant,
   getEventEffectiveStatus,
+  getEventClosureInfo,
+  getTenantRsvpClosureDaysDefault,
   checkBlockedByGuard,
   upsertRsvp,
 } from './rsvp.repository';
@@ -46,6 +48,22 @@ export async function submitRsvp(
   // always equivalent and keeping both would be dead logic.
   if (effectiveStatus !== 'SCHEDULED') {
     throw serviceError('RSVP_CLOSED', 'RSVP window is closed for this event');
+  }
+
+  // FP-133: closure cutoff = start_datetime − COALESCE(event override, tenant default) days.
+  // With the tenant default at 0 and no per-event override, cutoff === start_datetime, which
+  // the SCHEDULED check above already guarantees now is before — a byte-identical no-op on
+  // today's behavior until an Admin actually sets a non-zero value.
+  const [closureInfo, tenantDefaultDays] = await Promise.all([
+    getEventClosureInfo(eventId),
+    getTenantRsvpClosureDaysDefault(tenantId),
+  ]);
+  const closureDays = closureInfo?.rsvp_closure_days ?? tenantDefaultDays;
+  if (closureInfo) {
+    const cutoff = new Date(closureInfo.start_datetime).getTime() - closureDays * 24 * 60 * 60 * 1000;
+    if (Date.now() >= cutoff) {
+      throw serviceError('RSVP_CLOSED', 'RSVP window is closed for this event');
+    }
   }
 
   // Step 4: 'NO' requires a non-empty reason. 'YES' must never require one.
