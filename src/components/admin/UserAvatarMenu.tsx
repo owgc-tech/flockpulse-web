@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { signOutAction } from '@/app/admin/(shell)/actions';
+import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
+import type { Role } from '@/src/lib/auth/middleware';
 
 interface Props {
   firstName: string | null;
   lastName: string | null;
+  role: Role;
   groups: { id: string; name: string }[];
 }
 
-export default function UserAvatarMenu({ firstName, lastName, groups }: Props) {
+export default function UserAvatarMenu({ firstName, lastName, role, groups }: Props) {
   const [open, setOpen] = useState(false);
 
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Account';
@@ -30,7 +33,7 @@ export default function UserAvatarMenu({ firstName, lastName, groups }: Props) {
     <div className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-black text-sm font-semibold text-white hover:bg-zinc-800"
         aria-label="Account menu"
       >
         {initials}
@@ -44,25 +47,36 @@ export default function UserAvatarMenu({ firstName, lastName, groups }: Props) {
             className="fixed inset-0 z-40"
             onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
           />
-          <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
-            <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">{fullName}</p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              {groups.length > 0 ? groups.map(g => g.name).join(', ') : 'No groups'}
-            </p>
+          <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="flex flex-col items-center">
+              <div className="flex h-24 w-24 flex-shrink-0 items-center justify-center rounded-full bg-black text-2xl font-semibold text-white">
+                {initials}
+              </div>
+              <p className="mt-3 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">{fullName}</p>
+              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{ROLE_LABELS[role]}</p>
+            </div>
 
-            <div className="mt-4 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-              <a
-                href="/admin/profile"
-                className="rounded-lg px-2 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                View and Edit Profile
-              </a>
+            <div className="mt-4">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Groups:</p>
+              <p className="mt-0.5 text-xs text-zinc-700 dark:text-zinc-300">
+                {groups.length > 0 ? groups.map(g => g.name).join(', ') : 'No groups'}
+              </p>
+            </div>
+
+            <a
+              href="/admin/profile"
+              className="mt-4 flex w-full items-center justify-center rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              View/Edit Profile
+            </a>
+
+            <div className="mt-3 flex justify-end">
               <form action={signOutAction}>
                 <button
                   type="submit"
-                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                  className="text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
                 >
-                  Sign Out
+                  Sign out
                 </button>
               </form>
             </div>
