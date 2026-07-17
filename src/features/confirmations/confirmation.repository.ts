@@ -57,8 +57,31 @@ export async function getPendingConfirmations(
   if (error) throw error;
   if (!data || data.length === 0) return [];
 
+  const allRows = data as Record<string, unknown>[];
+  const candidateEventIds = [...new Set(allRows.map(r => r['event_id'] as string))];
+
+  // FP-121: exclude self-reports whose event has since locked or been
+  // cancelled — the confirm guard already rejects these, so leaving them
+  // in the list just strands them permanently un-actionable.
+  const { data: statusData, error: statusError } = await serviceClient().rpc(
+    'get_events_effective_statuses',
+    { p_tenant_id: tenantId, p_event_ids: candidateEventIds }
+  );
+  if (statusError) throw statusError;
+
+  const excludedEventIds = new Set(
+    ((statusData ?? []) as { event_id: string; effective_status: string }[])
+      .filter(s => s.effective_status === 'LOCKED' || s.effective_status === 'CANCELLED')
+      .map(s => s.event_id)
+  );
+
+  const rows = excludedEventIds.size === 0
+    ? allRows
+    : allRows.filter(r => !excludedEventIds.has(r['event_id'] as string));
+
+  if (rows.length === 0) return [];
+
   // Collect the (event_id, member_id) pairs we need RSVPs for and fetch in one query.
-  const rows = data as Record<string, unknown>[];
   const memberIds = rows.map(r => r['member_id'] as string);
   const eventIds  = [...new Set(rows.map(r => r['event_id'] as string))];
 
