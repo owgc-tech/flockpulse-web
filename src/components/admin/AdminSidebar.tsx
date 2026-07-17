@@ -122,7 +122,7 @@ export default function AdminSidebar({ role }: { role: Role }) {
                 <p className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
                   {item.label}
                 </p>
-                <div className="flex flex-col gap-0.5">
+                <div className="ml-3 mt-0.5 flex flex-col gap-0.5">
                   {item.children.map(renderChild)}
                 </div>
               </div>

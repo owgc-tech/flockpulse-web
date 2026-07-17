@@ -47,6 +47,7 @@ export default async function AdminShellLayout({ children }: { children: React.R
           <UserAvatarMenu
             firstName={profile?.first_name ?? null}
             lastName={profile?.last_name ?? null}
+            role={role}
             groups={profile?.groups ?? []}
           />
         </div>
