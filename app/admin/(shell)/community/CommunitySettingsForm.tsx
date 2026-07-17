@@ -258,21 +258,6 @@ export default function CommunitySettingsForm({
         {canEdit ? (
           <form onSubmit={handleRsvpSettingsSave} className="flex flex-col gap-5">
             <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Attendance window (hours)</label>
-              <input
-                name="attendanceWindowHours"
-                type="number"
-                min={1}
-                max={720}
-                value={attendanceWindowHours}
-                onChange={e => { setAttendanceWindowHours(e.target.value); setRsvpSettingsSaved(false); }}
-                className={inputClass}
-                required
-              />
-              <p className="text-xs text-zinc-400">Hours after an event ends before attendance locks</p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
               <label className={labelClass}>RSVP closure default (days)</label>
               <input
                 name="rsvpClosureDaysDefault"
@@ -285,6 +270,21 @@ export default function CommunitySettingsForm({
                 required
               />
               <p className="text-xs text-zinc-400">RSVP closes this many days before an event starts — 0 = at event start</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Attendance Reporting and Confirmation Window (hours)</label>
+              <input
+                name="attendanceWindowHours"
+                type="number"
+                min={1}
+                max={720}
+                value={attendanceWindowHours}
+                onChange={e => { setAttendanceWindowHours(e.target.value); setRsvpSettingsSaved(false); }}
+                className={inputClass}
+                required
+              />
+              <p className="text-xs text-zinc-400">Hours after an event ends before attendance locks</p>
             </div>
 
             {rsvpSettingsError && <p className="text-sm text-red-600 dark:text-red-400">{rsvpSettingsError}</p>}
@@ -302,12 +302,12 @@ export default function CommunitySettingsForm({
         ) : (
           <div className="flex flex-col gap-4 text-sm text-zinc-700 dark:text-zinc-300">
             <div>
-              <p className="text-zinc-500 dark:text-zinc-400">Attendance window (hours)</p>
-              <p>{attendanceWindowHours}</p>
-            </div>
-            <div>
               <p className="text-zinc-500 dark:text-zinc-400">RSVP closure default (days)</p>
               <p>{rsvpClosureDaysDefault}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Attendance Reporting and Confirmation Window (hours)</p>
+              <p>{attendanceWindowHours}</p>
             </div>
           </div>
         )}
