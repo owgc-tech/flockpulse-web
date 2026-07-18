@@ -25,7 +25,7 @@ export default async function RsvpReportPage() {
     listEvents(tenantId),
   ]);
 
-  const eventOptions = (events ?? []).map((e) => ({ id: e.id, name: e.name }));
+  const eventOptions = (events ?? []).map((e) => ({ id: e.id, name: e.name, start_datetime: e.start_datetime }));
   const groupOptions = (groups ?? []).map((g) => ({ id: g.id as string, name: g.name as string }));
 
   return (
