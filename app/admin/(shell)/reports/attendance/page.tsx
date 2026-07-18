@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
 import { listGroups } from '@/src/features/groups/service';
 import { listEvents } from '@/src/features/events/service';
+import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import AttendanceReportBrowser from '../AttendanceReportBrowser';
 
@@ -19,14 +20,16 @@ export default async function AttendanceReportPage() {
   // members happens server-side in report.service.ts, not by hiding the page.
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
-  const [members, groups, events] = await Promise.all([
+  const [members, groups, events, eventTypes] = await Promise.all([
     listMembers(tenantId),
     listGroups(tenantId),
     listEvents(tenantId),
+    listEventTypes(tenantId),
   ]);
 
   const eventOptions = (events ?? []).map((e) => ({ id: e.id, name: e.name, start_datetime: e.start_datetime }));
   const groupOptions = (groups ?? []).map((g) => ({ id: g.id as string, name: g.name as string }));
+  const eventTypeOptions = (eventTypes ?? []).map((et) => ({ id: et.id, name: et.name }));
 
   return (
     <div className="flex flex-col">
@@ -38,7 +41,13 @@ export default async function AttendanceReportPage() {
       </div>
 
       <div className="p-6">
-        <AttendanceReportBrowser events={eventOptions} groups={groupOptions} members={members ?? []} token={token} />
+        <AttendanceReportBrowser
+          events={eventOptions}
+          groups={groupOptions}
+          members={members ?? []}
+          eventTypes={eventTypeOptions}
+          token={token}
+        />
       </div>
     </div>
   );
