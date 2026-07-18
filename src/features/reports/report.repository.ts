@@ -48,7 +48,7 @@ export interface RsvpReportRow {
   member_id: string;
   first_name: string;
   last_name: string;
-  rsvp_status: 'YES' | 'NO' | 'NO_RESPONSE';
+  rsvp_status: 'YES' | 'NO' | 'TENTATIVE' | 'NO_RESPONSE';
   rsvp_reason: string | null;
 }
 
@@ -106,10 +106,92 @@ export async function getRsvpReport(
       member_id: memberId,
       first_name: member?.first_name ?? '',
       last_name: member?.last_name ?? '',
-      rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | undefined) ?? 'NO_RESPONSE',
+      rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | 'TENTATIVE' | undefined) ?? 'NO_RESPONSE',
       rsvp_reason: rsvp?.rsvp_status === 'NO' ? (rsvp?.rsvp_reason ?? null) : null,
     };
   });
+}
+
+export interface RsvpReportSummaryRow {
+  event_id: string;
+  event_name: string;
+  yes_count: number;
+  no_count: number;
+  tentative_count: number;
+  no_response_count: number;
+}
+
+// Per-event aggregate counts (FP-128) — same event_attendees ⋈ rsvps join as
+// getRsvpReport, grouped by event instead of emitted as per-member detail rows.
+// Counts reconcile to the event's event_attendees total (FP-128 AC).
+export async function getRsvpReportSummary(
+  tenantId: string,
+  filters: RsvpReportFilters
+): Promise<RsvpReportSummaryRow[]> {
+  const memberIdFilter = await resolveMemberIdFilter(
+    tenantId, filters.groupId, filters.memberId, filters.leaderScopedMemberIds
+  );
+  if (memberIdFilter !== null && memberIdFilter.length === 0) return [];
+
+  const db = serviceClient();
+
+  let attendeeQuery = db
+    .from('event_attendees')
+    .select('event_id, member_id, events(name)')
+    .eq('tenant_id', tenantId);
+
+  if (filters.eventId) attendeeQuery = attendeeQuery.eq('event_id', filters.eventId);
+  if (memberIdFilter !== null) attendeeQuery = attendeeQuery.in('member_id', memberIdFilter);
+
+  const { data: attendees, error: attendeeError } = await attendeeQuery;
+  if (attendeeError) throw attendeeError;
+  if (!attendees || attendees.length === 0) return [];
+
+  const rows = attendees as Record<string, unknown>[];
+  const eventIds = [...new Set(rows.map((r) => r.event_id as string))];
+  const memberIds = [...new Set(rows.map((r) => r.member_id as string))];
+
+  const { data: rsvps, error: rsvpError } = await db
+    .from('rsvps')
+    .select('event_id, member_id, rsvp_status')
+    .eq('tenant_id', tenantId)
+    .in('event_id', eventIds)
+    .in('member_id', memberIds);
+
+  if (rsvpError) throw rsvpError;
+
+  const rsvpMap = new Map<string, string>();
+  for (const r of (rsvps ?? []) as { event_id: string; member_id: string; rsvp_status: string }[]) {
+    rsvpMap.set(`${r.event_id}:${r.member_id}`, r.rsvp_status);
+  }
+
+  const summaryByEvent = new Map<string, RsvpReportSummaryRow>();
+  for (const row of rows) {
+    const eventId = row.event_id as string;
+    const memberId = row.member_id as string;
+    const event = (Array.isArray(row.events) ? row.events[0] : row.events) as { name: string } | null;
+
+    let summary = summaryByEvent.get(eventId);
+    if (!summary) {
+      summary = {
+        event_id: eventId,
+        event_name: event?.name ?? '',
+        yes_count: 0,
+        no_count: 0,
+        tentative_count: 0,
+        no_response_count: 0,
+      };
+      summaryByEvent.set(eventId, summary);
+    }
+
+    const status = rsvpMap.get(`${eventId}:${memberId}`);
+    if (status === 'YES') summary.yes_count += 1;
+    else if (status === 'NO') summary.no_count += 1;
+    else if (status === 'TENTATIVE') summary.tentative_count += 1;
+    else summary.no_response_count += 1;
+  }
+
+  return [...summaryByEvent.values()];
 }
 
 // ── Attendance report ────────────────────────────────────────────────────

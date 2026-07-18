@@ -713,7 +713,7 @@ export interface RosterEntry {
   member_id: string;
   first_name: string;
   last_name: string;
-  response: 'ACCEPTED' | 'DECLINED' | 'NOT_RESPONDED';
+  response: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE' | 'NOT_RESPONDED';
   rsvp_reason: string | null;
 }
 
@@ -761,7 +761,13 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
     const member = Array.isArray(a.members) ? a.members[0] : a.members;
     const rsvp = rsvpByMember.get(a.member_id);
     const response: RosterEntry['response'] =
-      !rsvp ? 'NOT_RESPONDED' : rsvp.rsvp_status === 'YES' ? 'ACCEPTED' : 'DECLINED';
+      !rsvp
+        ? 'NOT_RESPONDED'
+        : rsvp.rsvp_status === 'YES'
+        ? 'ACCEPTED'
+        : rsvp.rsvp_status === 'TENTATIVE'
+        ? 'TENTATIVE'
+        : 'DECLINED';
 
     return {
       member_id: a.member_id,
