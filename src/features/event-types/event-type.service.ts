@@ -1,5 +1,5 @@
 import type { EventTypeRow, CreateEventTypeInput, UpdateEventTypeInput } from './event-type.types';
-import { insertEventType, patchEventType, getEventType, listEventTypes } from './event-type.repository';
+import { insertEventType, patchEventType, getEventType, listEventTypes, listEventTypesWithUsageCounts } from './event-type.repository';
 
 function err(code: string, message: string): Error & { code: string } {
   const e = new Error(message) as Error & { code: string };
@@ -55,4 +55,4 @@ export async function getEventTypeById(id: string, tenantId: string): Promise<Ev
   return eventType;
 }
 
-export { listEventTypes };
+export { listEventTypes, listEventTypesWithUsageCounts };
