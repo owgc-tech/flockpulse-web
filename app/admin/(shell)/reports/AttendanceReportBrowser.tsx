@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { filterByLocalDate } from '@/src/lib/dateFilter';
 
 interface Option {
   id: string;
   name: string;
+}
+
+interface EventOption {
+  id: string;
+  name: string;
+  start_datetime: string;
 }
 
 interface MemberOption {
@@ -29,7 +36,7 @@ interface AttendanceReportRow {
 }
 
 interface Props {
-  events: Option[];
+  events: EventOption[];
   groups: Option[];
   members: MemberOption[];
   token: string;
@@ -59,6 +66,7 @@ const inputClass =
 
 export default function AttendanceReportBrowser({ events, groups, members, token }: Props) {
   const [eventId, setEventId] = useState('');
+  const [eventDate, setEventDate] = useState('');
   const [groupId, setGroupId] = useState('');
   const [memberId, setMemberId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -67,6 +75,16 @@ export default function AttendanceReportBrowser({ events, groups, members, token
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  const visibleEvents = filterByLocalDate(events, eventDate);
+
+  function handleEventDateChange(value: string) {
+    setEventDate(value);
+    const filtered = filterByLocalDate(events, value);
+    if (eventId && !filtered.some((ev) => ev.id === eventId)) {
+      setEventId('');
+    }
+  }
 
   function handleRun() {
     setLoadError(null);
@@ -101,10 +119,19 @@ export default function AttendanceReportBrowser({ events, groups, members, token
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
+          <label className="text-xs text-zinc-500">Event Date</label>
+          <input
+            type="date"
+            value={eventDate}
+            onChange={(e) => handleEventDateChange(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
           <label className="text-xs text-zinc-500">Event</label>
           <select value={eventId} onChange={(e) => setEventId(e.target.value)} className={inputClass}>
             <option value="">All events</option>
-            {events.map((ev) => (
+            {visibleEvents.map((ev) => (
               <option key={ev.id} value={ev.id}>{ev.name}</option>
             ))}
           </select>
