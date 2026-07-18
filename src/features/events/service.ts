@@ -318,6 +318,7 @@ export interface UpdateEventInput {
   locationAddress?: string;
   locationUrl?: string | null;
   target?: { group_ids?: string[]; member_ids?: string[] };
+  eventTypeId?: string;
   talkId?: string | null;
   prayerLeaderMemberId?: string | null;
   foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
@@ -391,6 +392,14 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, tenantId);
   }
 
+  // DIP-FP-131-web: reuses validateEventTypeId() as-is (previously only called
+  // from createEvent) — same defense-in-depth pattern as prayerLeaderMemberId
+  // above. No immutability rule — there was never a deliberate constraint here,
+  // just an accidental gap in update_event_with_audit()'s column mapping.
+  if (input.eventTypeId !== undefined) {
+    await validateEventTypeId(input.eventTypeId, tenantId);
+  }
+
   // Validate datetime ordering if either end is being changed.
   const newStart = input.startDatetime ?? event.start_datetime;
   const newEnd = input.endDatetime ?? event.end_datetime;
@@ -434,6 +443,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.onlineMeetingUrl !== undefined) patch.online_meeting_url = input.onlineMeetingUrl;
   if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;
   if (input.rsvpClosureDays !== undefined) patch.rsvp_closure_days = input.rsvpClosureDays;
+  if (input.eventTypeId !== undefined) patch.event_type_id = input.eventTypeId;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,

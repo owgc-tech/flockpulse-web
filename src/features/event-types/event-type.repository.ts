@@ -70,3 +70,27 @@ export async function listEventTypes(tenantId: string, includeDeleted = false): 
   if (error) throw error;
   return (data ?? []) as EventTypeRow[];
 }
+
+// DIP-FP-131-web: admin-page-only usage counts — two queries + a JS reduce,
+// matching the existing precedent in report.repository.ts's
+// getRsvpReportSummary() rather than a single aggregate SQL query. Includes
+// soft-deleted types (so archived ones still show with a status badge).
+export async function listEventTypesWithUsageCounts(
+  tenantId: string
+): Promise<(EventTypeRow & { event_count: number })[]> {
+  const types = await listEventTypes(tenantId, true);
+
+  const { data: events, error } = await serviceClient()
+    .from('events')
+    .select('event_type_id')
+    .eq('tenant_id', tenantId);
+
+  if (error) throw error;
+
+  const countByTypeId = new Map<string, number>();
+  for (const e of (events ?? []) as { event_type_id: string }[]) {
+    countByTypeId.set(e.event_type_id, (countByTypeId.get(e.event_type_id) ?? 0) + 1);
+  }
+
+  return types.map(t => ({ ...t, event_count: countByTypeId.get(t.id) ?? 0 }));
+}
