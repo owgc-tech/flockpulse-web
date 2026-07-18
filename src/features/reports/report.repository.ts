@@ -558,6 +558,7 @@ export interface AttendancePercentageFilters {
   granularity: AttendanceGranularity;
   leaderScopedMemberIds?: string[] | null;
   groups?: { id: string; name: string }[];
+  communityName?: string;
 }
 
 export interface AttendancePercentageRow {
@@ -666,7 +667,7 @@ export async function getAttendancePercentage(
 
   return [{
     key: 'community',
-    label: 'Community',
+    label: filters.communityName ?? 'Community',
     present,
     absent,
     percent: roundToOneDecimal(present, absent),
