@@ -24,6 +24,7 @@ export default async function FormationProgressPage() {
   let members = await listMembers(tenantId);
   if (isExactlyLeaderTier(role)) {
     const assignedMemberIds = new Set(await getAssignedMemberIds(tenantId, memberId));
+    assignedMemberIds.add(memberId);
     members = (members ?? []).filter((member) => assignedMemberIds.has(member.id));
   }
 
