@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { getAttendancePercentage } from '@/src/features/reports/report.service';
 import { listGroups } from '@/src/features/groups/service';
+import { getTenantSettings } from '@/src/features/tenant/service';
 import type { AttendanceGranularity } from '@/src/features/reports/report.repository';
 
 const VALID_GRANULARITIES: AttendanceGranularity[] = ['MEMBER', 'GROUP', 'COMMUNITY'];
@@ -36,12 +37,19 @@ export async function GET(req: NextRequest) {
         ? ((await listGroups(ctx.tenantId)) ?? []).map((g) => ({ id: g.id as string, name: g.name as string }))
         : undefined;
 
+      // FP-142: only fetched when actually needed, not on every request
+      // regardless of granularity.
+      const communityName = granularity === 'COMMUNITY'
+        ? (await getTenantSettings(ctx.tenantId)).name
+        : undefined;
+
       const data = await getAttendancePercentage(ctx.tenantId, ctx.memberId, ctx.role, {
         eventTypeIds: eventTypeIds.length > 0 ? eventTypeIds : undefined,
         dateFrom,
         dateTo,
         granularity,
         groups,
+        communityName,
       });
       return NextResponse.json({ data });
     } catch (err: unknown) {
