@@ -189,6 +189,7 @@ export default function AttendanceReportBrowser({ events, groups, members, token
             <thead className="bg-zinc-50 dark:bg-zinc-900">
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Event</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Date</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Member</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Self-Report</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Official Attendance</th>
@@ -199,6 +200,7 @@ export default function AttendanceReportBrowser({ events, groups, members, token
               {rows.map((row) => (
                 <tr key={`${row.event_id}:${row.member_id}`} className="border-t border-zinc-100 dark:border-zinc-800">
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.event_name}</td>
+                  <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{new Date(row.event_start_datetime).toLocaleDateString()}</td>
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.first_name} {row.last_name}</td>
                   <td className="px-4 py-2 text-zinc-500">{row.self_report_status ?? '—'}</td>
                   <td className="px-4 py-2 text-zinc-500">{row.attendance_status ?? '—'}</td>
