@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 
 // MFA trust cookie written by /login/mfa-challenge/actions.ts after successful
 // TOTP verification. Value is a Unix-ms timestamp (when trust expires).
@@ -42,11 +43,12 @@ export default async function proxy(req: NextRequest) {
   }
 
   const role = user.app_metadata?.role as string | undefined;
-  if (role !== 'ADMIN') {
+  if (!role || !isLeaderTierOrAbove(role as Role)) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  // /admin/mfa-enroll is the enrollment destination for first-time Admins.
+  // /admin/mfa-enroll is the enrollment destination for first-time
+  // Leader-tier-or-above accounts.
   // It must be reachable with a password-only (aal1) session — applying the
   // AAL2 check here would redirect them to /login/mfa-challenge, which requires
   // a verified factor that doesn't exist yet (lockout). Session authentication
