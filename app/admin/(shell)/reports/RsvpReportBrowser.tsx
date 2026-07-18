@@ -24,6 +24,7 @@ interface MemberOption {
 interface RsvpReportRow {
   event_id: string;
   event_name: string;
+  event_start_datetime: string;
   member_id: string;
   first_name: string;
   last_name: string;
@@ -34,6 +35,7 @@ interface RsvpReportRow {
 interface RsvpReportSummaryRow {
   event_id: string;
   event_name: string;
+  event_start_datetime: string;
   yes_count: number;
   no_count: number;
   tentative_count: number;
@@ -184,6 +186,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
             <thead className="bg-zinc-50 dark:bg-zinc-900">
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Event</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Date</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Yes</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">No</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Tentative</th>
@@ -194,6 +197,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
               {summaryRows.map((row) => (
                 <tr key={row.event_id} className="border-t border-zinc-100 dark:border-zinc-800">
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.event_name}</td>
+                  <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{new Date(row.event_start_datetime).toLocaleDateString()}</td>
                   <td className="px-4 py-2 font-medium text-green-600 dark:text-green-400">{row.yes_count}</td>
                   <td className="px-4 py-2 font-medium text-red-600 dark:text-red-400">{row.no_count}</td>
                   <td className="px-4 py-2 font-medium text-amber-600 dark:text-amber-400">{row.tentative_count}</td>
@@ -211,6 +215,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
             <thead className="bg-zinc-50 dark:bg-zinc-900">
               <tr>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Event</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Date</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Member</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">RSVP</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Reason</th>
@@ -220,6 +225,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
               {rows.map((row) => (
                 <tr key={`${row.event_id}:${row.member_id}`} className="border-t border-zinc-100 dark:border-zinc-800">
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.event_name}</td>
+                  <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{new Date(row.event_start_datetime).toLocaleDateString()}</td>
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.first_name} {row.last_name}</td>
                   <td className="px-4 py-2">
                     <span

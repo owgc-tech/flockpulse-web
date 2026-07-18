@@ -45,6 +45,7 @@ export interface RsvpReportFilters {
 export interface RsvpReportRow {
   event_id: string;
   event_name: string;
+  event_start_datetime: string;
   member_id: string;
   first_name: string;
   last_name: string;
@@ -65,7 +66,7 @@ export async function getRsvpReport(
 
   let attendeeQuery = db
     .from('event_attendees')
-    .select('event_id, member_id, members(first_name, last_name), events(name)')
+    .select('event_id, member_id, members(first_name, last_name), events(name, start_datetime)')
     .eq('tenant_id', tenantId);
 
   if (filters.eventId) attendeeQuery = attendeeQuery.eq('event_id', filters.eventId);
@@ -95,7 +96,7 @@ export async function getRsvpReport(
 
   return rows.map((row) => {
     const member = (Array.isArray(row.members) ? row.members[0] : row.members) as { first_name: string; last_name: string } | null;
-    const event = (Array.isArray(row.events) ? row.events[0] : row.events) as { name: string } | null;
+    const event = (Array.isArray(row.events) ? row.events[0] : row.events) as { name: string; start_datetime: string } | null;
     const eventId = row.event_id as string;
     const memberId = row.member_id as string;
     const rsvp = rsvpMap.get(`${eventId}:${memberId}`);
@@ -103,6 +104,7 @@ export async function getRsvpReport(
     return {
       event_id: eventId,
       event_name: event?.name ?? '',
+      event_start_datetime: event?.start_datetime ?? '',
       member_id: memberId,
       first_name: member?.first_name ?? '',
       last_name: member?.last_name ?? '',
@@ -115,6 +117,7 @@ export async function getRsvpReport(
 export interface RsvpReportSummaryRow {
   event_id: string;
   event_name: string;
+  event_start_datetime: string;
   yes_count: number;
   no_count: number;
   tentative_count: number;
@@ -137,7 +140,7 @@ export async function getRsvpReportSummary(
 
   let attendeeQuery = db
     .from('event_attendees')
-    .select('event_id, member_id, events(name)')
+    .select('event_id, member_id, events(name, start_datetime)')
     .eq('tenant_id', tenantId);
 
   if (filters.eventId) attendeeQuery = attendeeQuery.eq('event_id', filters.eventId);
@@ -169,13 +172,14 @@ export async function getRsvpReportSummary(
   for (const row of rows) {
     const eventId = row.event_id as string;
     const memberId = row.member_id as string;
-    const event = (Array.isArray(row.events) ? row.events[0] : row.events) as { name: string } | null;
+    const event = (Array.isArray(row.events) ? row.events[0] : row.events) as { name: string; start_datetime: string } | null;
 
     let summary = summaryByEvent.get(eventId);
     if (!summary) {
       summary = {
         event_id: eventId,
         event_name: event?.name ?? '',
+        event_start_datetime: event?.start_datetime ?? '',
         yes_count: 0,
         no_count: 0,
         tentative_count: 0,
