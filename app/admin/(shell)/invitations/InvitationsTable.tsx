@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react';
 import type { InvitationDisplayRow, InvitationStatus } from '@/src/features/invitations/invitation.types';
+import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
 interface Props {
   initialInvitations: InvitationDisplayRow[];
@@ -22,8 +23,6 @@ const STATUS_CLASSES: Record<InvitationStatus, string> = {
   ACCEPTED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   REVOKED: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 };
-
-const ROLE_LABELS: Record<string, string> = { ADMIN: 'Admin', LEADER: 'Leader', MEMBER: 'Member' };
 
 export default function InvitationsTable({ initialInvitations, token, tenantName, canManage }: Props) {
   const [invitations, setInvitations] = useState<InvitationDisplayRow[]>(initialInvitations);
