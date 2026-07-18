@@ -35,7 +35,7 @@ export async function getMemberProgressAction(token: string, memberId: string, t
   if (!ctx || !isLeaderTierOrAbove(ctx.role) || ctx.tenantId !== tenantId) {
     throw new Error('Unauthorized');
   }
-  if (isExactlyLeaderTier(ctx.role)) {
+  if (isExactlyLeaderTier(ctx.role) && memberId !== ctx.memberId) {
     const assignedMemberIds = await getAssignedMemberIds(tenantId, ctx.memberId);
     if (!assignedMemberIds.includes(memberId)) {
       throw new Error('Unauthorized');
