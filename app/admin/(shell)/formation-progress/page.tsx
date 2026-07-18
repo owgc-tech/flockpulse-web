@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
-import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
+import { isAdminTier, isExactlyLeaderTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
+import { getAssignedMemberIds } from '@/src/features/confirmations/confirmation.repository';
 import FormationProgressBrowser from './FormationProgressBrowser';
 
 export default async function FormationProgressPage() {
@@ -20,7 +21,11 @@ export default async function FormationProgressPage() {
   // caller-identity check, so the UI hide alone would not be a real boundary).
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !memberId || !token) redirect('/login');
 
-  const members = await listMembers(tenantId);
+  let members = await listMembers(tenantId);
+  if (isExactlyLeaderTier(role)) {
+    const assignedMemberIds = new Set(await getAssignedMemberIds(tenantId, memberId));
+    members = (members ?? []).filter((member) => assignedMemberIds.has(member.id));
+  }
 
   return (
     <div className="flex flex-col">
