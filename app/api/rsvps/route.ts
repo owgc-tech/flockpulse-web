@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
 
     if (!event_id) return errorResponse('MISSING_FIELD', 'event_id required', 400);
     if (!rsvp_status) return errorResponse('MISSING_FIELD', 'rsvp_status required', 400);
-    if (rsvp_status !== 'YES' && rsvp_status !== 'NO') {
-      return errorResponse('INVALID_VALUE', 'rsvp_status must be YES or NO', 400);
+    if (rsvp_status !== 'YES' && rsvp_status !== 'NO' && rsvp_status !== 'TENTATIVE') {
+      return errorResponse('INVALID_VALUE', 'rsvp_status must be YES, NO, or TENTATIVE', 400);
     }
 
     try {

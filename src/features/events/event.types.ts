@@ -98,7 +98,7 @@ export interface TalkOption {
   name: string;
 }
 
-export type RosterResponse = 'ACCEPTED' | 'DECLINED' | 'NOT_RESPONDED';
+export type RosterResponse = 'ACCEPTED' | 'DECLINED' | 'TENTATIVE' | 'NOT_RESPONDED';
 
 export interface RosterEntry {
   member_id: string;

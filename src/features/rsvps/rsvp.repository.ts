@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { RsvpRow } from './rsvp.types';
+import type { RsvpRow, RsvpStatus } from './rsvp.types';
 
 function serviceClient() {
   return createClient(
@@ -85,7 +85,7 @@ export async function upsertRsvp(
   tenantId: string,
   eventId: string,
   memberId: string,
-  rsvpStatus: 'YES' | 'NO',
+  rsvpStatus: RsvpStatus,
   rsvpReason: string | null
 ): Promise<RsvpRow> {
   const { data, error } = await serviceClient().rpc('upsert_rsvp_with_audit', {

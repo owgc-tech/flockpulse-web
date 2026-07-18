@@ -29,7 +29,18 @@ const STATUS_LABELS: Record<EffectiveStatus, string> = {
 const RESPONSE_LABELS = {
   ACCEPTED: 'Accepted',
   DECLINED: 'Declined',
+  TENTATIVE: 'Tentative',
   NOT_RESPONDED: 'Not responded',
+} as const;
+
+// Mirrors the ATTENDED/DID_NOT_ATTEND/PENDING_CONFIRMATION/UNRESPONDED color
+// convention already used for the analogous four-state report in
+// AttendanceReportBrowser.tsx — reused here rather than inventing a new scheme.
+const RESPONSE_CLASS = {
+  ACCEPTED: 'font-medium text-green-600 dark:text-green-400',
+  DECLINED: 'font-medium text-red-600 dark:text-red-400',
+  TENTATIVE: 'font-medium text-amber-600 dark:text-amber-400',
+  NOT_RESPONDED: 'text-zinc-400',
 } as const;
 
 export default function EventDetail({ event, eventTypes, groups, members, meetingResources, token, canManage }: Props) {
@@ -253,7 +264,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">RSVP roster</h2>
           <div className="flex gap-2">
-            {(['ALL', 'ACCEPTED', 'DECLINED', 'NOT_RESPONDED'] as const).map(f => (
+            {(['ALL', 'ACCEPTED', 'DECLINED', 'TENTATIVE', 'NOT_RESPONDED'] as const).map(f => (
               <button
                 key={f}
                 onClick={() => setRosterFilter(f)}
@@ -284,7 +295,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
               {visibleRoster.map(r => (
                 <tr key={r.member_id}>
                   <td className="px-2 py-2 text-zinc-900 dark:text-zinc-100">{r.first_name} {r.last_name}</td>
-                  <td className="px-2 py-2 text-zinc-700 dark:text-zinc-300">{RESPONSE_LABELS[r.response]}</td>
+                  <td className={`px-2 py-2 ${RESPONSE_CLASS[r.response]}`}>{RESPONSE_LABELS[r.response]}</td>
                   <td className="px-2 py-2 text-zinc-500 dark:text-zinc-400">{r.rsvp_reason ?? '—'}</td>
                 </tr>
               ))}

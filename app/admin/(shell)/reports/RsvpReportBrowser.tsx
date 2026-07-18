@@ -20,8 +20,17 @@ interface RsvpReportRow {
   member_id: string;
   first_name: string;
   last_name: string;
-  rsvp_status: 'YES' | 'NO' | 'NO_RESPONSE';
+  rsvp_status: 'YES' | 'NO' | 'TENTATIVE' | 'NO_RESPONSE';
   rsvp_reason: string | null;
+}
+
+interface RsvpReportSummaryRow {
+  event_id: string;
+  event_name: string;
+  yes_count: number;
+  no_count: number;
+  tentative_count: number;
+  no_response_count: number;
 }
 
 interface Props {
@@ -44,6 +53,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
   const [groupId, setGroupId] = useState('');
   const [memberId, setMemberId] = useState('');
   const [rows, setRows] = useState<RsvpReportRow[] | null>(null);
+  const [summaryRows, setSummaryRows] = useState<RsvpReportSummaryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -58,19 +68,34 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
       if (memberId) params.set('member_id', memberId);
 
       try {
-        const res = await fetch(`/api/reports/rsvp?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const body = await res.json();
-        if (!res.ok) {
-          setLoadError(body?.error?.message ?? 'Failed to load RSVP report');
+        const [detailRes, summaryRes] = await Promise.all([
+          fetch(`/api/reports/rsvp?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/reports/rsvp/summary?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const detailBody = await detailRes.json();
+        const summaryBody = await summaryRes.json();
+        if (!detailRes.ok) {
+          setLoadError(detailBody?.error?.message ?? 'Failed to load RSVP report');
           setRows(null);
+          setSummaryRows(null);
           return;
         }
-        setRows(body.data as RsvpReportRow[]);
+        if (!summaryRes.ok) {
+          setLoadError(summaryBody?.error?.message ?? 'Failed to load RSVP summary');
+          setRows(null);
+          setSummaryRows(null);
+          return;
+        }
+        setRows(detailBody.data as RsvpReportRow[]);
+        setSummaryRows(summaryBody.data as RsvpReportSummaryRow[]);
       } catch {
         setLoadError('Failed to load RSVP report');
         setRows(null);
+        setSummaryRows(null);
       }
     });
   }
@@ -126,6 +151,33 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
         <p className="py-8 text-center text-sm text-zinc-400">No RSVP records match these filters.</p>
       )}
 
+      {summaryRows && summaryRows.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 dark:bg-zinc-900">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Event</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Yes</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">No</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Tentative</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">No response</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryRows.map((row) => (
+                <tr key={row.event_id} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.event_name}</td>
+                  <td className="px-4 py-2 font-medium text-green-600 dark:text-green-400">{row.yes_count}</td>
+                  <td className="px-4 py-2 font-medium text-red-600 dark:text-red-400">{row.no_count}</td>
+                  <td className="px-4 py-2 font-medium text-amber-600 dark:text-amber-400">{row.tentative_count}</td>
+                  <td className="px-4 py-2 text-zinc-400">{row.no_response_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {rows && rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
           <table className="w-full text-sm">
@@ -149,10 +201,12 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
                           ? 'font-medium text-green-600 dark:text-green-400'
                           : row.rsvp_status === 'NO'
                           ? 'font-medium text-red-600 dark:text-red-400'
+                          : row.rsvp_status === 'TENTATIVE'
+                          ? 'font-medium text-amber-600 dark:text-amber-400'
                           : 'text-zinc-400'
                       }
                     >
-                      {row.rsvp_status === 'NO_RESPONSE' ? 'No Response' : row.rsvp_status}
+                      {row.rsvp_status === 'NO_RESPONSE' ? 'No Response' : row.rsvp_status === 'TENTATIVE' ? 'Tentative' : row.rsvp_status}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-zinc-500">{row.rsvp_reason ?? '—'}</td>

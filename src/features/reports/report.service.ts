@@ -2,10 +2,12 @@ import { isExactlyLeaderTier, type Role } from '@/src/lib/auth/middleware';
 import { getAssignedMemberIds } from '@/src/features/confirmations/confirmation.repository';
 import {
   getRsvpReport as getRsvpReportRepo,
+  getRsvpReportSummary as getRsvpReportSummaryRepo,
   getAttendanceReport as getAttendanceReportRepo,
   type RsvpReportFilters,
   type AttendanceReportFilters,
   type RsvpReportRow,
+  type RsvpReportSummaryRow,
   type AttendanceReportRow,
 } from './report.repository';
 
@@ -28,6 +30,16 @@ export async function getRsvpReport(
 ): Promise<RsvpReportRow[]> {
   const leaderScopedMemberIds = await resolveLeaderScope(tenantId, callerId, callerRole);
   return getRsvpReportRepo(tenantId, { ...filters, leaderScopedMemberIds });
+}
+
+export async function getRsvpReportSummary(
+  tenantId: string,
+  callerId: string,
+  callerRole: Role,
+  filters: Omit<RsvpReportFilters, 'leaderScopedMemberIds'>
+): Promise<RsvpReportSummaryRow[]> {
+  const leaderScopedMemberIds = await resolveLeaderScope(tenantId, callerId, callerRole);
+  return getRsvpReportSummaryRepo(tenantId, { ...filters, leaderScopedMemberIds });
 }
 
 export async function getAttendanceReport(
