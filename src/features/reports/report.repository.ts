@@ -329,3 +329,346 @@ export async function getAttendanceReport(
     };
   });
 }
+
+// ── Shared attendance-percentage fetcher (FP-129 / FP-130) ──────────────
+
+interface EligibleAttendanceFilters {
+  eventTypeIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  memberIdFilter?: string[] | null;
+}
+
+interface EligibleAttendanceRow {
+  event_id: string;
+  member_id: string;
+  start_datetime: string;
+  attendance_status: 'ATTENDED' | 'DID_NOT_ATTEND' | null;
+}
+
+// Shared raw fetcher behind FP-129's yearly matrix and FP-130's date-range
+// percentage report — both need the same official-attendance-only numerator
+// (attendance.attendance_status) against the event_attendees expected-slot
+// denominator, restricted to events that have actually concluded. Uses the
+// bulk get_events_effective_statuses() RPC (service_role-only) rather than
+// N calls to the per-event get_event_effective_status().
+//
+// A member-event slot with no attendance row yet — COMPLETED but not yet
+// LOCKED, member not yet confirmed — comes back with attendance_status:
+// null. Per the DIP's Grounding Check, this is a genuine "pending" state:
+// callers must exclude it from both numerator and denominator rather than
+// forcing it into either bucket. It self-corrects once the event reaches
+// LOCKED, where no_self_report_auto has already resolved every remaining
+// slot to DID_NOT_ATTEND.
+async function getEligibleAttendanceRows(
+  tenantId: string,
+  filters: EligibleAttendanceFilters
+): Promise<EligibleAttendanceRow[]> {
+  const db = serviceClient();
+
+  let eventQuery = db
+    .from('events')
+    .select('id, start_datetime')
+    .eq('tenant_id', tenantId);
+
+  if (filters.eventTypeIds && filters.eventTypeIds.length > 0) {
+    eventQuery = eventQuery.in('event_type_id', filters.eventTypeIds);
+  }
+  if (filters.dateFrom) eventQuery = eventQuery.gte('start_datetime', filters.dateFrom);
+  if (filters.dateTo) eventQuery = eventQuery.lte('start_datetime', filters.dateTo);
+
+  const { data: eventRows, error: eventError } = await eventQuery;
+  if (eventError) throw eventError;
+  if (!eventRows || eventRows.length === 0) return [];
+
+  const candidateEvents = eventRows as { id: string; start_datetime: string }[];
+  const candidateEventIds = candidateEvents.map((e) => e.id);
+
+  const { data: statusRows, error: statusError } = await db.rpc('get_events_effective_statuses', {
+    p_tenant_id: tenantId,
+    p_event_ids: candidateEventIds,
+  });
+  if (statusError) throw statusError;
+
+  const eligibleEventIds = ((statusRows ?? []) as { event_id: string; effective_status: string }[])
+    .filter((r) => r.effective_status === 'COMPLETED' || r.effective_status === 'LOCKED')
+    .map((r) => r.event_id);
+  if (eligibleEventIds.length === 0) return [];
+
+  const startDatetimeByEvent = new Map<string, string>();
+  for (const e of candidateEvents) startDatetimeByEvent.set(e.id, e.start_datetime);
+
+  let attendeeQuery = db
+    .from('event_attendees')
+    .select('event_id, member_id')
+    .eq('tenant_id', tenantId)
+    .in('event_id', eligibleEventIds);
+
+  if (filters.memberIdFilter) attendeeQuery = attendeeQuery.in('member_id', filters.memberIdFilter);
+
+  const { data: attendeeRows, error: attendeeError } = await attendeeQuery;
+  if (attendeeError) throw attendeeError;
+  if (!attendeeRows || attendeeRows.length === 0) return [];
+
+  const slots = attendeeRows as { event_id: string; member_id: string }[];
+  const slotEventIds = [...new Set(slots.map((s) => s.event_id))];
+  const slotMemberIds = [...new Set(slots.map((s) => s.member_id))];
+
+  const { data: attendanceRows, error: attendanceError } = await db
+    .from('attendance')
+    .select('event_id, member_id, attendance_status')
+    .eq('tenant_id', tenantId)
+    .in('event_id', slotEventIds)
+    .in('member_id', slotMemberIds);
+  if (attendanceError) throw attendanceError;
+
+  const attendanceMap = new Map<string, 'ATTENDED' | 'DID_NOT_ATTEND'>();
+  for (const r of (attendanceRows ?? []) as { event_id: string; member_id: string; attendance_status: 'ATTENDED' | 'DID_NOT_ATTEND' }[]) {
+    attendanceMap.set(`${r.event_id}:${r.member_id}`, r.attendance_status);
+  }
+
+  return slots.map((slot) => ({
+    event_id: slot.event_id,
+    member_id: slot.member_id,
+    start_datetime: startDatetimeByEvent.get(slot.event_id) ?? '',
+    attendance_status: attendanceMap.get(`${slot.event_id}:${slot.member_id}`) ?? null,
+  }));
+}
+
+function roundToOneDecimal(present: number, absent: number): number | null {
+  const total = present + absent;
+  if (total === 0) return null;
+  return Math.round((present / total) * 1000) / 10;
+}
+
+// ── FP-129: yearly attendance matrix by event type ───────────────────────
+
+export interface AttendanceMatrixFilters {
+  eventTypeIds: string[];
+  leaderScopedMemberIds?: string[] | null;
+}
+
+export interface AttendanceMatrixCell {
+  year: number;
+  present: number;
+  absent: number;
+  percent: number | null;
+}
+
+export interface AttendanceMatrixRow {
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  years: AttendanceMatrixCell[];
+}
+
+export interface AttendanceMatrixResult {
+  years: number[];
+  rows: AttendanceMatrixRow[];
+}
+
+// Whole-history fetch (no date bounds) grouped by member x
+// EXTRACT(year FROM start_datetime), computed in JS. Years are whatever's
+// actually present in the data, not a hardcoded range — pre-adoption years
+// are simply absent from the result, not synthesized as empty columns.
+export async function getAttendanceMatrixByEventType(
+  tenantId: string,
+  filters: AttendanceMatrixFilters
+): Promise<AttendanceMatrixResult> {
+  const memberIdFilter = await resolveMemberIdFilter(
+    tenantId, undefined, undefined, filters.leaderScopedMemberIds
+  );
+  if (memberIdFilter !== null && memberIdFilter.length === 0) return { years: [], rows: [] };
+
+  const eligibleRows = await getEligibleAttendanceRows(tenantId, {
+    eventTypeIds: filters.eventTypeIds,
+    memberIdFilter,
+  });
+  if (eligibleRows.length === 0) return { years: [], rows: [] };
+
+  const memberIds = [...new Set(eligibleRows.map((r) => r.member_id))];
+
+  const db = serviceClient();
+  const { data: memberRows, error: memberError } = await db
+    .from('members')
+    .select('id, first_name, last_name')
+    .eq('tenant_id', tenantId)
+    .in('id', memberIds);
+  if (memberError) throw memberError;
+
+  const memberInfo = new Map<string, { first_name: string; last_name: string }>();
+  for (const m of (memberRows ?? []) as { id: string; first_name: string; last_name: string }[]) {
+    memberInfo.set(m.id, { first_name: m.first_name, last_name: m.last_name });
+  }
+
+  const yearsSet = new Set<number>();
+  const cellMap = new Map<string, Map<number, { present: number; absent: number }>>();
+
+  for (const row of eligibleRows) {
+    if (row.attendance_status === null) continue; // pending slot — excluded per Grounding Check
+    const year = new Date(row.start_datetime).getFullYear();
+    yearsSet.add(year);
+
+    let memberYears = cellMap.get(row.member_id);
+    if (!memberYears) {
+      memberYears = new Map();
+      cellMap.set(row.member_id, memberYears);
+    }
+    let cell = memberYears.get(year);
+    if (!cell) {
+      cell = { present: 0, absent: 0 };
+      memberYears.set(year, cell);
+    }
+    if (row.attendance_status === 'ATTENDED') cell.present += 1;
+    else cell.absent += 1;
+  }
+
+  const years = [...yearsSet].sort((a, b) => a - b);
+
+  const rows: AttendanceMatrixRow[] = memberIds.map((memberId) => {
+    const info = memberInfo.get(memberId);
+    const memberYears = cellMap.get(memberId);
+    return {
+      member_id: memberId,
+      first_name: info?.first_name ?? '',
+      last_name: info?.last_name ?? '',
+      years: years.map((year) => {
+        const cell = memberYears?.get(year);
+        return {
+          year,
+          present: cell?.present ?? 0,
+          absent: cell?.absent ?? 0,
+          percent: cell ? roundToOneDecimal(cell.present, cell.absent) : null,
+        };
+      }),
+    };
+  });
+
+  return { years, rows };
+}
+
+// ── FP-130: date-range attendance percentage ─────────────────────────────
+
+export type AttendanceGranularity = 'MEMBER' | 'GROUP' | 'COMMUNITY';
+
+export interface AttendancePercentageFilters {
+  eventTypeIds?: string[];
+  dateFrom: string;
+  dateTo: string;
+  granularity: AttendanceGranularity;
+  leaderScopedMemberIds?: string[] | null;
+  groups?: { id: string; name: string }[];
+}
+
+export interface AttendancePercentageRow {
+  key: string;
+  label: string;
+  present: number;
+  absent: number;
+  percent: number | null;
+}
+
+// MEMBER: one row per member. GROUP: sums present/absent across each
+// group's members first, then computes percent from the sums (weighted,
+// not averaged, per FP-130's explicit AC). COMMUNITY: single aggregate row
+// across every scoped member. Leader-tier callers never reach the COMMUNITY
+// branch — report.service.ts rejects it before this function is called.
+export async function getAttendancePercentage(
+  tenantId: string,
+  filters: AttendancePercentageFilters
+): Promise<AttendancePercentageRow[]> {
+  const memberIdFilter = await resolveMemberIdFilter(
+    tenantId, undefined, undefined, filters.leaderScopedMemberIds
+  );
+  if (memberIdFilter !== null && memberIdFilter.length === 0) return [];
+
+  const eligibleRows = await getEligibleAttendanceRows(tenantId, {
+    eventTypeIds: filters.eventTypeIds,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+    memberIdFilter,
+  });
+
+  const resolvedRows = eligibleRows.filter((r) => r.attendance_status !== null);
+
+  if (filters.granularity === 'MEMBER') {
+    if (resolvedRows.length === 0) return [];
+
+    const memberIds = [...new Set(resolvedRows.map((r) => r.member_id))];
+    const db = serviceClient();
+    const { data: memberRows, error: memberError } = await db
+      .from('members')
+      .select('id, first_name, last_name')
+      .eq('tenant_id', tenantId)
+      .in('id', memberIds);
+    if (memberError) throw memberError;
+
+    const nameMap = new Map<string, string>();
+    for (const m of (memberRows ?? []) as { id: string; first_name: string; last_name: string }[]) {
+      nameMap.set(m.id, `${m.first_name} ${m.last_name}`.trim());
+    }
+
+    const byMember = new Map<string, { present: number; absent: number }>();
+    for (const r of resolvedRows) {
+      let c = byMember.get(r.member_id);
+      if (!c) {
+        c = { present: 0, absent: 0 };
+        byMember.set(r.member_id, c);
+      }
+      if (r.attendance_status === 'ATTENDED') c.present += 1;
+      else c.absent += 1;
+    }
+
+    return [...byMember.entries()].map(([memberId, c]) => ({
+      key: memberId,
+      label: nameMap.get(memberId) ?? '',
+      present: c.present,
+      absent: c.absent,
+      percent: roundToOneDecimal(c.present, c.absent),
+    }));
+  }
+
+  if (filters.granularity === 'GROUP') {
+    const groups = filters.groups ?? [];
+    const rows: AttendancePercentageRow[] = [];
+
+    for (const group of groups) {
+      const groupMembers = await getGroupMembers(group.id, tenantId);
+      const groupMemberIds = new Set(groupMembers.map((m) => (m as unknown as { id: string }).id));
+
+      let present = 0;
+      let absent = 0;
+      for (const r of resolvedRows) {
+        if (!groupMemberIds.has(r.member_id)) continue;
+        if (r.attendance_status === 'ATTENDED') present += 1;
+        else absent += 1;
+      }
+
+      rows.push({
+        key: group.id,
+        label: group.name,
+        present,
+        absent,
+        percent: roundToOneDecimal(present, absent),
+      });
+    }
+
+    return rows;
+  }
+
+  // COMMUNITY
+  let present = 0;
+  let absent = 0;
+  for (const r of resolvedRows) {
+    if (r.attendance_status === 'ATTENDED') present += 1;
+    else absent += 1;
+  }
+
+  return [{
+    key: 'community',
+    label: 'Community',
+    present,
+    absent,
+    percent: roundToOneDecimal(present, absent),
+  }];
+}
