@@ -6,6 +6,7 @@ export interface GroupRow {
   created_by: string | null;
   updated_by: string | null;
   deleted_at: string | null;
+  owner_member_id: string | null;
 }
 
 export interface GroupMemberRow {
