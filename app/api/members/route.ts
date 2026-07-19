@@ -97,8 +97,11 @@ export const DELETE = (req: NextRequest) =>
       }
       if (code === 'INVALID_STATE_TRANSITION') {
         const assignedMemberCount = (err as { assignedMemberCount?: number }).assignedMemberCount;
+        // FP-153: mirrors assignedMemberCount's own extraction — without this, member.service.ts's
+        // ownedGroupCount (added under FP-146) never reaches the client at all.
+        const ownedGroupCount = (err as { ownedGroupCount?: number }).ownedGroupCount;
         return NextResponse.json(
-          { error: { code, message: (err as Error).message, assignedMemberCount } },
+          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount } },
           { status: 409 }
         );
       }
