@@ -7,7 +7,7 @@ function serviceClient() {
   );
 }
 
-const COLS = 'id, name, created_at, updated_at, created_by, updated_by, deleted_at';
+const COLS = 'id, name, created_at, updated_at, created_by, updated_by, deleted_at, owner_member_id';
 
 // includeDeleted defaults to false — matches listMembers()'s convention from DIP-FP-69-FP-72.
 // Existing callers (event target/food-assignment pickers etc.) should only ever offer active
@@ -93,4 +93,66 @@ export async function softDeleteGroup(id: string, tenantId: string, actorMemberI
     }
     throw error;
   }
+}
+
+// FP-146: single-group owner reassignment, Admin-only. Mirrors updateGroup's
+// NOT_FOUND_IN_TENANT mapping, plus VALIDATION_ERROR for an inactive/foreign-tenant
+// new owner (matches bulkReassignLeaderMembers's error-mapping convention).
+export async function reassignGroupOwner(
+  groupId: string, tenantId: string, newOwnerMemberId: string, actorMemberId: string
+) {
+  const { data, error } = await serviceClient().rpc('reassign_group_owner_with_audit', {
+    p_group_id: groupId,
+    p_tenant_id: tenantId,
+    p_new_owner_member_id: newOwnerMemberId,
+    p_actor_member_id: actorMemberId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('NOT_FOUND_IN_TENANT')) {
+      const err = new Error('Group not found for this tenant') as Error & { code: string };
+      err.code = 'NOT_FOUND_IN_TENANT';
+      throw err;
+    }
+    if (msg.includes('VALIDATION_ERROR')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
+}
+
+// FP-146: atomic bulk reassignment — thin wrapper over
+// bulk_reassign_group_owner_with_audit(), which reuses reassign_group_owner_with_audit()
+// per affected group inside one transaction (mirrors bulkReassignLeaderMembers's shape).
+export async function bulkReassignGroupOwner(
+  outgoingOwnerId: string, incomingOwnerId: string, tenantId: string, actorMemberId: string
+) {
+  const { data, error } = await serviceClient().rpc('bulk_reassign_group_owner_with_audit', {
+    p_outgoing_owner_id: outgoingOwnerId,
+    p_incoming_owner_id: incomingOwnerId,
+    p_tenant_id: tenantId,
+    p_actor_member_id: actorMemberId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('VALIDATION_ERROR')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    if (msg.includes('CROSS_TENANT_ACCESS')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'CROSS_TENANT_ACCESS';
+      throw err;
+    }
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
 }

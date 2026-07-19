@@ -86,7 +86,10 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     if (!res.ok) {
       // FP-74: still assigned as another member's Pastoral Leader — surface the Bulk Reassign
       // screen as the resolution path, per the story's AC, instead of the generic error banner.
-      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION') {
+      // FP-146 added a second guard reason (still owns groups) mapped to the same error code,
+      // distinguished by which count field is present — only take this branch when it's
+      // actually the Pastoral Leader case, otherwise fall through to the generic banner below.
+      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.assignedMemberCount !== undefined) {
         setBlockedCount(body.error.assignedMemberCount ?? null);
         return;
       }

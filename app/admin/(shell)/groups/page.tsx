@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listGroups } from '@/src/features/groups/service';
+import { listMembers } from '@/src/features/members/service';
 import type { GroupRow } from '@/src/features/groups/group.types';
 import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import GroupsTable from './GroupsTable';
@@ -15,12 +16,24 @@ export default async function GroupsPage() {
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
   const role = user.app_metadata?.role as Role | undefined;
+  const memberId = user.app_metadata?.member_id as string | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
   // DIP-FP-114-web: Groups stays fully Admin-tier-only, excluded for Leader-tier.
+  // FP-146 does not touch this gate — see DIP-FP-146's explicit scope note.
   if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
-  const groups = await listGroups(tenantId, true);
+  // FP-146: listGroups() only returns raw owner_member_id (a UUID) — resolved to a display
+  // name here via a simple id -> name map, matching the established "fetch separately, merge
+  // in JS" convention rather than a SQL join in the repository.
+  const [groups, allMembers] = await Promise.all([
+    listGroups(tenantId, true),
+    listMembers(tenantId),
+  ]);
+
+  const memberNameById = new Map(
+    (allMembers ?? []).map((m) => [m.id, `${m.first_name} ${m.last_name}`])
+  );
 
   return (
     <div className="px-6 py-8">
@@ -39,7 +52,11 @@ export default async function GroupsPage() {
             Create Group
           </a>
         </div>
-        <GroupsTable groups={groups as unknown as GroupRow[]} />
+        <GroupsTable
+          groups={groups as unknown as GroupRow[]}
+          memberNameById={Object.fromEntries(memberNameById)}
+          viewerMemberId={memberId ?? null}
+        />
       </div>
     </div>
   );
