@@ -29,8 +29,11 @@ function err(code: string, message: string): Error & { code: string } {
 // Mirrors validateEventTypeId()/validatePrayerLeaderMemberId() in
 // src/features/events/service.ts — same pattern, applied to the assignee
 // JSONB's group_ids/member_ids arrays instead of a single FK column.
-// groups has no deleted_at column (confirmed live), so group_ids are
-// checked tenant-scoped only; member_ids also exclude soft-deleted members.
+// groups.deleted_at DOES exist (added by migration 20260713000036,
+// FP-70/71) — a prior pass here checked only groups' original CREATE TABLE
+// and missed that later ALTER TABLE, wrongly assuming no soft-delete
+// column. Corrected: group_ids are checked tenant-scoped AND
+// not-soft-deleted, same as member_ids below.
 async function validateAssignee(assignee: AssigneeSelector | null | undefined, tenantId: string): Promise<void> {
   if (!assignee) return;
   const groupIds = assignee.group_ids ?? [];
@@ -44,10 +47,11 @@ async function validateAssignee(assignee: AssigneeSelector | null | undefined, t
       .from('groups')
       .select('id')
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .in('id', groupIds);
     if (error) throw error;
     if ((data ?? []).length !== groupIds.length) {
-      throw err('VALIDATION_ERROR', 'assignee.group_ids contains a group that is invalid or belongs to a different tenant');
+      throw err('VALIDATION_ERROR', 'assignee.group_ids contains a group that is invalid, soft-deleted, or belongs to a different tenant');
     }
   }
 
