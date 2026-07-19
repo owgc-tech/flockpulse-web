@@ -30,11 +30,13 @@
 --     tenant-scoped RLS policy, Leader-tier-or-above enforced in the
 --     app/api layer, not in SQL — consistent with how the two fields this
 --     feature will eventually replace are gated today.
---   - groups has no deleted_at column — group_ids in the assignee JSONB
---     are validated tenant-scoped only (no soft-delete check), members
---     does have deleted_at and is checked, matching
---     validatePrayerLeaderMemberId()'s existing precedent in
---     src/features/events/service.ts.
+--   - groups.deleted_at DOES exist (added by migration 20260713000036,
+--     FP-70/71) — an earlier pass of this DIP checked only groups' original
+--     CREATE TABLE statement and missed that later ALTER TABLE, wrongly
+--     concluding groups had no soft-delete column. Corrected: group_ids in
+--     the assignee JSONB are validated tenant-scoped AND not-soft-deleted,
+--     same as member_ids, matching validatePrayerLeaderMemberId()'s
+--     existing precedent in src/features/events/service.ts.
 
 -- ==============================================================
 -- SECTION 1: tasks table (mirrors event_types minus the code column —
@@ -53,6 +55,13 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 
+-- Mirrors event_types' own idx_event_types_unique_code precedent exactly —
+-- gives the seed insert below a real conflict target, so this migration is
+-- safe to manually re-run in the Supabase SQL Editor without creating
+-- duplicate seed rows.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_unique_name
+    ON tasks(tenant_id, name) WHERE deleted_at IS NULL;
+
 
 -- ==============================================================
 -- SECTION 2: seed three default tasks rows per existing tenant, so Phase 3
@@ -63,7 +72,7 @@ ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 INSERT INTO tasks (tenant_id, name)
 SELECT tenants.id, seed.name
 FROM tenants, (VALUES ('Prayer Leader'), ('Food Assignment'), ('Music')) AS seed(name)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (tenant_id, name) WHERE deleted_at IS NULL DO NOTHING;
 
 
 -- ==============================================================
