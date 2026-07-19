@@ -25,6 +25,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blockedCount, setBlockedCount] = useState<number | null>(null);
+  const [ownedGroupCount, setOwnedGroupCount] = useState<number | null>(null);
 
   const isDeactivated = member.deleted_at !== null;
   // A member can't be their own Pastoral Leader.
@@ -77,6 +78,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     setBusy(true);
     setError(null);
     setBlockedCount(null);
+    setOwnedGroupCount(null);
     const res = await fetch(`/api/members?id=${member.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -91,6 +93,14 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
       // actually the Pastoral Leader case, otherwise fall through to the generic banner below.
       if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.assignedMemberCount !== undefined) {
         setBlockedCount(body.error.assignedMemberCount ?? null);
+        return;
+      }
+      // FP-153: still owns groups — same error code, distinguished by ownedGroupCount instead.
+      // No dedicated bulk-reassign UI page exists for group ownership (unlike Pastoral Leader's
+      // /reassign), so this points to the Groups admin page, where per-group reassignment
+      // already exists (GroupEditForm.tsx, built under FP-146).
+      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.ownedGroupCount !== undefined) {
+        setOwnedGroupCount(body.error.ownedGroupCount ?? null);
         return;
       }
       setError(body?.error?.message ?? 'Failed to deactivate member');
@@ -212,6 +222,15 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
               Reassign {blockedCount === 1 ? 'them' : 'them all'} first via{' '}
               <a href={`/admin/members/${member.id}/reassign`} className="font-medium underline hover:no-underline">
                 Bulk Reassign
+              </a>.
+            </div>
+          )}
+          {ownedGroupCount !== null && (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              {member.first_name} {member.last_name} still owns {ownedGroupCount} group{ownedGroupCount === 1 ? '' : 's'}.
+              Reassign ownership from each group&apos;s edit page before deactivating —{' '}
+              <a href="/admin/groups" className="font-medium underline hover:no-underline">
+                Groups
               </a>.
             </div>
           )}
