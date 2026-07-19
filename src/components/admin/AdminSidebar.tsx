@@ -48,6 +48,7 @@ const NAV: NavItem[] = [
   { href: '/admin/groups', label: 'Groups', adminOnly: true },
   { href: '/admin/events', label: 'Events', adminOnly: false },
   { href: '/admin/event-types', label: 'Event Types', adminOnly: true },
+  { href: '/admin/tasks', label: 'Tasks', adminOnly: true },
   { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   {
     label: 'Formation',
