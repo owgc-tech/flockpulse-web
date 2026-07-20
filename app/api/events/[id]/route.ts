@@ -33,7 +33,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
 
     const {
       name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, eventTypeId, talkId,
-      prayerLeaderMemberId, foodAssignment, onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
+      onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
       rsvpClosureDays,
     } = body;
 
@@ -48,8 +48,6 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         target,
         eventTypeId,
         talkId,
-        prayerLeaderMemberId,
-        foodAssignment,
         onlineMeetingResourceId,
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,

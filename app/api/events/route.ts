@@ -20,7 +20,7 @@ export const POST = (req: NextRequest) =>
 
     const {
       eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
-      prayerLeaderMemberId, foodAssignment, onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
+      onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
       rsvpClosureDays,
     } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
@@ -39,8 +39,6 @@ export const POST = (req: NextRequest) =>
         locationUrl,
         target,
         talkId,
-        prayerLeaderMemberId,
-        foodAssignment,
         onlineMeetingResourceId,
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,
