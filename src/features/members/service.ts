@@ -273,11 +273,22 @@ export async function softDeleteMember(id: string, tenantId: string) {
     }
     // FP-146: same guard-reason pattern, distinguished by which count field is present —
     // this trigger's message uses "owns N group(s)" instead of "assigned ... to N member(s)".
-    if (error.code === 'P0001' && error.message?.includes('still owns')) {
+    // Matched on 'group(s)' specifically (not just 'still owns') since FP-161-2 added a second
+    // "still owns" guard reason below whose message also contains that substring.
+    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
       const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
       err.code = 'INVALID_STATE_TRANSITION';
       const match = error.message.match(/owns (\d+) group/);
       if (match) err.ownedGroupCount = parseInt(match[1], 10);
+      throw err;
+    }
+    // FP-161-2: third guard-reason branch — this trigger's message uses "owns N event(s)"
+    // instead of "group(s)", distinguished the same way ownedGroupCount is above.
+    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
+      const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
+      err.code = 'INVALID_STATE_TRANSITION';
+      const match = error.message.match(/owns (\d+) event/);
+      if (match) err.ownedEventCount = parseInt(match[1], 10);
       throw err;
     }
     const err = new Error('Member not found for this tenant') as Error & { code: string };

@@ -238,12 +238,16 @@ export async function createEvent(input: CreateEventInput) {
   // since no web UI surfaces audit logs today, and ownership isn't really
   // "what changed" in the event's own data anyway.
   if (input.actorMemberId) {
+    // FP-161-2: owner_member_id is set alongside created_by_member_id in this same
+    // follow-up UPDATE, not a second round trip — the creator is the initial owner,
+    // exactly matching how create_group_with_audit() sets both created_by and
+    // owner_member_id to the same actor at creation time.
     const { data: withCreator, error: creatorError } = await serviceClient()
       .from('events')
-      .update({ created_by_member_id: input.actorMemberId })
+      .update({ created_by_member_id: input.actorMemberId, owner_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id, owner_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -253,13 +257,15 @@ export async function createEvent(input: CreateEventInput) {
 }
 
 // DIP-FP-114-web: scopeToOwnerMemberId mirrors updateEvent()/cancelEvent()'s
-// ownership check — Leader-tier can only publish drafts they created themselves;
-// otherwise create() would be pointless (a draft only Admin-tier could ever publish).
+// ownership check — Leader-tier can only publish drafts they own; otherwise
+// create() would be pointless (a draft only Admin-tier could ever publish).
+// FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
+// (permanent audit history only, no longer read for permission checks).
 export async function publishEvent(id: string, tenantId: string, scopeToOwnerMemberId?: string) {
   // Fetch current state to validate transition.
   const { data: event, error: fetchError } = await serviceClient()
     .from('events')
-    .select('id, status, name, start_datetime, end_datetime, location_name, event_type_id, target, created_by_member_id')
+    .select('id, status, name, start_datetime, end_datetime, location_name, event_type_id, target, owner_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -270,8 +276,8 @@ export async function publishEvent(id: string, tenantId: string, scopeToOwnerMem
     throw err;
   }
 
-  if (scopeToOwnerMemberId && event.created_by_member_id !== scopeToOwnerMemberId) {
-    const err = new Error('You may only publish events you created') as Error & { code: string };
+  if (scopeToOwnerMemberId && event.owner_member_id !== scopeToOwnerMemberId) {
+    const err = new Error('You may only publish events you own') as Error & { code: string };
     err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
@@ -330,9 +336,11 @@ export interface UpdateEventInput {
 }
 
 // DIP-FP-114-web: scopeToOwnerMemberId, when provided (non-Admin-tier callers),
-// enforces created_by_member_id === scopeToOwnerMemberId — mirrors the
-// scopeToLeaderMemberId opt-in pattern already established on getEventRoster()
-// below. Omitted (Admin-tier callers) preserves unrestricted behavior.
+// enforces ownership — mirrors the scopeToLeaderMemberId opt-in pattern already
+// established on getEventRoster() below. Omitted (Admin-tier callers) preserves
+// unrestricted behavior.
+// FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
+// (permanent audit history only, no longer read for permission checks).
 export async function updateEvent(id: string, tenantId: string, input: UpdateEventInput, scopeToOwnerMemberId?: string) {
   const db = serviceClient();
   validateRsvpClosureDays(input.rsvpClosureDays);
@@ -340,7 +348,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   // Fetch current event state.
   const { data: event, error: fetchError } = await db
     .from('events')
-    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target, created_by_member_id, online_meeting_resource_id')
+    .select('id, status, version, talk_id, start_datetime, end_datetime, name, location_name, target, owner_member_id, online_meeting_resource_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -351,8 +359,8 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     throw err;
   }
 
-  if (scopeToOwnerMemberId && event.created_by_member_id !== scopeToOwnerMemberId) {
-    const err = new Error('You may only edit events you created') as Error & { code: string };
+  if (scopeToOwnerMemberId && event.owner_member_id !== scopeToOwnerMemberId) {
+    const err = new Error('You may only edit events you own') as Error & { code: string };
     err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
@@ -619,7 +627,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id, owner_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -684,11 +692,13 @@ export async function getEventReminderContext(eventId: string, tenantId: string)
 // DIP-FP-114-web: scopeToOwnerMemberId mirrors updateEvent()'s ownership check —
 // requires a pre-fetch (getEventById) only when provided, since the RPC itself
 // has no notion of caller identity to enforce this against.
+// FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
+// (permanent audit history only, no longer read for permission checks).
 export async function cancelEvent(id: string, tenantId: string, actorMemberId?: string | null, scopeToOwnerMemberId?: string) {
   if (scopeToOwnerMemberId) {
     const event = await getEventById(id, tenantId); // throws NOT_FOUND if missing/cross-tenant
-    if (event.created_by_member_id !== scopeToOwnerMemberId) {
-      const err = new Error('You may only cancel events you created') as Error & { code: string };
+    if (event.owner_member_id !== scopeToOwnerMemberId) {
+      const err = new Error('You may only cancel events you own') as Error & { code: string };
       err.code = 'FORBIDDEN_SCOPE';
       throw err;
     }
@@ -715,6 +725,68 @@ export async function cancelEvent(id: string, tenantId: string, actorMemberId?: 
     throw error;
   }
 
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
+}
+
+// FP-161-2: single-event owner reassignment, Admin-only. Mirrors reassignGroupOwner's
+// NOT_FOUND_IN_TENANT mapping, plus VALIDATION_ERROR for an inactive/foreign-tenant new
+// owner (matches bulkReassignLeaderMembers's/reassignGroupOwner's error-mapping convention).
+export async function reassignEventOwner(
+  eventId: string, tenantId: string, newOwnerMemberId: string, actorMemberId: string
+) {
+  const { data, error } = await serviceClient().rpc('reassign_event_owner_with_audit', {
+    p_event_id: eventId,
+    p_tenant_id: tenantId,
+    p_new_owner_member_id: newOwnerMemberId,
+    p_actor_member_id: actorMemberId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('NOT_FOUND_IN_TENANT')) {
+      const err = new Error('Event not found') as Error & { code: string };
+      err.code = 'NOT_FOUND_IN_TENANT';
+      throw err;
+    }
+    if (msg.includes('VALIDATION_ERROR')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row;
+}
+
+// FP-161-2: atomic bulk reassignment — thin wrapper over
+// bulk_reassign_event_owner_with_audit(), which reuses reassign_event_owner_with_audit()
+// per affected event inside one transaction (mirrors bulkReassignGroupOwner's shape).
+export async function bulkReassignEventOwner(
+  outgoingOwnerId: string, incomingOwnerId: string, tenantId: string, actorMemberId: string
+) {
+  const { data, error } = await serviceClient().rpc('bulk_reassign_event_owner_with_audit', {
+    p_outgoing_owner_id: outgoingOwnerId,
+    p_incoming_owner_id: incomingOwnerId,
+    p_tenant_id: tenantId,
+    p_actor_member_id: actorMemberId,
+  });
+
+  if (error) {
+    const msg = error.message ?? '';
+    if (msg.includes('VALIDATION_ERROR')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    }
+    if (msg.includes('CROSS_TENANT_ACCESS')) {
+      const err = new Error(msg) as Error & { code: string };
+      err.code = 'CROSS_TENANT_ACCESS';
+      throw err;
+    }
+    throw error;
+  }
   const row = Array.isArray(data) ? data[0] : data;
   return row;
 }

@@ -42,9 +42,14 @@ export interface EventDetailRow extends EventListRow {
   version: number;
   updated_at: string;
   recurrence_series_id: string | null;
-  // DIP-FP-114-web: null for events created before this column existed —
-  // no Leader-tier account can edit/cancel those, only Admin-tier can.
+  // DIP-FP-114-web: historical audit only from FP-161-2 onward — no longer read for
+  // permission checks (owner_member_id below is), kept exactly as before for audit history.
   created_by_member_id: string | null;
+  // FP-161-2: transferable Event Owner — the live permission gate for edit/publish/
+  // cancel/manage, replacing created_by_member_id for that purpose. NULL has the same
+  // meaning created_by_member_id === null did: Admin-tier only can manage this event
+  // (events predating FP-114-web, or predating this column's backfill).
+  owner_member_id: string | null;
 }
 
 export interface EventTypeOption {

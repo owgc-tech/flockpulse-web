@@ -21,6 +21,10 @@ interface Props {
   groups: GroupOption[];
   members: MemberOption[];
   initialEvent?: EventDetailRow;
+  // FP-161-2: unlike GroupEditForm (whose page is entirely Admin-tier-gated already,
+  // so its Owner section needs no separate role prop), this form is also reachable by
+  // Leader-tier for events they own — the Owner section itself must stay Admin-only.
+  isAdmin?: boolean;
 }
 
 function toLocalInputValue(iso: string): string {
@@ -29,9 +33,34 @@ function toLocalInputValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function EventForm({ token, eventTypes, groups, members, initialEvent }: Props) {
+export default function EventForm({ token, eventTypes, groups, members, initialEvent, isAdmin }: Props) {
   const router = useRouter();
   const isEdit = !!initialEvent;
+
+  // FP-161-2: Owner section state — mirrors GroupEditForm.tsx's reassignment pattern.
+  // currentOwner is derived straight from the initialEvent prop (not local state), so
+  // router.refresh() after a successful reassign naturally reflects the new owner.
+  const [newOwnerId, setNewOwnerId] = useState('');
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
+  const currentOwner = members.find(m => m.id === initialEvent?.owner_member_id);
+  const reassignableOwners = members.filter(m => m.id !== initialEvent?.owner_member_id);
+
+  async function handleReassignOwner() {
+    if (!newOwnerId || !initialEvent) return;
+    setOwnerBusy(true);
+    setOwnerError(null);
+    const res = await fetch('/api/events/reassign-owner', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: initialEvent.id, newOwnerMemberId: newOwnerId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setOwnerBusy(false);
+    if (!res.ok) { setOwnerError(body?.error?.message ?? 'Failed to reassign owner'); return; }
+    setNewOwnerId('');
+    router.refresh();
+  }
 
   const [name, setName] = useState(initialEvent?.name ?? '');
   const [eventTypeId, setEventTypeId] = useState(initialEvent?.event_type_id ?? eventTypes[0]?.id ?? '');
@@ -442,6 +471,39 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           groupsLabel="Food Assignment — groups" membersLabel="Food Assignment — individual members"
         />
       </div>
+
+      {isEdit && isAdmin && initialEvent && (
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Owner</p>
+
+          {ownerError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+              {ownerError}
+            </div>
+          )}
+
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Current owner: <span className="font-medium text-zinc-900 dark:text-zinc-100">
+              {currentOwner ? `${currentOwner.first_name} ${currentOwner.last_name}` : '—'}
+            </span>
+          </p>
+
+          <div className="flex gap-2">
+            <select className={`flex-1 ${inputClass}`} value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)}>
+              <option value="">Select a new owner…</option>
+              {reassignableOwners.map(m => <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={handleReassignOwner}
+              disabled={ownerBusy || !newOwnerId}
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              Reassign Owner
+            </button>
+          </div>
+        </div>
+      )}
 
       {!isEdit && (
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
