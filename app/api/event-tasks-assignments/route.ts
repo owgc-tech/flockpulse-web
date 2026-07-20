@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { createTaskAssignment, listTaskAssignmentsForEvent } from '@/src/features/tasks/eventTaskAssignment.service';
 
-// Leader-tier-or-above, matching how prayer_leader_member_id/food_assignment
-// (the fields this table will eventually replace) are gated today via
-// requireRole('LEADER') in app/api/events/route.ts.
+// Leader-tier-or-above, matching how the old prayer_leader_member_id/food_assignment
+// event columns this table replaced (FP-161-3, columns dropped in FP-161-4) were
+// gated: requireRole('LEADER') in app/api/events/route.ts.
 const requireLeader = requireRole('LEADER');
 
 // GET /api/event-tasks-assignments?event_id=X — list assignments for an event

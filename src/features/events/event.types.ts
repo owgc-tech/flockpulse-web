@@ -18,9 +18,6 @@ export interface EventListRow {
   location_url: string | null;
   target: EventTarget;
   event_type_id: string;
-  // Always-optional, no event-type gating (FP-107) — purely informational assignment metadata.
-  prayer_leader_member_id: string | null;
-  food_assignment: EventTarget | null;
   // DIP-FP-120-web: online_meeting_resource_id (tracked Zoom account) and
   // online_meeting_url/online_meeting_platform_label (freeform "other
   // platform") are mutually exclusive at the app layer only — additive to
