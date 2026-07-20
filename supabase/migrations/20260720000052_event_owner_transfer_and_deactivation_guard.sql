@@ -100,6 +100,18 @@ BEGIN
 END;
 $$;
 
+-- Only events that haven't happened yet should block deactivation — the guard's
+-- purpose is "can someone still manage this going forward," not "did this member
+-- ever own an event." CANCELLED is filtered directly (a real stored status value);
+-- COMPLETED/LOCKED are purely time-derived (get_event_effective_status(), based on
+-- start/end datetime + the tenant's attendance_window_hours) and can't be seen by a
+-- plain status-column check at all — get_events_effective_statuses() (FP-121,
+-- migration 20260717000043) is the existing bulk lookup for exactly this. It's
+-- service_role-only (REVOKEd from authenticated/anon), which is fine here: this call
+-- is internal to a SECURITY DEFINER trigger function, never routed through
+-- PostgREST/the API layer. Pre-filtering CANCELLED via the stored column before the
+-- bulk lookup is a minor efficiency improvement, not required for correctness — the
+-- bulk function would classify a CANCELLED event correctly too.
 CREATE OR REPLACE FUNCTION public.block_member_deactivation_if_owns_events()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -109,7 +121,17 @@ AS $$
 DECLARE v_count INT;
 BEGIN
   IF NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL THEN
-    SELECT COUNT(*) INTO v_count FROM events WHERE owner_member_id = NEW.id;
+    SELECT COUNT(*) INTO v_count
+    FROM public.get_events_effective_statuses(
+      NEW.tenant_id,
+      ARRAY(
+        SELECT id FROM events
+        WHERE owner_member_id = NEW.id
+          AND tenant_id = NEW.tenant_id
+          AND status != 'CANCELLED'
+      )
+    ) s
+    WHERE s.effective_status NOT IN ('COMPLETED', 'LOCKED');
     IF v_count > 0 THEN
       RAISE EXCEPTION 'Cannot deactivate member %: still owns % event(s) — reassign ownership first', NEW.id, v_count;
     END IF;
