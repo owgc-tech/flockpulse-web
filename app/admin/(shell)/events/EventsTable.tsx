@@ -68,6 +68,28 @@ export default function EventsTable({
 
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // FP-167-1-adj-1: the column header row needs to stick directly below the
+  // title/create-button/filter band above it, not at top-0 (which would place
+  // it underneath that band instead of stacking below it). The band's height
+  // isn't a fixed number to hardcode, though — its filter row uses flex-wrap,
+  // so selecting enough filters (or a narrow viewport) wraps it onto more
+  // lines and changes the band's real height. Measuring it live via
+  // ResizeObserver, rather than computing a guessed pixel value from the
+  // Tailwind spacing classes by hand, is what actually stays correct across
+  // that wrapping and any future content changes to the band.
+  const bandRef = useRef<HTMLDivElement>(null);
+  const [bandHeight, setBandHeight] = useState(0);
+
+  useEffect(() => {
+    const el = bandRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      setBandHeight(entries[0].contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const fetchPage = useCallback(async (offset: number, replace: boolean) => {
     setLoading(true);
     try {
@@ -130,7 +152,7 @@ export default function EventsTable({
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-10 bg-zinc-50 px-6 pb-4 pt-8 dark:bg-black">
+      <div ref={bandRef} className="sticky top-0 z-10 bg-zinc-50 px-6 pb-4 pt-8 dark:bg-black">
         <div className="mx-auto max-w-5xl">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -183,7 +205,7 @@ export default function EventsTable({
           ) : (
             <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky z-[5] bg-white dark:bg-zinc-950" style={{ top: bandHeight }}>
                   <tr className="border-b border-zinc-100 dark:border-zinc-800">
                     <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Name</th>
                     <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Type</th>
