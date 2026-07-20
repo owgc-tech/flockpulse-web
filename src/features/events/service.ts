@@ -191,13 +191,6 @@ export async function createEvent(input: CreateEventInput) {
     p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
-    // FP-161-3: insert_event_with_audit()'s signature still requires these two params (no
-    // migration this phase — that's Phase 4) but the app no longer reads/writes either field
-    // via CreateEventInput; always NULL at creation. Task assignment goes through
-    // event_tasks_assignments instead, via a separate call after this RPC returns (needs a
-    // real event_id, which this RPC hasn't produced yet at this point in the function).
-    p_prayer_leader_member_id: null,
-    p_food_assignment: null,
     p_online_meeting_resource_id: input.onlineMeetingResourceId ?? null,
     p_online_meeting_url: input.onlineMeetingUrl ?? null,
     p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
@@ -231,7 +224,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId, owner_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id, owner_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id, owner_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -376,9 +369,9 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   }
 
   // DIP-FP-131-web: reuses validateEventTypeId() as-is (previously only called
-  // from createEvent) — same defense-in-depth pattern as prayerLeaderMemberId
-  // above. No immutability rule — there was never a deliberate constraint here,
-  // just an accidental gap in update_event_with_audit()'s column mapping.
+  // from createEvent). No immutability rule — there was never a deliberate
+  // constraint here, just an accidental gap in update_event_with_audit()'s
+  // column mapping.
   if (input.eventTypeId !== undefined) {
     await validateEventTypeId(input.eventTypeId, tenantId);
   }
@@ -420,11 +413,6 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.locationUrl !== undefined) patch.location_url = input.locationUrl;
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
-  // FP-161-3: prayer_leader_member_id/food_assignment deliberately never added to this patch —
-  // update_event_with_audit()'s CASE WHEN p_patch ? '<key>' logic leaves a column untouched when
-  // its key is absent from the JSONB patch, so omitting these keys entirely (rather than passing
-  // null) is what keeps the columns genuinely untouched, not just cleared. Task assignment goes
-  // through event_tasks_assignments instead (Phase 1's eventTaskAssignment.service.ts).
   if (input.onlineMeetingResourceId !== undefined) patch.online_meeting_resource_id = input.onlineMeetingResourceId;
   if (input.onlineMeetingUrl !== undefined) patch.online_meeting_url = input.onlineMeetingUrl;
   if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;
@@ -529,7 +517,7 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
 export async function listEvents(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
@@ -559,7 +547,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -605,7 +593,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, prayer_leader_member_id, food_assignment, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id, owner_member_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id, owner_member_id')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
