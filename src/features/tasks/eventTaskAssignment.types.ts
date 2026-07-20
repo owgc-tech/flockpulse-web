@@ -22,3 +22,18 @@ export interface CreateEventTaskAssignmentInput {
 export interface UpdateEventTaskAssignmentInput {
   assignee?: AssigneeSelector | null;
 }
+
+// FP-161-5: "My Tasks" — one row per task assignment that includes the calling
+// member (directly via assignee.member_ids, or via a group they belong to),
+// scoped to upcoming events only, with task/event display fields already joined.
+export interface MyTaskAssignmentRow {
+  id: string;
+  task_id: string;
+  task_name: string;
+  event_id: string;
+  event_name: string;
+  start_datetime: string;
+  end_datetime: string;
+  location_name: string;
+  effective_status: string;
+}

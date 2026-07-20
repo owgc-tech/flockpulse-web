@@ -4,6 +4,7 @@ import type {
   AssigneeSelector,
   CreateEventTaskAssignmentInput,
   UpdateEventTaskAssignmentInput,
+  MyTaskAssignmentRow,
 } from './eventTaskAssignment.types';
 import {
   insertEventTaskAssignment,
@@ -12,6 +13,7 @@ import {
   listEventTaskAssignmentsForEvent,
   deleteEventTaskAssignment,
 } from './eventTaskAssignment.repository';
+import { attachEffectiveStatus } from '@/src/features/events/service';
 
 function serviceClient() {
   return createClient(
@@ -129,4 +131,91 @@ export async function listTaskAssignmentsForEvent(
   eventId: string, tenantId: string
 ): Promise<EventTaskAssignmentRow[]> {
   return await listEventTaskAssignmentsForEvent(eventId, tenantId);
+}
+
+// FP-161-5: "My Tasks" — every task assignment that includes the calling member,
+// directly or via a group they belong to, on upcoming events. Read-only, no
+// accept/decline — reassignment happens elsewhere (Admin/event Owner editing the
+// assignment directly), per the DIP's explicit scope.
+//
+// Grounding correction (confirmed live before writing this, not assumed from the
+// DIP text): the DIP's Grounding Check describes group membership as resolved via
+// assignments.target_id — that column was dropped by migration
+// 20260629000003_remediate_rbac_and_assignments.sql, replaced with typed
+// group_id/leader_member_id FK columns (assignments_typed_fk_check enforces
+// exactly one is set per assignment_type). The underlying mechanism the DIP
+// describes (assignments WHERE assignment_type = 'GROUP' AND member_id = X) is
+// otherwise correct — only the column name to read is different: group_id, not
+// target_id.
+//
+// Fetch-and-reduce, not a JSONB containment query, matching the established
+// convention (e.g. getRsvpReportSummary) — fetch broadly, filter/join in JS.
+export async function listMyTaskAssignments(tenantId: string, memberId: string): Promise<MyTaskAssignmentRow[]> {
+  const db = serviceClient();
+
+  const { data: groupAssignments, error: groupError } = await db
+    .from('assignments')
+    .select('group_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .eq('assignment_type', 'GROUP')
+    .is('deleted_at', null);
+  if (groupError) throw groupError;
+  const myGroupIds = (groupAssignments ?? []).map((a: { group_id: string }) => a.group_id);
+
+  const { data: assignments, error: assignError } = await db
+    .from('event_tasks_assignments')
+    .select('id, event_id, task_id, assignee')
+    .eq('tenant_id', tenantId);
+  if (assignError) throw assignError;
+
+  const mine = (assignments ?? []).filter((a: { assignee: AssigneeSelector | null }) => {
+    const groupIds = a.assignee?.group_ids ?? [];
+    const memberIds = a.assignee?.member_ids ?? [];
+    return memberIds.includes(memberId) || groupIds.some((id: string) => myGroupIds.includes(id));
+  }) as { id: string; event_id: string; task_id: string; assignee: AssigneeSelector | null }[];
+  if (mine.length === 0) return [];
+
+  const eventIds = [...new Set(mine.map((a) => a.event_id))];
+  const taskIds = [...new Set(mine.map((a) => a.task_id))];
+
+  const [{ data: events, error: eventsError }, { data: tasks, error: tasksError }] = await Promise.all([
+    db.from('events')
+      .select('id, name, start_datetime, end_datetime, location_name')
+      .eq('tenant_id', tenantId)
+      .in('id', eventIds),
+    db.from('tasks')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .in('id', taskIds),
+  ]);
+  if (eventsError) throw eventsError;
+  if (tasksError) throw tasksError;
+
+  // "Upcoming" mirrors listEventsForMember()'s own precedent exactly — not fully
+  // concluded (COMPLETED/LOCKED excluded), reusing attachEffectiveStatus rather
+  // than reimplementing the DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation.
+  const eventsWithStatus = await attachEffectiveStatus(events ?? []);
+  const eventById = new Map(eventsWithStatus.map((e) => [e.id, e]));
+  const taskById = new Map((tasks ?? []).map((t: { id: string; name: string }) => [t.id, t]));
+
+  return mine
+    .map((a) => {
+      const event = eventById.get(a.event_id);
+      if (!event || event.effective_status === 'COMPLETED' || event.effective_status === 'LOCKED') return null;
+      const task = taskById.get(a.task_id);
+      return {
+        id: a.id,
+        task_id: a.task_id,
+        task_name: task?.name ?? 'Unknown task',
+        event_id: a.event_id,
+        event_name: event.name,
+        start_datetime: event.start_datetime,
+        end_datetime: event.end_datetime,
+        location_name: event.location_name,
+        effective_status: event.effective_status,
+      };
+    })
+    .filter((row): row is MyTaskAssignmentRow => row !== null)
+    .sort((a, b) => a.start_datetime.localeCompare(b.start_datetime));
 }
