@@ -556,10 +556,11 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const withEffectiveStatus = await attachEffectiveStatus(events ?? []);
 
-  // "Upcoming" (FP-94 AC) = not fully concluded. CANCELLED passes through
-  // regardless of timing per FP-66's AC that cancelled events stay visible.
+  // FP-166: reverses FP-94/FP-66's original decision to let CANCELLED events pass
+  // through regardless of timing — Joseph now wants them filtered out of My Events
+  // entirely, matching how COMPLETED/LOCKED are already excluded.
   const upcoming = withEffectiveStatus.filter(
-    (e) => e.effective_status !== 'COMPLETED' && e.effective_status !== 'LOCKED'
+    (e) => !['COMPLETED', 'LOCKED', 'CANCELLED'].includes(e.effective_status)
   );
   if (upcoming.length === 0) return [];
 
