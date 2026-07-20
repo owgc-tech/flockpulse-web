@@ -626,6 +626,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
                   groupIds={current.group_ids ?? []} memberIds={current.member_ids ?? []}
                   onToggleGroup={id => toggleTaskGroup(t.id, id)} onToggleMember={id => toggleTaskMember(t.id, id)}
                   label={t.name}
+                  individualOnly={t.individual_only}
                 />
               </div>
             );

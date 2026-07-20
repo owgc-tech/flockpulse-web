@@ -14,10 +14,12 @@ export default function TasksTable({ initialTasks, token }: Props) {
   const [isPending, startTransition] = useTransition();
 
   const [newName, setNewName] = useState('');
+  const [newIndividualOnly, setNewIndividualOnly] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editIndividualOnly, setEditIndividualOnly] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -33,7 +35,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         const res = await fetch('/api/tasks', {
           method: 'POST',
           headers: authHeaders,
-          body: JSON.stringify({ name: newName.trim() }),
+          body: JSON.stringify({ name: newName.trim(), individual_only: newIndividualOnly }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -42,6 +44,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         }
         setTasks(prev => [...prev, body.data].sort((a, b) => a.name.localeCompare(b.name)));
         setNewName('');
+        setNewIndividualOnly(false);
       } catch {
         setError('Network error — please try again');
       } finally {
@@ -53,6 +56,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
   function startEdit(t: TaskRow) {
     setEditingId(t.id);
     setEditName(t.name);
+    setEditIndividualOnly(t.individual_only);
   }
 
   function cancelEdit() {
@@ -69,7 +73,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         const res = await fetch(`/api/tasks/${id}`, {
           method: 'PATCH',
           headers: authHeaders,
-          body: JSON.stringify({ name: editName.trim() }),
+          body: JSON.stringify({ name: editName.trim(), individual_only: editIndividualOnly }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -129,6 +133,10 @@ export default function TasksTable({ initialTasks, token }: Props) {
               className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
           </div>
+          <label className="flex items-center gap-1.5 pb-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+            <input type="checkbox" checked={newIndividualOnly} onChange={e => setNewIndividualOnly(e.target.checked)} />
+            Individual only
+          </label>
           <button
             onClick={handleCreate}
             disabled={creating || isPending || !newName.trim()}
@@ -167,13 +175,30 @@ export default function TasksTable({ initialTasks, token }: Props) {
                   <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
                     <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
                       {isEditing ? (
-                        <input
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          className="rounded border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                        />
+                        <div className="flex flex-col gap-1.5">
+                          <input
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            className="rounded border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                          />
+                          <label className="flex items-center gap-1.5 text-xs font-normal text-zinc-600 dark:text-zinc-400">
+                            <input
+                              type="checkbox"
+                              checked={editIndividualOnly}
+                              onChange={e => setEditIndividualOnly(e.target.checked)}
+                            />
+                            Individual only
+                          </label>
+                        </div>
                       ) : (
-                        <button onClick={() => startEdit(t)} className="hover:underline">{t.name}</button>
+                        <button onClick={() => startEdit(t)} className="flex items-center gap-2 hover:underline">
+                          {t.name}
+                          {t.individual_only && (
+                            <span className="inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                              Individual only
+                            </span>
+                          )}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-3">

@@ -9,7 +9,7 @@ function err(code: string, message: string): Error & { code: string } {
 
 export async function createTask(tenantId: string, input: CreateTaskInput): Promise<TaskRow> {
   if (!input.name?.trim()) throw err('VALIDATION_ERROR', 'name is required');
-  return await insertTask(tenantId, { name: input.name.trim() });
+  return await insertTask(tenantId, { name: input.name.trim(), individualOnly: input.individualOnly });
 }
 
 export async function updateTask(

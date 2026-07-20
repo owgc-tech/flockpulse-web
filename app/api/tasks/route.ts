@@ -16,11 +16,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { name } = body;
+    const { name, individual_only } = body;
     if (!name) return errorResponse('MISSING_FIELD', 'name required', 400);
 
     try {
-      const task = await createTask(ctx.tenantId, { name });
+      const task = await createTask(ctx.tenantId, { name, individualOnly: individual_only });
       return NextResponse.json({ data: task }, { status: 201 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
