@@ -192,9 +192,12 @@ export async function listMyTaskAssignments(tenantId: string, memberId: string):
   if (eventsError) throw eventsError;
   if (tasksError) throw tasksError;
 
-  // "Upcoming" mirrors listEventsForMember()'s own precedent exactly — not fully
-  // concluded (COMPLETED/LOCKED excluded), reusing attachEffectiveStatus rather
-  // than reimplementing the DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED derivation.
+  // FP-164: "Upcoming" is an allowlist (SCHEDULED/ACTIVE only), not a denylist —
+  // the original COMPLETED/LOCKED-only exclusion silently let DRAFT events (never
+  // published, no date-based lifecycle of their own) show up in My Tasks forever.
+  // Enumerating the few valid inclusion states is more robust than enumerating
+  // exclusions, since that's exactly the shape of bug this replaces. Still reuses
+  // attachEffectiveStatus rather than reimplementing status derivation.
   const eventsWithStatus = await attachEffectiveStatus(events ?? []);
   const eventById = new Map(eventsWithStatus.map((e) => [e.id, e]));
   const taskById = new Map((tasks ?? []).map((t: { id: string; name: string }) => [t.id, t]));
@@ -202,7 +205,7 @@ export async function listMyTaskAssignments(tenantId: string, memberId: string):
   return mine
     .map((a) => {
       const event = eventById.get(a.event_id);
-      if (!event || event.effective_status === 'COMPLETED' || event.effective_status === 'LOCKED') return null;
+      if (!event || !['SCHEDULED', 'ACTIVE'].includes(event.effective_status)) return null;
       const task = taskById.get(a.task_id);
       return {
         id: a.id,
