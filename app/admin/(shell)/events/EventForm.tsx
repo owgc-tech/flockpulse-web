@@ -11,7 +11,7 @@ import type { TaskRow } from '@/src/features/tasks/task.types';
 import type { AssigneeSelector, EventTaskAssignmentRow } from '@/src/features/tasks/eventTaskAssignment.types';
 import RepeatsFields from './RepeatsFields';
 import ConvertToSeriesSection from './ConvertToSeriesSection';
-import GroupMemberMultiSelect from './GroupMemberMultiSelect';
+import GroupMemberChipPicker from './GroupMemberChipPicker';
 
 // FP-161-3: always shown as optional task slots, matched by name against the tenant's tasks
 // catalog (Phase 1) — mirrors Prayer Leader/Food Assignment's pre-FP-161-3 "always optional,
@@ -242,7 +242,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   }
 
   // FP-161-3: per-task toggle handlers — same shape as toggleGroup/toggleMember above, just
-  // keyed by taskId since there's one GroupMemberMultiSelect instance per visible task now,
+  // keyed by taskId since there's one GroupMemberChipPicker instance per visible task now,
   // not a single fixed Food Assignment picker.
   function toggleTaskGroup(taskId: string, groupId: string) {
     setTaskAssignees(prev => ({
@@ -574,11 +574,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       </div>
 
       <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <GroupMemberMultiSelect
+        <GroupMemberChipPicker
           groups={groups} members={members}
           groupIds={groupIds} memberIds={memberIds}
           onToggleGroup={toggleGroup} onToggleMember={toggleMember}
-          groupsLabel="Target — groups" membersLabel="Target — individual members"
+          label="Target"
         />
       </div>
 
@@ -621,11 +621,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
                     </button>
                   )}
                 </div>
-                <GroupMemberMultiSelect
+                <GroupMemberChipPicker
                   groups={groups} members={members}
                   groupIds={current.group_ids ?? []} memberIds={current.member_ids ?? []}
                   onToggleGroup={id => toggleTaskGroup(t.id, id)} onToggleMember={id => toggleTaskMember(t.id, id)}
-                  groupsLabel={`${t.name} — groups`} membersLabel={`${t.name} — individual members`}
+                  label={t.name}
                 />
               </div>
             );
