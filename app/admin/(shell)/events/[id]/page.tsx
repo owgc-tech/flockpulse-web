@@ -20,7 +20,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
   // DIP-FP-114-web: readable by Leader-tier; mutation controls inside EventDetail
-  // are gated by ownership (canManage = Admin-tier OR event.created_by_member_id === memberId).
+  // are gated by ownership (canManage = Admin-tier OR event.owner_member_id === memberId).
+  // FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
+  // (permanent audit history only, no longer read for permission checks).
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !memberId || !token) redirect('/login');
 
   let event: EventDetailRow;
@@ -37,7 +39,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     listMeetingResources(tenantId),
   ]);
 
-  const canManage = isAdminTier(role) || event.created_by_member_id === memberId;
+  const canManage = isAdminTier(role) || event.owner_member_id === memberId;
 
   return (
     <div className="px-6 py-8">

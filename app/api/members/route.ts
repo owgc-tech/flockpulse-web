@@ -100,8 +100,10 @@ export const DELETE = (req: NextRequest) =>
         // FP-153: mirrors assignedMemberCount's own extraction — without this, member.service.ts's
         // ownedGroupCount (added under FP-146) never reaches the client at all.
         const ownedGroupCount = (err as { ownedGroupCount?: number }).ownedGroupCount;
+        // FP-161-2: same extraction, for member.service.ts's ownedEventCount.
+        const ownedEventCount = (err as { ownedEventCount?: number }).ownedEventCount;
         return NextResponse.json(
-          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount } },
+          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount, ownedEventCount } },
           { status: 409 }
         );
       }

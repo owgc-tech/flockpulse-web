@@ -28,10 +28,12 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
     redirect('/admin/events');
   }
 
-  // DIP-FP-114-web: Leader-tier may only reach the edit page for events they
-  // created — same ownership rule the PATCH API enforces, checked here too so a
-  // direct URL visit doesn't render a form that will just 403 on submit.
-  if (!isAdminTier(role) && event.created_by_member_id !== memberId) {
+  // DIP-FP-114-web: Leader-tier may only reach the edit page for events they own —
+  // same ownership rule the PATCH API enforces, checked here too so a direct URL
+  // visit doesn't render a form that will just 403 on submit.
+  // FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
+  // (permanent audit history only, no longer read for permission checks).
+  if (!isAdminTier(role) && event.owner_member_id !== memberId) {
     redirect(`/admin/events/${id}`);
   }
 
@@ -47,7 +49,7 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Edit event</h1>
         </div>
-        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} initialEvent={event} />
+        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} initialEvent={event} isAdmin={isAdminTier(role)} />
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
   const [error, setError] = useState<string | null>(null);
   const [blockedCount, setBlockedCount] = useState<number | null>(null);
   const [ownedGroupCount, setOwnedGroupCount] = useState<number | null>(null);
+  const [ownedEventCount, setOwnedEventCount] = useState<number | null>(null);
 
   const isDeactivated = member.deleted_at !== null;
   // A member can't be their own Pastoral Leader.
@@ -79,6 +80,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     setError(null);
     setBlockedCount(null);
     setOwnedGroupCount(null);
+    setOwnedEventCount(null);
     const res = await fetch(`/api/members?id=${member.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -101,6 +103,14 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
       // already exists (GroupEditForm.tsx, built under FP-146).
       if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.ownedGroupCount !== undefined) {
         setOwnedGroupCount(body.error.ownedGroupCount ?? null);
+        return;
+      }
+      // FP-161-2: still owns events — same error code, distinguished by ownedEventCount
+      // instead. No dedicated bulk-reassign UI page exists for event ownership either
+      // (matching Groups' precedent), so this points to the Events admin page, where
+      // per-event reassignment already exists (EventForm.tsx's Owner section, built here).
+      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.ownedEventCount !== undefined) {
+        setOwnedEventCount(body.error.ownedEventCount ?? null);
         return;
       }
       setError(body?.error?.message ?? 'Failed to deactivate member');
@@ -231,6 +241,15 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
               Reassign ownership from each group&apos;s edit page before deactivating —{' '}
               <a href="/admin/groups" className="font-medium underline hover:no-underline">
                 Groups
+              </a>.
+            </div>
+          )}
+          {ownedEventCount !== null && (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              {member.first_name} {member.last_name} still owns {ownedEventCount} event{ownedEventCount === 1 ? '' : 's'}.
+              Reassign ownership from each event&apos;s edit page before deactivating —{' '}
+              <a href="/admin/events" className="font-medium underline hover:no-underline">
+                Events
               </a>.
             </div>
           )}
