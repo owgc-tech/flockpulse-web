@@ -6,6 +6,7 @@ import { getModule } from '@/src/features/formation/module.repository';
 import { getCourse } from '@/src/features/formation/course.repository';
 import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
 import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
+import type { EventListItemRow } from './event.types';
 
 function serviceClient() {
   return createClient(
@@ -514,16 +515,119 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
   );
 }
 
-export async function listEvents(tenantId: string) {
+const LIST_EVENTS_COLS = 'id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
+
+export interface ListEventsOptions {
+  limit?: number;
+  offset?: number;
+  eventTypeIds?: string[];
+  // 'YYYY-MM' — matches an <input type="month"> value. Parsed as UTC month
+  // boundaries; this app doesn't do per-user timezone handling anywhere else,
+  // so this doesn't invent a new precedent.
+  month?: string;
+  // Effective status values (DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED/CANCELLED).
+  status?: string[];
+}
+
+export interface ListEventsResult<T> {
+  data: T[];
+  hasMore: boolean;
+}
+
+function monthRange(month: string): { start: string; end: string } {
+  const [year, monthNum] = month.split('-').map(Number);
+  const start = new Date(Date.UTC(year, monthNum - 1, 1));
+  const end = new Date(Date.UTC(year, monthNum, 1));
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+// FP-167-1: real backend pagination + filtering for the admin Events page's
+// infinite scroll, not a client-side wrapper around a full unconditional fetch.
+//
+// event_type_id and start_datetime (via the month filter) are real columns, so
+// those are applied at the query level in all cases. effective_status is NOT a
+// stored column — get_event_effective_status() derives it per-row at query time
+// (DRAFT/CANCELLED pass through as-is; SCHEDULED/ACTIVE/COMPLETED/LOCKED are
+// time-windowed against now() and the tenant's attendance_window_hours) — so it
+// can't be filtered with a plain PostgREST .eq()/.in(). Two paths:
+//   - No status filter (the common case): true DB-level LIMIT/OFFSET via
+//     .range(), with an exact count so hasMore is accurate. attachEffectiveStatus
+//     then only needs to compute status for the one page just fetched.
+//   - Status filter present: fetch the full type/month-filtered candidate set
+//     (still bounded by those query-level filters, not the whole tenant
+//     unconditionally) and bulk-resolve every candidate's status in one round
+//     trip via get_events_effective_statuses() (FP-121's canonical SQL
+//     function — reused as-is, not a hand-rolled JS reimplementation of the
+//     time-window logic that could silently drift from it), then filter and
+//     slice the page window server-side. The client still only ever receives
+//     one page's worth of rows, regardless of which path served it.
+export async function listEvents(
+  tenantId: string, options: ListEventsOptions = {}
+): Promise<ListEventsResult<EventListItemRow>> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+  const db = serviceClient();
+
+  let query = db
+    .from('events')
+    .select(LIST_EVENTS_COLS, { count: 'exact' })
+    .eq('tenant_id', tenantId);
+
+  if (options.eventTypeIds && options.eventTypeIds.length > 0) {
+    query = query.in('event_type_id', options.eventTypeIds);
+  }
+  if (options.month) {
+    const { start, end } = monthRange(options.month);
+    query = query.gte('start_datetime', start).lt('start_datetime', end);
+  }
+  query = query.order('start_datetime', { ascending: true });
+
+  if (!options.status || options.status.length === 0) {
+    const { data, error, count } = await query.range(offset, offset + limit - 1);
+    if (error) throw error;
+    const withStatus = await attachEffectiveStatus(data ?? []);
+    return { data: withStatus as unknown as EventListItemRow[], hasMore: offset + withStatus.length < (count ?? 0) };
+  }
+
+  const { data: candidates, error } = await query;
+  if (error) throw error;
+  if (!candidates || candidates.length === 0) return { data: [], hasMore: false };
+
+  const { data: statuses, error: statusError } = await db.rpc('get_events_effective_statuses', {
+    p_tenant_id: tenantId,
+    p_event_ids: candidates.map((e: { id: string }) => e.id),
+  });
+  if (statusError) throw statusError;
+
+  const statusById = new Map<string, string>();
+  for (const s of (statuses ?? []) as { event_id: string; effective_status: string }[]) {
+    statusById.set(s.event_id, s.effective_status);
+  }
+  const withStatus = candidates.map((e: { id: string }) => ({ ...e, effective_status: statusById.get(e.id) ?? 'DRAFT' }));
+  const matching = withStatus.filter((e: { effective_status: string }) => options.status!.includes(e.effective_status));
+  const page = matching.slice(offset, offset + limit);
+
+  return { data: page as unknown as EventListItemRow[], hasMore: offset + page.length < matching.length };
+}
+
+// FP-167-1: found live while changing listEvents()'s contract, not in the DIP's
+// own file list — the RSVP and Attendance report pages both called
+// listEvents(tenantId) with no options, for an unconditional "every event, id/
+// name/start_datetime only" filter-dropdown source, unrelated to the admin
+// Events page's new pagination. Splitting this out preserves their exact prior
+// behavior (all events, no cap) without contorting the new paginated
+// listEvents() into serving two genuinely different call shapes, and without
+// the arbitrary "just pass a big limit" hack that would silently cap out for a
+// tenant with enough historical events.
+export async function listEventOptions(tenantId: string): Promise<{ id: string; name: string; start_datetime: string }[]> {
   const { data, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
+    .select('id, name, start_datetime')
     .eq('tenant_id', tenantId)
     .order('start_datetime', { ascending: true });
 
   if (error) throw error;
-
-  return attachEffectiveStatus(data ?? []);
+  return data ?? [];
 }
 
 // FP-94/FP-66: member-scoped "my events" — event_attendees is the materialized

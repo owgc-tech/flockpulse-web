@@ -6,10 +6,27 @@ import { createEvent, listEvents } from '@/src/features/events/service';
 // created_by_member_id, set server-side from ctx.memberId — never client-supplied).
 const requireLeader = requireRole('LEADER');
 
+// FP-167-1: pagination + filter query params for the admin Events page's
+// infinite scroll. All optional — omitting them preserves "first page,
+// unfiltered" behavior. eventTypeIds/status are comma-separated ids/values;
+// month is 'YYYY-MM'. See listEvents() for how each is actually applied.
 export async function GET(req: NextRequest) {
   return withAuth(req, async (_, ctx) => {
-    const events = await listEvents(ctx.tenantId);
-    return NextResponse.json({ data: events });
+    const { searchParams } = req.nextUrl;
+    const limitParam = searchParams.get('limit');
+    const offsetParam = searchParams.get('offset');
+    const eventTypeIdsParam = searchParams.get('eventTypeIds');
+    const monthParam = searchParams.get('month');
+    const statusParam = searchParams.get('status');
+
+    const result = await listEvents(ctx.tenantId, {
+      limit: limitParam ? Number(limitParam) : undefined,
+      offset: offsetParam ? Number(offsetParam) : undefined,
+      eventTypeIds: eventTypeIdsParam ? eventTypeIdsParam.split(',').filter(Boolean) : undefined,
+      month: monthParam ?? undefined,
+      status: statusParam ? statusParam.split(',').filter(Boolean) : undefined,
+    });
+    return NextResponse.json(result);
   });
 }
 

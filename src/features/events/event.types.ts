@@ -34,6 +34,29 @@ export interface EventListRow {
   created_at: string;
 }
 
+// FP-167-1: the admin Events page's paginated list row shape. Deliberately not
+// EventListRow — that type requires rsvp_closure_at (member-RSVP-specific,
+// computed only in listEventsForMember()); the admin list has no per-member
+// RSVP context to compute it from, and doesn't display it.
+export interface EventListItemRow {
+  id: string;
+  name: string;
+  status: EventStatus;
+  effective_status: EffectiveStatus;
+  start_datetime: string;
+  end_datetime: string;
+  location_name: string;
+  location_address: string;
+  location_url: string | null;
+  target: EventTarget;
+  event_type_id: string;
+  online_meeting_resource_id: string | null;
+  online_meeting_url: string | null;
+  online_meeting_platform_label: string | null;
+  rsvp_closure_days: number | null;
+  created_at: string;
+}
+
 export interface EventDetailRow extends EventListRow {
   talk_id: string | null;
   version: number;
