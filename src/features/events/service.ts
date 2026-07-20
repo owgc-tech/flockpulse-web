@@ -28,22 +28,6 @@ export async function validateEventTypeId(eventTypeId: string, tenantId: string)
   }
 }
 
-// FP-107: mirrors validateEventTypeId() exactly — same pattern, different table. Defense-in-depth
-// on top of trigger_validate_event_prayer_leader_tenant_scope.
-async function validatePrayerLeaderMemberId(memberId: string, tenantId: string): Promise<void> {
-  const { data } = await serviceClient()
-    .from('members')
-    .select('id, deleted_at')
-    .eq('id', memberId)
-    .eq('tenant_id', tenantId)
-    .single();
-  if (!data || data.deleted_at !== null) {
-    const err = new Error(`prayer_leader_member_id ${memberId} is invalid, soft-deleted, or belongs to a different tenant`) as Error & { code: string };
-    err.code = 'INVALID_TARGET';
-    throw err;
-  }
-}
-
 export interface MeetingResourceOption {
   id: string;
   name: string;
@@ -76,8 +60,6 @@ export interface CreateEventInput {
   locationUrl?: string | null;
   target: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
-  prayerLeaderMemberId?: string | null;
-  foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
   onlineMeetingResourceId?: string | null;
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
@@ -187,9 +169,6 @@ export async function createEvent(input: CreateEventInput) {
   if (input.talkId) {
     await validateTalkIdForEvent(input.talkId, input.tenantId);
   }
-  if (input.prayerLeaderMemberId) {
-    await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, input.tenantId);
-  }
 
   // DIP-FP-120-web: pre-check gives a genuinely useful conflict message in
   // the normal case; the EXCLUDE constraint (Section 7 below) is the real,
@@ -212,8 +191,13 @@ export async function createEvent(input: CreateEventInput) {
     p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
-    p_prayer_leader_member_id: input.prayerLeaderMemberId ?? null,
-    p_food_assignment: input.foodAssignment ?? null,
+    // FP-161-3: insert_event_with_audit()'s signature still requires these two params (no
+    // migration this phase — that's Phase 4) but the app no longer reads/writes either field
+    // via CreateEventInput; always NULL at creation. Task assignment goes through
+    // event_tasks_assignments instead, via a separate call after this RPC returns (needs a
+    // real event_id, which this RPC hasn't produced yet at this point in the function).
+    p_prayer_leader_member_id: null,
+    p_food_assignment: null,
     p_online_meeting_resource_id: input.onlineMeetingResourceId ?? null,
     p_online_meeting_url: input.onlineMeetingUrl ?? null,
     p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
@@ -326,8 +310,6 @@ export interface UpdateEventInput {
   target?: { group_ids?: string[]; member_ids?: string[] };
   eventTypeId?: string;
   talkId?: string | null;
-  prayerLeaderMemberId?: string | null;
-  foodAssignment?: { group_ids?: string[]; member_ids?: string[] } | null;
   onlineMeetingResourceId?: string | null;
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
@@ -393,13 +375,6 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     }
   }
 
-  // FP-107: app-layer validation for prayer_leader_member_id — defense-in-depth on top of
-  // trigger_validate_event_prayer_leader_tenant_scope. No immutability rule (unlike talk_id) —
-  // Prayer Leader is purely informational and freely re-settable at any time.
-  if (input.prayerLeaderMemberId) {
-    await validatePrayerLeaderMemberId(input.prayerLeaderMemberId, tenantId);
-  }
-
   // DIP-FP-131-web: reuses validateEventTypeId() as-is (previously only called
   // from createEvent) — same defense-in-depth pattern as prayerLeaderMemberId
   // above. No immutability rule — there was never a deliberate constraint here,
@@ -445,8 +420,11 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.locationUrl !== undefined) patch.location_url = input.locationUrl;
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
-  if (input.prayerLeaderMemberId !== undefined) patch.prayer_leader_member_id = input.prayerLeaderMemberId;
-  if (input.foodAssignment !== undefined) patch.food_assignment = input.foodAssignment;
+  // FP-161-3: prayer_leader_member_id/food_assignment deliberately never added to this patch —
+  // update_event_with_audit()'s CASE WHEN p_patch ? '<key>' logic leaves a column untouched when
+  // its key is absent from the JSONB patch, so omitting these keys entirely (rather than passing
+  // null) is what keeps the columns genuinely untouched, not just cleared. Task assignment goes
+  // through event_tasks_assignments instead (Phase 1's eventTaskAssignment.service.ts).
   if (input.onlineMeetingResourceId !== undefined) patch.online_meeting_resource_id = input.onlineMeetingResourceId;
   if (input.onlineMeetingUrl !== undefined) patch.online_meeting_url = input.onlineMeetingUrl;
   if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;

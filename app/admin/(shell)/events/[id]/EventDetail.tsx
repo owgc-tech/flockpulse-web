@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, MeetingResourceOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
 import { getMapsUrl } from '@/src/features/events/event.types';
+import type { TaskRow } from '@/src/features/tasks/task.types';
+import type { EventTaskAssignmentRow } from '@/src/features/tasks/eventTaskAssignment.types';
 
 interface Props {
   event: EventDetailRow;
@@ -50,6 +52,11 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // FP-161-3: task catalog + this event's assignments, for the unified Tasks section below —
+  // replaces the old dedicated Prayer Leader/Food Assignment display rows.
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [taskAssignments, setTaskAssignments] = useState<EventTaskAssignmentRow[]>([]);
+
   useEffect(() => {
     fetch(`/api/events/${event.id}/roster`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
@@ -57,15 +64,24 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
       .catch(() => setRoster([]));
   }, [event.id, token]);
 
+  useEffect(() => {
+    fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(body => setTasks(body.data ?? []))
+      .catch(() => setTasks([]));
+    fetch(`/api/event-tasks-assignments?event_id=${event.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(body => setTaskAssignments(body.data ?? []))
+      .catch(() => setTaskAssignments([]));
+  }, [event.id, token]);
+
   const eventType = eventTypes.find(t => t.id === event.event_type_id);
   const groupById = new Map(groups.map(g => [g.id, g]));
   const memberById = new Map(members.map(m => [m.id, m]));
+  const taskById = new Map(tasks.map(t => [t.id, t]));
   const groupNames = (event.target.group_ids ?? []).map(id => groupById.get(id)?.name ?? 'Unknown group');
   const memberCount = (event.target.member_ids ?? []).length;
 
-  // FP-107: always-optional, no event-type gating. A cross-tenant id inside food_assignment
-  // (which has no write-time trigger, same precedent as target) is simply not found in the
-  // members/groups maps here and silently excluded from display — not rejected.
   // DIP-FP-120-web: tracked-Zoom resolves through the meetingResources list
   // (join_url lives on meeting_resources, not on the event row); freeform
   // "other platform" carries its own url/label directly on the event.
@@ -74,13 +90,6 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
     : null;
   const onlineMeetingLabel = meetingResource?.name ?? event.online_meeting_platform_label;
   const onlineMeetingLink = meetingResource?.join_url ?? event.online_meeting_url;
-
-  const prayerLeader = event.prayer_leader_member_id ? memberById.get(event.prayer_leader_member_id) : null;
-  const foodGroupNames = (event.food_assignment?.group_ids ?? []).map(id => groupById.get(id)?.name).filter((n): n is string => !!n);
-  const foodMemberNames = (event.food_assignment?.member_ids ?? [])
-    .map(id => memberById.get(id))
-    .filter((m): m is NonNullable<typeof m> => !!m)
-    .map(m => `${m.first_name} ${m.last_name}`);
 
   const canCancel = canManage && event.effective_status !== 'CANCELLED' && event.effective_status !== 'LOCKED';
   const canPublish = canManage && event.status === 'DRAFT';
@@ -222,20 +231,6 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
               {groupNames.length === 0 && memberCount === 0 ? '—' : ''}
             </dd>
           </div>
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Prayer Leader</dt>
-            <dd className="text-zinc-900 dark:text-zinc-100">
-              {prayerLeader ? `${prayerLeader.first_name} ${prayerLeader.last_name}` : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Food Assignment</dt>
-            <dd className="text-zinc-900 dark:text-zinc-100">
-              {[...foodGroupNames, ...foodMemberNames].length > 0
-                ? [...foodGroupNames, ...foodMemberNames].join(', ')
-                : '—'}
-            </dd>
-          </div>
         </dl>
 
         <div className="mt-6 flex gap-3">
@@ -258,6 +253,31 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
             </button>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Tasks</h2>
+        {taskAssignments.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">No tasks assigned yet.</p>
+        ) : (
+          <dl className="grid grid-cols-2 gap-4 text-sm">
+            {taskAssignments.map(a => {
+              const task = taskById.get(a.task_id);
+              const assignedGroupNames = (a.assignee?.group_ids ?? []).map(id => groupById.get(id)?.name ?? 'Unknown group');
+              const assignedMemberNames = (a.assignee?.member_ids ?? [])
+                .map(id => memberById.get(id))
+                .filter((m): m is NonNullable<typeof m> => !!m)
+                .map(m => `${m.first_name} ${m.last_name}`);
+              const names = [...assignedGroupNames, ...assignedMemberNames];
+              return (
+                <div key={a.id}>
+                  <dt className="text-zinc-500 dark:text-zinc-400">{task?.name ?? 'Unknown task'}</dt>
+                  <dd className="text-zinc-900 dark:text-zinc-100">{names.length > 0 ? names.join(', ') : '—'}</dd>
+                </div>
+              );
+            })}
+          </dl>
+        )}
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
