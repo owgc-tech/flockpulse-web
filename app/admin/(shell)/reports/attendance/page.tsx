@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
 import { listGroups } from '@/src/features/groups/service';
-import { listEvents } from '@/src/features/events/service';
+import { listEventOptions } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import AttendanceReportBrowser from '../AttendanceReportBrowser';
@@ -23,7 +23,7 @@ export default async function AttendanceReportPage() {
   const [members, groups, events, eventTypes] = await Promise.all([
     listMembers(tenantId),
     listGroups(tenantId),
-    listEvents(tenantId),
+    listEventOptions(tenantId),
     listEventTypes(tenantId),
   ]);
 

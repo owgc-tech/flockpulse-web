@@ -3,14 +3,21 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listEvents } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
-import type { EventListRow } from '@/src/features/events/event.types';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventsTable from './EventsTable';
 
-// Server Component — resolves auth, fetches events/event-types/groups, then passes
-// them to the interactive EventsTable Client Component. Route is protected by
-// proxy.ts (session + MFA trust).
-export default async function EventsPage() {
+const PAGE_SIZE = 20;
+
+// Server Component — resolves auth, fetches the first page of events (already
+// filtered per the URL's own query params, so a bookmarked/shared filtered URL
+// doesn't flash unfiltered content before the client takes over) plus
+// event-types/groups, then passes everything to the interactive EventsTable
+// Client Component. Route is protected by proxy.ts (session + MFA trust).
+export default async function EventsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ eventTypeIds?: string; month?: string; status?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) redirect('/login');
@@ -23,35 +30,34 @@ export default async function EventsPage() {
   // remain mutable — enforced by the API layer and reflected in EventDetail's UI).
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
-  const [events, eventTypes, groups] = await Promise.all([
-    listEvents(tenantId),
+  const { eventTypeIds, month, status } = await searchParams;
+  const initialFilters = {
+    eventTypeIds: eventTypeIds ? eventTypeIds.split(',').filter(Boolean) : [],
+    month: month ?? '',
+    status: status ? status.split(',').filter(Boolean) : [],
+  };
+
+  const [eventsResult, eventTypes, groups] = await Promise.all([
+    listEvents(tenantId, {
+      limit: PAGE_SIZE,
+      offset: 0,
+      eventTypeIds: initialFilters.eventTypeIds.length > 0 ? initialFilters.eventTypeIds : undefined,
+      month: initialFilters.month || undefined,
+      status: initialFilters.status.length > 0 ? initialFilters.status : undefined,
+    }),
     listEventTypes(tenantId),
     listGroups(tenantId),
   ]);
 
   return (
-    <div className="px-6 py-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Events</h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Create, schedule, and manage events for this organisation.
-            </p>
-          </div>
-          <a
-            href="/admin/events/new"
-            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            Create event
-          </a>
-        </div>
-        <EventsTable
-          events={events as unknown as EventListRow[]}
-          eventTypes={eventTypes}
-          groups={groups ?? []}
-        />
-      </div>
-    </div>
+    <EventsTable
+      token={token}
+      initialEvents={eventsResult.data}
+      initialHasMore={eventsResult.hasMore}
+      initialFilters={initialFilters}
+      eventTypes={eventTypes}
+      groups={groups ?? []}
+      pageSize={PAGE_SIZE}
+    />
   );
 }

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
 import { listGroups } from '@/src/features/groups/service';
-import { listEvents } from '@/src/features/events/service';
+import { listEventOptions } from '@/src/features/events/service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import RsvpReportBrowser from '../RsvpReportBrowser';
 
@@ -22,7 +22,7 @@ export default async function RsvpReportPage() {
   const [members, groups, events] = await Promise.all([
     listMembers(tenantId),
     listGroups(tenantId),
-    listEvents(tenantId),
+    listEventOptions(tenantId),
   ]);
 
   const eventOptions = (events ?? []).map((e) => ({ id: e.id, name: e.name, start_datetime: e.start_datetime }));
