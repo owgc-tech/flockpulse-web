@@ -34,7 +34,7 @@ export async function startMFAEnrollAction(): Promise<
 }
 
 // Verifies the TOTP code entered by the admin against the enrolled factor.
-// On success: promotes session to aal2, sets MFA trust cookie, redirects to /admin/invitations.
+// On success: promotes session to aal2, sets MFA trust cookie, redirects to /admin/events.
 export async function verifyMFAEnrollAction(
   factorId: string,
   _prev: MFAEnrollVerifyState,
@@ -76,5 +76,5 @@ export async function verifyMFAEnrollAction(
     maxAge: trustDays * 24 * 60 * 60,
   });
 
-  redirect('/admin/invitations');
+  redirect('/admin/events');
 }

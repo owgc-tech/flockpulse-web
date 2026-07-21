@@ -64,7 +64,7 @@ export async function mfaChallengeAction(
     maxAge: trustDays * 24 * 60 * 60,
   });
 
-  // Redirect to the originally-requested admin route, or default to /admin/invitations.
-  const destination = next && next.startsWith('/admin') ? next : '/admin/invitations';
+  // Redirect to the originally-requested admin route, or default to /admin/events.
+  const destination = next && next.startsWith('/admin') ? next : '/admin/events';
   redirect(destination);
 }

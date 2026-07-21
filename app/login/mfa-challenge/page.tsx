@@ -18,7 +18,7 @@ export default async function MFAChallengePage({
   const role = user.app_metadata?.role as Role | undefined;
   if (!role || !isLeaderTierOrAbove(role)) redirect('/login');
 
-  const { next = '/admin/invitations' } = await searchParams;
+  const { next = '/admin/events' } = await searchParams;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
