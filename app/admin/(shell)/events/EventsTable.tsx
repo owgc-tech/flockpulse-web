@@ -150,6 +150,31 @@ export default function EventsTable({
     return parts.length > 0 ? parts.join(' + ') : '—';
   }
 
+  // FP-167-1-adj-2: root cause of the merged-to-dev regression (header stuck
+  // mid-list, overlapping data rows), found via direct DOM measurement, not
+  // assumed from "sticky-in-tables is flaky" folklore: the table's rounded-
+  // corner wrapper had overflow-hidden on it, and *any* non-visible overflow
+  // value (hidden included, not just auto/scroll) makes an element a sticky
+  // positioning containing block per spec — not just <main>'s real scroll
+  // container. The sticky <th>s were computing their offset against that
+  // non-scrolling wrapper's own static position instead, adding bandHeight
+  // on top of it (measured: top:132 rendered at 265 = 133 natural + 132,
+  // reproduced identically whether sticky lived on <thead> or each <th>,
+  // confirmed unrelated to table layout at all by reproducing the same
+  // failure with a CSS-grid div structure — the fix in both attempted forms
+  // was addressing the wrong layer). Removed overflow-hidden from the
+  // wrapper below; the rounded corners it existed for are now applied
+  // directly to the corner cells instead (rounded-tl-xl/rounded-tr-xl on the
+  // header's end cells, rounded-bl-xl/rounded-br-xl on the last body row's).
+  // Verified via live DOM measurement post-fix at multiple scroll positions
+  // (0, 250, 400, 700px) — header renders at its natural position when not
+  // yet scrolled past, and pins cleanly at bandHeight with zero row overlap
+  // once scrolled. th-level sticky (not thead-level) kept regardless, since
+  // it's still the more broadly cross-browser-reliable choice on its own
+  // merits even with the real bug fixed.
+  const stickyThClass = 'sticky z-[5] bg-white px-4 py-3 text-left font-medium text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400';
+  const stickyThStyle = { top: bandHeight };
+
   return (
     <div className="flex flex-col">
       <div ref={bandRef} className="sticky top-0 z-10 bg-zinc-50 px-6 pb-4 pt-8 dark:bg-black">
@@ -203,37 +228,40 @@ export default function EventsTable({
               No events yet.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
               <table className="w-full text-sm">
-                <thead className="sticky z-[5] bg-white dark:bg-zinc-950" style={{ top: bandHeight }}>
+                <thead>
                   <tr className="border-b border-zinc-100 dark:border-zinc-800">
-                    <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Type</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Date/Time</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Target</th>
+                    <th className={`${stickyThClass} rounded-tl-xl`} style={stickyThStyle}>Name</th>
+                    <th className={stickyThClass} style={stickyThStyle}>Type</th>
+                    <th className={stickyThClass} style={stickyThStyle}>Date/Time</th>
+                    <th className={stickyThClass} style={stickyThStyle}>Status</th>
+                    <th className={`${stickyThClass} rounded-tr-xl`} style={stickyThStyle}>Target</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {events.map(ev => (
-                    <tr
-                      key={ev.id}
-                      onClick={() => { window.location.href = `/admin/events/${ev.id}`; }}
-                      className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                    >
-                      <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{ev.name}</td>
-                      <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{eventTypeById.get(ev.event_type_id)?.name ?? '—'}</td>
-                      <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
-                        {new Date(ev.start_datetime).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[ev.effective_status]}`}>
-                          {STATUS_LABELS[ev.effective_status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{targetSummary(ev.target)}</td>
-                    </tr>
-                  ))}
+                  {events.map((ev, idx) => {
+                    const isLastRow = idx === events.length - 1;
+                    return (
+                      <tr
+                        key={ev.id}
+                        onClick={() => { window.location.href = `/admin/events/${ev.id}`; }}
+                        className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                      >
+                        <td className={`px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100 ${isLastRow ? 'rounded-bl-xl' : ''}`}>{ev.name}</td>
+                        <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{eventTypeById.get(ev.event_type_id)?.name ?? '—'}</td>
+                        <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
+                          {new Date(ev.start_datetime).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[ev.effective_status]}`}>
+                            {STATUS_LABELS[ev.effective_status]}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-zinc-500 dark:text-zinc-400 ${isLastRow ? 'rounded-br-xl' : ''}`}>{targetSummary(ev.target)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
