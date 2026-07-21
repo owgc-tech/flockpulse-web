@@ -150,30 +150,13 @@ export default function EventsTable({
     return parts.length > 0 ? parts.join(' + ') : '—';
   }
 
-  // FP-167-1-adj-2: root cause of the merged-to-dev regression (header stuck
-  // mid-list, overlapping data rows), found via direct DOM measurement, not
-  // assumed from "sticky-in-tables is flaky" folklore: the table's rounded-
-  // corner wrapper had overflow-hidden on it, and *any* non-visible overflow
-  // value (hidden included, not just auto/scroll) makes an element a sticky
-  // positioning containing block per spec — not just <main>'s real scroll
-  // container. The sticky <th>s were computing their offset against that
-  // non-scrolling wrapper's own static position instead, adding bandHeight
-  // on top of it (measured: top:132 rendered at 265 = 133 natural + 132,
-  // reproduced identically whether sticky lived on <thead> or each <th>,
-  // confirmed unrelated to table layout at all by reproducing the same
-  // failure with a CSS-grid div structure — the fix in both attempted forms
-  // was addressing the wrong layer). Removed overflow-hidden from the
-  // wrapper below; the rounded corners it existed for are now applied
-  // directly to the corner cells instead (rounded-tl-xl/rounded-tr-xl on the
-  // header's end cells, rounded-bl-xl/rounded-br-xl on the last body row's).
-  // Verified via live DOM measurement post-fix at multiple scroll positions
-  // (0, 250, 400, 700px) — header renders at its natural position when not
-  // yet scrolled past, and pins cleanly at bandHeight with zero row overlap
-  // once scrolled. th-level sticky (not thead-level) kept regardless, since
-  // it's still the more broadly cross-browser-reliable choice on its own
-  // merits even with the real bug fixed.
-  const stickyThClass = 'sticky z-[5] bg-white px-4 py-3 text-left font-medium text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400';
-  const stickyThStyle = { top: bandHeight };
+  // FP-167-1-adj-3: adj-2 removed overflow-hidden from the wrapper (the real
+  // fix for the overlap regression) but also moved sticky from <thead> down
+  // to each <th>, and that combination never actually stuck at all. adj-1's
+  // thead-level sticky and adj-2's overflow-hidden removal were each verified
+  // independently but never together — sticky lives on <thead> here, with the
+  // overflow-hidden wrapper fix from adj-2 kept as-is.
+  const thClass = 'px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400';
 
   return (
     <div className="flex flex-col">
@@ -230,13 +213,13 @@ export default function EventsTable({
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky z-[5] bg-white dark:bg-zinc-950" style={{ top: bandHeight }}>
                   <tr className="border-b border-zinc-100 dark:border-zinc-800">
-                    <th className={`${stickyThClass} rounded-tl-xl`} style={stickyThStyle}>Name</th>
-                    <th className={stickyThClass} style={stickyThStyle}>Type</th>
-                    <th className={stickyThClass} style={stickyThStyle}>Date/Time</th>
-                    <th className={stickyThClass} style={stickyThStyle}>Status</th>
-                    <th className={`${stickyThClass} rounded-tr-xl`} style={stickyThStyle}>Target</th>
+                    <th className={`${thClass} rounded-tl-xl`}>Name</th>
+                    <th className={thClass}>Type</th>
+                    <th className={thClass}>Date/Time</th>
+                    <th className={thClass}>Status</th>
+                    <th className={`${thClass} rounded-tr-xl`}>Target</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
