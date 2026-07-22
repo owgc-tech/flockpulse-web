@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { MemberRow, MemberRole } from '@/src/features/members/member.types';
 
@@ -239,18 +240,18 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               {member.first_name} {member.last_name} still owns {ownedGroupCount} group{ownedGroupCount === 1 ? '' : 's'}.
               Reassign ownership from each group&apos;s edit page before deactivating —{' '}
-              <a href="/admin/groups" className="font-medium underline hover:no-underline">
+              <Link href="/admin/groups" className="font-medium underline hover:no-underline">
                 Groups
-              </a>.
+              </Link>.
             </div>
           )}
           {ownedEventCount !== null && (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               {member.first_name} {member.last_name} still owns {ownedEventCount} event{ownedEventCount === 1 ? '' : 's'}.
               Reassign ownership from each event&apos;s edit page before deactivating —{' '}
-              <a href="/admin/events" className="font-medium underline hover:no-underline">
+              <Link href="/admin/events" className="font-medium underline hover:no-underline">
                 Events
-              </a>.
+              </Link>.
             </div>
           )}
           <button

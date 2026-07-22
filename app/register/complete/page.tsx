@@ -8,7 +8,7 @@ export default function CompleteRegistrationPage() {
           Complete your profile
         </h1>
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          Your role has already been set by your organisation's admin. Fill in your details below to finish setting up your account.
+          Your role has already been set by your organisation&apos;s admin. Fill in your details below to finish setting up your account.
         </p>
         <CompleteProfileForm />
       </div>

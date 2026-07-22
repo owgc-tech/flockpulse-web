@@ -64,7 +64,7 @@ export async function listEventTypes(tenantId: string, includeDeleted = false): 
     .eq('tenant_id', tenantId)
     .order('name', { ascending: true });
 
-  if (!includeDeleted) q = (q as any).is('deleted_at', null);
+  if (!includeDeleted) q = q.is('deleted_at', null);
 
   const { data, error } = await q;
   if (error) throw error;

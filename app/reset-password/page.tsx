@@ -6,7 +6,7 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="mb-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Reset password</h1>
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-          Enter your email and we'll send you a reset link.
+          Enter your email and we&apos;ll send you a reset link.
         </p>
         <ResetRequestForm />
       </div>

@@ -9,8 +9,8 @@ export async function GET(
   const { id } = await params;
   return withAuth(req, async (_, ctx) => {
     try {
-      const module = await getModuleById(id, ctx.tenantId);
-      return NextResponse.json({ data: module }, { status: 200 });
+      const courseModule = await getModuleById(id, ctx.tenantId);
+      return NextResponse.json({ data: courseModule }, { status: 200 });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === 'NOT_FOUND') {
         return errorResponse('NOT_FOUND', (err as Error).message, 404);

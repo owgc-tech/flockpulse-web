@@ -62,9 +62,9 @@ export async function updateModule(
 }
 
 export async function getModuleById(id: string, tenantId: string): Promise<ModuleRow> {
-  const module = await getModule(id, tenantId);
-  if (!module) throw err('NOT_FOUND', 'Module not found');
-  return module;
+  const courseModule = await getModule(id, tenantId);
+  if (!courseModule) throw err('NOT_FOUND', 'Module not found');
+  return courseModule;
 }
 
 export async function reorderModules(

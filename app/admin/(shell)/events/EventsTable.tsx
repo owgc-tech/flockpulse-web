@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { EventListItemRow, EffectiveStatus, EventTypeOption, GroupOption } from '@/src/features/events/event.types';
 import MultiSelectFilter from './MultiSelectFilter';
@@ -169,12 +170,12 @@ export default function EventsTable({
                 Create, schedule, and manage events for this organisation.
               </p>
             </div>
-            <a
+            <Link
               href="/admin/events/new"
               className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
               Create event
-            </a>
+            </Link>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

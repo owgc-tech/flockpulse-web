@@ -43,7 +43,7 @@ export async function listMembers(tenantId: string, includeDeleted = false) {
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: true });
 
-  if (!includeDeleted) q = (q as any).is('deleted_at', null);
+  if (!includeDeleted) q = q.is('deleted_at', null);
 
   const { data, error } = await q;
   if (error) throw error;

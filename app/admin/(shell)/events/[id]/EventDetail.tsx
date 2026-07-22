@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, MeetingResourceOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
 import { getMapsUrl } from '@/src/features/events/event.types';
@@ -143,12 +144,12 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
 
   return (
     <div className="flex flex-col gap-6">
-      <a
+      <Link
         href="/admin/events"
         className="self-start text-sm font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
       >
         ← Back to Events
-      </a>
+      </Link>
 
       <div className="flex items-start justify-between">
         <div>

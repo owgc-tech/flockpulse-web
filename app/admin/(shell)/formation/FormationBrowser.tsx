@@ -201,8 +201,13 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
   const [selectedTalkId, setSelectedTalkId] = useState<string | null>(null);
 
-  const [modulesLoading, setModulesLoading] = useState(false);
-  const [talksLoading, setTalksLoading] = useState(false);
+  // Tracks which course/module the current `modules`/`talks` list was loaded
+  // for, so the "loading" flags below can be derived during render instead
+  // of set synchronously inside the effects that trigger the fetches.
+  const [loadedModulesCourseId, setLoadedModulesCourseId] = useState<string | null>(null);
+  const [loadedTalksModuleId, setLoadedTalksModuleId] = useState<string | null>(null);
+  const modulesLoading = selectedCourseId !== null && loadedModulesCourseId !== selectedCourseId;
+  const talksLoading = selectedModuleId !== null && loadedTalksModuleId !== selectedModuleId;
 
   const [overlay, setOverlay] = useState<OverlayState | null>(null);
   const [reorderError, setReorderError] = useState<string | null>(null);
@@ -220,9 +225,8 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
     setModules([]);
     setTalks([]);
     if (!selectedCourseId) return;
-    setModulesLoading(true);
     listModulesAction(token, selectedCourseId).then(res => {
-      setModulesLoading(false);
+      setLoadedModulesCourseId(selectedCourseId);
       if (res.data) setModules(res.data.filter(m => !m.deleted_at));
     });
   }, [selectedCourseId, token]);
@@ -234,9 +238,8 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
     setSelectedTalkId(null);
     setTalks([]);
     if (!selectedModuleId) return;
-    setTalksLoading(true);
     listTalksAction(token, selectedModuleId).then(res => {
-      setTalksLoading(false);
+      setLoadedTalksModuleId(selectedModuleId);
       if (res.data) setTalks(res.data.filter(t => !t.deleted_at));
     });
   }, [selectedModuleId, token]);

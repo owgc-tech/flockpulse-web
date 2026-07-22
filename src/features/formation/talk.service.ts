@@ -27,8 +27,8 @@ export async function createTalk(tenantId: string, input: CreateTalkInput): Prom
     throw err('VALIDATION_ERROR', 'sequence_order must be a positive integer');
   }
   validateDemographics(input);
-  const module = await getModule(input.moduleId, tenantId);
-  if (!module || module.deleted_at) throw err('NOT_FOUND', 'Module not found or deleted');
+  const parentModule = await getModule(input.moduleId, tenantId);
+  if (!parentModule || parentModule.deleted_at) throw err('NOT_FOUND', 'Module not found or deleted');
   // TODO(EPIC-10): audit hook — talk created
   try {
     return await insertTalk(tenantId, { ...input, name: input.name.trim() });
@@ -133,10 +133,10 @@ export async function restoreTalk(id: string, tenantId: string): Promise<TalkRow
   if (!existing) throw err('NOT_FOUND', 'Talk not found');
   if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Talk is not deleted');
 
-  const module = await getModule(existing.module_id, tenantId);
-  if (!module) throw err('NOT_FOUND', 'Parent module not found');
-  if (module.deleted_at !== null) {
-    throw err('INVALID_STATE_TRANSITION', `Restore module "${module.name}" first`);
+  const parentModule = await getModule(existing.module_id, tenantId);
+  if (!parentModule) throw err('NOT_FOUND', 'Parent module not found');
+  if (parentModule.deleted_at !== null) {
+    throw err('INVALID_STATE_TRANSITION', `Restore module "${parentModule.name}" first`);
   }
 
   const maxOrder = await maxActiveTalkSequenceOrder(existing.module_id, tenantId);
