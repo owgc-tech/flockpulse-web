@@ -14,6 +14,10 @@ export default function LoginForm() {
   // authenticated admin page load. No server round-trip before login.
   useEffect(() => {
     const stored = localStorage.getItem('fp_community_name');
+    // localStorage isn't available during SSR, so this can't be a lazy
+    // useState initializer without causing a hydration mismatch — the one
+    // extra render after mount is the intended, unavoidable cost here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored) setCommunityName(stored);
   }, []);
 

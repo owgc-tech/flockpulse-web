@@ -60,7 +60,7 @@ export default function MFAEnrollForm() {
         <img src={qrCode} alt="TOTP QR code" width={180} height={180} />
         <details className="w-full">
           <summary className="cursor-pointer text-xs text-zinc-400 dark:text-zinc-600">
-            Can't scan? Enter the secret manually
+            Can&apos;t scan? Enter the secret manually
           </summary>
           <p className="mt-2 break-all rounded bg-zinc-100 px-3 py-2 font-mono text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
             {secret}

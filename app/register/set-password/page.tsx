@@ -40,6 +40,10 @@ export default function SetPasswordPage() {
     const type = params.get('type');
 
     if (!accessToken || !refreshToken || type !== 'invite') {
+      // window.location.hash isn't available during SSR, so this can't be a
+      // lazy useState initializer without causing a hydration mismatch — the
+      // one extra render after mount is the intended, unavoidable cost here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError('Invalid or expired invitation link. Please contact your admin for a new one.');
       setPageState('error');
       return;

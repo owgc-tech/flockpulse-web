@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // One-off manual QA/debug scripts, not shipped app code.
+    // Already excluded from typecheck via tsconfig.json's `exclude`.
+    "scripts/**",
   ]),
 ]);
 

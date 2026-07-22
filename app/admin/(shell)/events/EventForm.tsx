@@ -166,7 +166,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
   // Load Module list when Course changes.
   useEffect(() => {
-    if (!courseId) { setModules([]); return; }
+    if (!courseId) return;
     fetch(`/api/modules?course_id=${courseId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(body => setModules(body.data ?? []))
@@ -175,12 +175,18 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
   // Load Talk list when Module changes.
   useEffect(() => {
-    if (!moduleId) { setTalks([]); return; }
+    if (!moduleId) return;
     fetch(`/api/talks?module_id=${moduleId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(body => setTalks(body.data ?? []))
       .catch(() => setTalks([]));
   }, [moduleId, token]);
+
+  // Modules/talks are only ever shown while their parent select is disabled
+  // (no courseId/moduleId selected), so derive the visible list at render
+  // time instead of clearing state synchronously in the effects above.
+  const visibleModules = courseId ? modules : [];
+  const visibleTalks = moduleId ? talks : [];
 
   // FP-161-3: load the tasks catalog, and (edit mode only) this event's existing
   // event_tasks_assignments — once both are in, seed visibleTaskIds with the three core
@@ -466,11 +472,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
             </select>
             <select className={inputClass} value={moduleId} onChange={e => { setModuleId(e.target.value); setTalkId(''); }} disabled={!courseId}>
               <option value="">Module…</option>
-              {modules.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              {visibleModules.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
             <select className={inputClass} value={talkId} onChange={e => setTalkId(e.target.value)} disabled={!moduleId}>
               <option value="">Talk…</option>
-              {talks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {visibleTalks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
         </div>

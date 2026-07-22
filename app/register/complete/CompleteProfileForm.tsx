@@ -24,6 +24,10 @@ export default function CompleteProfileForm() {
   useEffect(() => {
     const token = sessionStorage.getItem('fp_reg_token');
     if (!token) {
+      // sessionStorage isn't available during SSR, so this can't be a lazy
+      // useState initializer without causing a hydration mismatch — the one
+      // extra render after mount is the intended, unavoidable cost here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadError('Session expired. Please click your invitation link again.');
       return;
     }

@@ -68,7 +68,7 @@ export async function listCourses(tenantId: string, includeDeleted = false): Pro
     .eq('tenant_id', tenantId)
     .order('sequence_order', { ascending: true });
 
-  if (!includeDeleted) q = (q as any).is('deleted_at', null);
+  if (!includeDeleted) q = q.is('deleted_at', null);
 
   const { data, error } = await q;
   if (error) throw error;
