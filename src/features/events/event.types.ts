@@ -136,8 +136,11 @@ export interface RosterEntry {
 // One-tap navigation link (FP-61): use location_url directly when the admin set an
 // explicit override; otherwise fall back to a universal Google Maps query link built
 // from location_address — opens the native app on mobile and Google Maps on the web.
+// FP-183: location_url is admin-supplied and unvalidated at write time, so only accept
+// it here if it's http(s) — otherwise fall through to the Maps link, same as if no
+// override were set (interim fix for CodeQL js/xss-through-dom; FP-184 removes the field).
 export function getMapsUrl(locationAddress: string, locationUrl: string | null): string {
-  if (locationUrl) return locationUrl;
+  if (locationUrl && /^https?:\/\//i.test(locationUrl)) return locationUrl;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
 }
 
