@@ -107,22 +107,29 @@ export async function getTaskByName(tenantId: string, name: string): Promise<{ i
   return data as { id: string; individual_only: boolean };
 }
 
-// DIP-FP-180-adj-2: every upcoming (DRAFT/SCHEDULED/ACTIVE) event is an open
-// slot for this task, whether or not event_tasks_assignments has a row for
-// it yet (EventForm.tsx's syncTaskAssignments never creates one for an
-// unassigned task). Driven by events first, then this task's existing rows
-// are overlaid on top in JS — a LEFT JOIN done in application code, matching
-// the established fetch-and-reduce convention (getEligibleAttendanceRows).
-// Events with no row surface with id: null, assignee: null.
+// DIP-FP-180-adj-4: every upcoming (DRAFT/SCHEDULED/ACTIVE) event whose
+// event_type_id is in eventTypeIds is an open slot for this task, whether or
+// not event_tasks_assignments has a row for it yet (EventForm.tsx's
+// syncTaskAssignments never creates one for an unassigned task). An empty
+// eventTypeIds short-circuits to [] with no query at all — every event type
+// starts unchecked on the auto-assign screens, so this is the actual default
+// state, not an edge case. Driven by events first, then this task's existing
+// rows are overlaid on top in JS — a LEFT JOIN done in application code,
+// matching the established fetch-and-reduce convention
+// (getEligibleAttendanceRows). Events with no row surface with id: null,
+// assignee: null.
 export async function listSlotsForTaskUpcoming(
-  tenantId: string, taskId: string
+  tenantId: string, taskId: string, eventTypeIds: string[]
 ): Promise<TaskAutoAssignSlotRow[]> {
+  if (eventTypeIds.length === 0) return [];
+
   const db = serviceClient();
 
   const { data: eventRows, error: eventError } = await db
     .from('events')
     .select('id, name, start_datetime')
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .in('event_type_id', eventTypeIds);
   if (eventError) throw eventError;
   if (!eventRows || eventRows.length === 0) return [];
 
@@ -171,15 +178,18 @@ export async function listSlotsForTaskUpcoming(
 }
 
 // DIP-FP-180: invokes the SECURITY DEFINER round-robin fill. Roster is trusted
-// pre-validated by the caller (autoAssign.service.ts's validateRoster).
+// pre-validated by the caller (autoAssign.service.ts's validateRoster);
+// eventTypeIds is likewise trusted pre-validated by validateEventTypeIds
+// (DIP-FP-180-adj-4).
 export async function runAutoAssignTaskSlots(
-  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string
+  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
 ): Promise<EventTaskAssignmentRow[]> {
   const { data, error } = await serviceClient().rpc('auto_assign_task_slots', {
     p_tenant_id: tenantId,
     p_task_id: taskId,
     p_roster: roster,
     p_actor_member_id: actorMemberId,
+    p_event_type_ids: eventTypeIds,
   });
   if (error) throw error;
   return (data ?? []) as EventTaskAssignmentRow[];

@@ -6,19 +6,21 @@ import { runFoodAssignmentAutoAssign } from '@/src/features/tasks/autoAssign.ser
 const requireLeader = requireRole('LEADER');
 
 // POST /api/tasks/auto-assign/food-assignment — round-robin the given roster
-// (individuals and/or groups) across every open Food Assignment slot on
-// upcoming events. Unconditionally overwrites existing assignees — the
-// confirm-before-run warning lives client-side, not here.
+// (individuals and/or groups) across every open Food Assignment slot on an
+// upcoming event whose type is in event_type_ids. Unconditionally overwrites
+// existing assignees — the confirm-before-run warning lives client-side,
+// not here.
 export async function POST(req: NextRequest) {
   return withAuth(req, requireLeader(async (_, ctx) => {
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { roster } = body;
+    const { roster, event_type_ids } = body;
     if (!Array.isArray(roster)) return errorResponse('MISSING_FIELD', 'roster array required', 400);
+    if (!Array.isArray(event_type_ids)) return errorResponse('MISSING_FIELD', 'event_type_ids array required', 400);
 
     try {
-      const assignments = await runFoodAssignmentAutoAssign(ctx.tenantId, roster, ctx.memberId);
+      const assignments = await runFoodAssignmentAutoAssign(ctx.tenantId, roster, ctx.memberId, event_type_ids);
       return NextResponse.json({ data: assignments }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;

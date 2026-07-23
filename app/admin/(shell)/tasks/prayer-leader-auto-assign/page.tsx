@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listMembers } from '@/src/features/members/service';
+import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { getPrayerLeaderAutoAssignData } from '@/src/features/tasks/autoAssign.service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import TaskAutoAssignPanel from '../_shared/TaskAutoAssignPanel';
@@ -25,10 +26,14 @@ export default async function PrayerLeaderAutoAssignPage() {
   // task exists in this tenant's catalog before the panel renders — its
   // slots are re-fetched live by the client via slotsEndpoint below. task.id
   // is passed to the panel so it can create a row for a never-before-assigned
-  // slot (DIP-FP-180-adj-1).
-  const [members, { task }] = await Promise.all([
+  // slot (DIP-FP-180-adj-1). Called with an empty event-type selection here —
+  // every event type starts unchecked on the panel (DIP-FP-180-adj-4), so
+  // this initial fetch is the same empty-selection short-circuit the client
+  // re-runs on mount via slotsEndpoint anyway.
+  const [members, eventTypes, { task }] = await Promise.all([
     listMembers(tenantId),
-    getPrayerLeaderAutoAssignData(tenantId),
+    listEventTypes(tenantId),
+    getPrayerLeaderAutoAssignData(tenantId, []),
   ]);
 
   return (
@@ -48,6 +53,7 @@ export default async function PrayerLeaderAutoAssignPage() {
           runEndpoint="/api/tasks/auto-assign/prayer-leader"
           groups={[]}
           members={members ?? []}
+          eventTypes={eventTypes ?? []}
           token={token}
         />
       </div>
