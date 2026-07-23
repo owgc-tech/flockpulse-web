@@ -107,17 +107,22 @@ export async function getTaskByName(tenantId: string, name: string): Promise<{ i
   return data as { id: string; individual_only: boolean };
 }
 
-// DIP-FP-180-adj-4: every upcoming (DRAFT/SCHEDULED/ACTIVE) event whose
-// event_type_id is in eventTypeIds is an open slot for this task, whether or
-// not event_tasks_assignments has a row for it yet (EventForm.tsx's
-// syncTaskAssignments never creates one for an unassigned task). An empty
-// eventTypeIds short-circuits to [] with no query at all — every event type
-// starts unchecked on the auto-assign screens, so this is the actual default
-// state, not an edge case. Driven by events first, then this task's existing
-// rows are overlaid on top in JS — a LEFT JOIN done in application code,
-// matching the established fetch-and-reduce convention
-// (getEligibleAttendanceRows). Events with no row surface with id: null,
-// assignee: null.
+// DIP-FP-180-adj-5: every upcoming (DRAFT/SCHEDULED/ACTIVE) event whose
+// event_type_id is in eventTypeIds AND whose end_datetime hasn't passed yet
+// is an open slot for this task, whether or not event_tasks_assignments has
+// a row for it yet (EventForm.tsx's syncTaskAssignments never creates one
+// for an unassigned task). The end_datetime check exists because DRAFT is a
+// sticky status (get_event_effective_status never ages a DRAFT event out on
+// its own) — without it, a stale past-dated draft would stay eligible
+// forever. Checked against end_datetime, not start_datetime, so an
+// in-progress ACTIVE event (past start_datetime by definition) stays
+// eligible. An empty eventTypeIds short-circuits to [] with no query at all
+// — every event type starts unchecked on the auto-assign screens, so this
+// is the actual default state, not an edge case. Driven by events first,
+// then this task's existing rows are overlaid on top in JS — a LEFT JOIN
+// done in application code, matching the established fetch-and-reduce
+// convention (getEligibleAttendanceRows). Events with no row surface with
+// id: null, assignee: null.
 export async function listSlotsForTaskUpcoming(
   tenantId: string, taskId: string, eventTypeIds: string[]
 ): Promise<TaskAutoAssignSlotRow[]> {
@@ -127,7 +132,7 @@ export async function listSlotsForTaskUpcoming(
 
   const { data: eventRows, error: eventError } = await db
     .from('events')
-    .select('id, name, start_datetime')
+    .select('id, name, start_datetime, end_datetime')
     .eq('tenant_id', tenantId)
     .in('event_type_id', eventTypeIds);
   if (eventError) throw eventError;
@@ -147,8 +152,8 @@ export async function listSlotsForTaskUpcoming(
       .map((r) => r.event_id)
   );
 
-  const upcomingEvents = (eventRows as { id: string; name: string; start_datetime: string }[])
-    .filter((e) => upcomingEventIds.has(e.id));
+  const upcomingEvents = (eventRows as { id: string; name: string; start_datetime: string; end_datetime: string }[])
+    .filter((e) => upcomingEventIds.has(e.id) && new Date(e.end_datetime).getTime() >= Date.now());
   if (upcomingEvents.length === 0) return [];
 
   const { data: slotRows, error: slotError } = await db
