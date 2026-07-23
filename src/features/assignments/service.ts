@@ -86,7 +86,18 @@ export async function softDeleteAssignment(id: string, tenantId: string) {
     .eq('tenant_id', tenantId)
     .is('deleted_at', null);
 
-  if (error) throw error;
+  if (error) {
+    // DIP-FP-181: mirrors members.service.ts's exact P0001 + message-substring
+    // pattern for FP-29-style guard triggers — trigger_block_manual_removal_
+    // from_system_group blocks soft-deleting an Everyone/system-group
+    // assignment row while the member is still Active.
+    if (error.code === 'P0001' && error.message?.includes('SYSTEM_MANAGED_GROUP')) {
+      const err = new Error(error.message) as Error & { code: string };
+      err.code = 'SYSTEM_MANAGED_GROUP';
+      throw err;
+    }
+    throw error;
+  }
 }
 
 // FP-72: Edit-screen prefill — the member's current active LEADER assignment, if any.
