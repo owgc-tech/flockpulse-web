@@ -7,6 +7,7 @@ interface NavLeaf {
   href: string;
   label: string;
   adminOnly: boolean;
+  exact?: boolean;
 }
 
 // Record Restorations: parent href redirects to the first child, and the
@@ -48,7 +49,14 @@ const NAV: NavItem[] = [
   { href: '/admin/groups', label: 'Groups', adminOnly: true },
   { href: '/admin/events', label: 'Events', adminOnly: false },
   { href: '/admin/event-types', label: 'Event Types', adminOnly: true },
-  { href: '/admin/tasks', label: 'Tasks', adminOnly: true },
+  {
+    label: 'Task Management',
+    children: [
+      { href: '/admin/tasks', label: 'Task', adminOnly: true, exact: true },
+      { href: '/admin/tasks/prayer-leader-auto-assign', label: 'Auto-assign Prayer Leader', adminOnly: false },
+      { href: '/admin/tasks/food-assignment-auto-assign', label: 'Auto-assign Food Assignment', adminOnly: false },
+    ],
+  },
   { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   {
     label: 'Formation',
@@ -93,18 +101,24 @@ export default function AdminSidebar({ role }: { role: Role }) {
     return [];
   });
 
-  function isActive(href: string) {
+  // DIP-FP-180-adj-5: exact opts a leaf out of the prefix match — needed for
+  // /admin/tasks now that /admin/tasks/prayer-leader-auto-assign and
+  // /admin/tasks/food-assignment-auto-assign are genuine sibling nav entries
+  // (not detail/sub-pages of the Tasks catalog), which the old prefix-only
+  // check would otherwise also light up as active on the Task link.
+  function isActive(href: string, exact?: boolean) {
     if (href === '/admin/restore') return pathname.startsWith('/admin/restore');
+    if (exact) return pathname === href;
     return pathname === href || pathname.startsWith(href + '/');
   }
 
-  function renderChild(child: { href: string; label: string }) {
+  function renderChild(child: { href: string; label: string; exact?: boolean }) {
     return (
       <a
         key={child.href}
         href={child.href}
         className={`flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-          isActive(child.href)
+          isActive(child.href, child.exact)
             ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
             : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200'
         }`}
