@@ -53,8 +53,7 @@ const NAV: NavItem[] = [
     label: 'Task Management',
     children: [
       { href: '/admin/tasks', label: 'Task', adminOnly: true, exact: true },
-      { href: '/admin/tasks/prayer-leader-auto-assign', label: 'Auto-assign Prayer Leader', adminOnly: false },
-      { href: '/admin/tasks/food-assignment-auto-assign', label: 'Auto-assign Food Assignment', adminOnly: false },
+      { href: '/admin/tasks/auto-assign', label: 'Auto-Assign', adminOnly: false },
     ],
   },
   { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
