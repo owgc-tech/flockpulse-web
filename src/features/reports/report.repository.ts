@@ -830,9 +830,20 @@ export async function getDefaultDashboardEvent(
 }
 
 export interface DashboardStatsResult {
-  attendance: { expected_count: number; attended_count: number; percent: number | null };
+  attendance: {
+    expected_count: number;
+    attended_count: number;
+    did_not_attend_count: number;
+    did_not_self_report_count: number;
+    percent: number | null;
+  };
   rsvp: { yes_count: number; no_count: number; tentative_count: number; no_response_count: number };
-  rating: { average_rating: number | null; rating_count: number; feedback: string[] };
+  rating: {
+    average: number | null;
+    rounded: number | null;
+    rating_count: number;
+    feedback: { star_rating: number | null; feedback: string }[];
+  };
 }
 
 // Scoped to a single event_id — once resolved, the three-card computation
@@ -843,7 +854,7 @@ export interface DashboardStatsResult {
 // includes member_id or any joined member field — feedback text comes back
 // with no way to trace it to who submitted it.
 //
-// Round-half-up via Math.round() for average_rating, matching the
+// Round-half-up via Math.round() for rating.rounded, matching the
 // convention used elsewhere in this file.
 export async function getDashboardStats(
   tenantId: string, memberId: string, role: Role, eventId: string
@@ -879,41 +890,65 @@ export async function getDashboardStats(
     }
   }
 
-  // Card 1: attendance.
+  // Card 1: attendance — expected_count from the roster; attended_count/
+  // did_not_attend_count from attendance.attendance_status;
+  // did_not_self_report_count is every roster member with no attendance row
+  // at all yet (attended or not) — DIP-FP-182-web-adj-1's addition of the two
+  // missing buckets.
   const { data: attendeeRows, error: attendeeCountError } = await db
     .from('event_attendees')
     .select('member_id')
     .eq('event_id', eventId)
     .eq('tenant_id', tenantId);
   if (attendeeCountError) throw attendeeCountError;
-  const expectedCount = (attendeeRows ?? []).length;
+  const rosterMemberIds = (attendeeRows ?? []).map((r: { member_id: string }) => r.member_id);
+  const expectedCount = rosterMemberIds.length;
 
   const { data: attendanceRows, error: attendanceError } = await db
     .from('attendance')
-    .select('attendance_status')
+    .select('member_id, attendance_status')
     .eq('event_id', eventId)
     .eq('tenant_id', tenantId);
   if (attendanceError) throw attendanceError;
-  const attendedCount = ((attendanceRows ?? []) as { attendance_status: string }[])
-    .filter((r) => r.attendance_status === 'ATTENDED').length;
+  const typedAttendanceRows = (attendanceRows ?? []) as { member_id: string; attendance_status: string }[];
+  const attendedCount = typedAttendanceRows.filter((r) => r.attendance_status === 'ATTENDED').length;
+  const didNotAttendCount = typedAttendanceRows.filter((r) => r.attendance_status === 'DID_NOT_ATTEND').length;
+  const respondedMemberIds = new Set(typedAttendanceRows.map((r) => r.member_id));
+  const didNotSelfReportCount = rosterMemberIds.filter((id) => !respondedMemberIds.has(id)).length;
 
-  // Card 2: RSVP.
+  // Card 2: RSVP — per-attendee join (not a subtraction), mirroring
+  // getRsvpReportSummary()'s existing map+loop pattern exactly.
+  // rsvps/attendance are "keyed independently" of event_attendees (per
+  // 20260719000050_resync_event_attendees_on_target_edit.sql's own comment)
+  // — a member removed from the roster during a resync keeps their old rsvp
+  // row, which a subtraction-based count can't account for. Driving the
+  // loop off the roster (not off the rsvps rows) means a stale rsvp for a
+  // member no longer on the roster is simply never visited.
   const { data: rsvpRows, error: rsvpError } = await db
     .from('rsvps')
-    .select('rsvp_status')
+    .select('member_id, rsvp_status')
     .eq('event_id', eventId)
     .eq('tenant_id', tenantId);
   if (rsvpError) throw rsvpError;
 
-  let yesCount = 0, noCount = 0, tentativeCount = 0;
-  for (const r of (rsvpRows ?? []) as { rsvp_status: string }[]) {
-    if (r.rsvp_status === 'YES') yesCount += 1;
-    else if (r.rsvp_status === 'NO') noCount += 1;
-    else if (r.rsvp_status === 'TENTATIVE') tentativeCount += 1;
+  const rsvpByMember = new Map<string, string>();
+  for (const r of (rsvpRows ?? []) as { member_id: string; rsvp_status: string }[]) {
+    rsvpByMember.set(r.member_id, r.rsvp_status);
   }
-  const noResponseCount = Math.max(expectedCount - (yesCount + noCount + tentativeCount), 0);
 
-  // Card 3: rating + feedback — anonymized (see doc comment above).
+  let yesCount = 0, noCount = 0, tentativeCount = 0, noResponseCount = 0;
+  for (const id of rosterMemberIds) {
+    const status = rsvpByMember.get(id);
+    if (status === 'YES') yesCount += 1;
+    else if (status === 'NO') noCount += 1;
+    else if (status === 'TENTATIVE') tentativeCount += 1;
+    else noResponseCount += 1;
+  }
+
+  // Card 3: rating + feedback — anonymized (see doc comment above). SELECT
+  // list is still exactly star_rating, feedback — no member_id, no join to
+  // members. average is the raw mean; rounded is Math.round(average) —
+  // split so mobile can choose which to display, per DIP-FP-182-web-adj-1.
   const { data: ratingRows, error: ratingError } = await db
     .from('member_attendance_reports')
     .select('star_rating, feedback')
@@ -925,16 +960,19 @@ export async function getDashboardStats(
   const typedRatingRows = (ratingRows ?? []) as { star_rating: number | null; feedback: string | null }[];
   const ratings = typedRatingRows.map((r) => r.star_rating).filter((r): r is number => r !== null);
   const averageRating = ratings.length > 0
-    ? Math.round(ratings.reduce((sum, r) => sum + r, 0) / ratings.length)
+    ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
     : null;
+  const roundedRating = averageRating !== null ? Math.round(averageRating) : null;
   const feedback = typedRatingRows
-    .map((r) => r.feedback)
-    .filter((f): f is string => !!f && f.trim().length > 0);
+    .filter((r): r is { star_rating: number | null; feedback: string } => !!r.feedback && r.feedback.trim().length > 0)
+    .map((r) => ({ star_rating: r.star_rating, feedback: r.feedback }));
 
   return {
     attendance: {
       expected_count: expectedCount,
       attended_count: attendedCount,
+      did_not_attend_count: didNotAttendCount,
+      did_not_self_report_count: didNotSelfReportCount,
       percent: roundToOneDecimal(attendedCount, expectedCount - attendedCount),
     },
     rsvp: {
@@ -944,7 +982,8 @@ export async function getDashboardStats(
       no_response_count: noResponseCount,
     },
     rating: {
-      average_rating: averageRating,
+      average: averageRating,
+      rounded: roundedRating,
       rating_count: ratings.length,
       feedback,
     },
