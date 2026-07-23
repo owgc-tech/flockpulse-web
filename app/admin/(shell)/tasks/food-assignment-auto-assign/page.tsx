@@ -25,8 +25,9 @@ export default async function FoodAssignmentAutoAssignPage() {
   // getFoodAssignmentAutoAssignData resolves and validates the "Food
   // Assignment" task exists in this tenant's catalog before the panel
   // renders — its slots are re-fetched live by the client via slotsEndpoint
-  // below.
-  const [members, groups] = await Promise.all([
+  // below. task.id is passed to the panel so it can create a row for a
+  // never-before-assigned slot (DIP-FP-180-adj-1).
+  const [members, groups, { task }] = await Promise.all([
     listMembers(tenantId),
     listGroups(tenantId),
     getFoodAssignmentAutoAssignData(tenantId),
@@ -43,6 +44,7 @@ export default async function FoodAssignmentAutoAssignPage() {
         </div>
         <TaskAutoAssignPanel
           taskLabel="Food Assignment"
+          taskId={task.id}
           individualOnly={false}
           slotsEndpoint="/api/tasks/auto-assign/food-assignment/slots"
           runEndpoint="/api/tasks/auto-assign/food-assignment"
