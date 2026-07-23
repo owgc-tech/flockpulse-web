@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { EventTaskAssignmentRow, RosterEntry, TaskAutoAssignSlotRow } from './eventTaskAssignment.types';
 import {
-  getTaskByName,
+  getTaskById,
   listSlotsForTaskUpcoming,
   runAutoAssignTaskSlots,
 } from './eventTaskAssignment.repository';
@@ -19,13 +19,11 @@ function err(code: string, message: string): Error & { code: string } {
   return e;
 }
 
-const PRAYER_LEADER_TASK_NAME = 'Prayer Leader';
-const FOOD_ASSIGNMENT_TASK_NAME = 'Food Assignment';
-
-// DIP-FP-180: shared validation for both auto-assign screens. individualOnly is
-// route-fixed by the caller (Prayer Leader always passes true, Food Assignment
-// always passes false) — never derived from tasks.individual_only, so the UI
-// contract can't silently drift if that catalog flag is edited elsewhere.
+// DIP-FP-180-adj-6: shared validation for the generic auto-assign screen.
+// individualOnly is now read live from the selected task's tasks.individual_only
+// (see runTaskAutoAssign) instead of being route-fixed per hardcoded task name —
+// that per-route contract no longer exists once the screen is generic, so the
+// live DB flag is the contract now, by design.
 export async function validateRoster(
   roster: RosterEntry[],
   tenantId: string,
@@ -75,12 +73,11 @@ export async function validateRoster(
 
 // DIP-FP-180-adj-4: mirrors eventTaskAssignment.service.ts's validateAssignee
 // precedent exactly — tenant-scoped, active (deleted_at IS NULL) check before
-// any ID is trusted. Unlike getPrayerLeaderAutoAssignData/
-// getFoodAssignmentAutoAssignData (which pass an empty selection straight
-// through with no validation, since all-unchecked is the screen's actual
-// default state), an empty eventTypeIds here is always a run-time
-// VALIDATION_ERROR — "Run auto-assign" requires at least one checked event
-// type, matching the button's disabled condition client-side.
+// any ID is trusted. Unlike getTaskAutoAssignData (which passes an empty
+// selection straight through with no validation, since all-unchecked is the
+// screen's actual default state), an empty eventTypeIds here is always a
+// run-time VALIDATION_ERROR — "Run auto-assign" requires at least one
+// checked event type, matching the button's disabled condition client-side.
 export async function validateEventTypeIds(eventTypeIds: string[], tenantId: string): Promise<void> {
   if (!eventTypeIds || eventTypeIds.length === 0) {
     throw err('VALIDATION_ERROR', 'eventTypeIds must contain at least one entry');
@@ -99,36 +96,26 @@ export async function validateEventTypeIds(eventTypeIds: string[], tenantId: str
   }
 }
 
-async function getAutoAssignData(
-  tenantId: string, taskName: string, eventTypeIds: string[]
-): Promise<{ task: { id: string; individual_only: boolean }; slots: TaskAutoAssignSlotRow[] }> {
-  const task = await getTaskByName(tenantId, taskName);
+// DIP-FP-180-adj-6: replaces getPrayerLeaderAutoAssignData/
+// getFoodAssignmentAutoAssignData now that the screen is task-generic. task
+// is returned (with name and individual_only) so the client can render the
+// label and roster-picker mode without either being hardcoded per route.
+export async function getTaskAutoAssignData(
+  tenantId: string, taskId: string, eventTypeIds: string[]
+): Promise<{ task: { id: string; name: string; individual_only: boolean }; slots: TaskAutoAssignSlotRow[] }> {
+  const task = await getTaskById(tenantId, taskId);
   const slots = await listSlotsForTaskUpcoming(tenantId, task.id, eventTypeIds);
   return { task, slots };
 }
 
-export async function getPrayerLeaderAutoAssignData(tenantId: string, eventTypeIds: string[]) {
-  return getAutoAssignData(tenantId, PRAYER_LEADER_TASK_NAME, eventTypeIds);
-}
-
-export async function getFoodAssignmentAutoAssignData(tenantId: string, eventTypeIds: string[]) {
-  return getAutoAssignData(tenantId, FOOD_ASSIGNMENT_TASK_NAME, eventTypeIds);
-}
-
-export async function runPrayerLeaderAutoAssign(
-  tenantId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
+// DIP-FP-180-adj-6: replaces runPrayerLeaderAutoAssign/runFoodAssignmentAutoAssign.
+// individualOnly is read live from the selected task's tasks.individual_only —
+// the generic screen has no per-route hardcoded boolean to fall back on.
+export async function runTaskAutoAssign(
+  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
 ): Promise<EventTaskAssignmentRow[]> {
-  const task = await getTaskByName(tenantId, PRAYER_LEADER_TASK_NAME);
-  await validateRoster(roster, tenantId, { individualOnly: true });
-  await validateEventTypeIds(eventTypeIds, tenantId);
-  return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
-}
-
-export async function runFoodAssignmentAutoAssign(
-  tenantId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
-): Promise<EventTaskAssignmentRow[]> {
-  const task = await getTaskByName(tenantId, FOOD_ASSIGNMENT_TASK_NAME);
-  await validateRoster(roster, tenantId, { individualOnly: false });
+  const task = await getTaskById(tenantId, taskId);
+  await validateRoster(roster, tenantId, { individualOnly: task.individual_only });
   await validateEventTypeIds(eventTypeIds, tenantId);
   return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
 }

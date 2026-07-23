@@ -33,16 +33,10 @@ export default async function TasksPage() {
         </div>
         <div className="mb-6 flex gap-3">
           <Link
-            href="/admin/tasks/prayer-leader-auto-assign"
+            href="/admin/tasks/auto-assign"
             className="rounded-full border border-zinc-200 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
           >
-            Auto-assign Prayer Leader
-          </Link>
-          <Link
-            href="/admin/tasks/food-assignment-auto-assign"
-            className="rounded-full border border-zinc-200 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-          >
-            Auto-assign Food Assignment
+            Auto-Assign
           </Link>
         </div>
         <TasksTable initialTasks={tasks} token={token} />

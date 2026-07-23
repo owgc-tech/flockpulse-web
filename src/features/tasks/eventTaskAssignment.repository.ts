@@ -88,23 +88,28 @@ export async function deleteEventTaskAssignment(id: string, tenantId: string): P
   return (count ?? 0) > 0;
 }
 
-// DIP-FP-180: single-task-by-name lookup backing both auto-assign screens'
-// hardcoded server-side task resolution (the client never supplies a task_id).
-export async function getTaskByName(tenantId: string, name: string): Promise<{ id: string; individual_only: boolean }> {
+// DIP-FP-180-adj-6: tenant-scoped-and-active task lookup backing the generic
+// auto-assign screen's task dropdown — replaces the old name-keyed
+// getTaskByName now that the client supplies a real task_id instead of the
+// route resolving one of two hardcoded task names. Also returns name (needed
+// for display now that there's no longer a hardcoded label) alongside
+// individual_only (the live source of truth for the roster picker's
+// individuals-vs-groups behavior).
+export async function getTaskById(tenantId: string, taskId: string): Promise<{ id: string; name: string; individual_only: boolean }> {
   const { data, error } = await serviceClient()
     .from('tasks')
-    .select('id, individual_only')
+    .select('id, name, individual_only')
     .eq('tenant_id', tenantId)
-    .eq('name', name)
+    .eq('id', taskId)
     .is('deleted_at', null)
     .single();
 
   if (error || !data) {
-    const err = new Error(`Task "${name}" not found for this tenant`) as Error & { code: string };
+    const err = new Error(`Task ${taskId} not found for this tenant`) as Error & { code: string };
     err.code = 'NOT_FOUND';
     throw err;
   }
-  return data as { id: string; individual_only: boolean };
+  return data as { id: string; name: string; individual_only: boolean };
 }
 
 // DIP-FP-180-adj-5: every upcoming (DRAFT/SCHEDULED/ACTIVE) event whose

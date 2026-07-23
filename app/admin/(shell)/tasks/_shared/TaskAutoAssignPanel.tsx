@@ -4,13 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import GroupMemberChipPicker from '../../events/GroupMemberChipPicker';
 import type { GroupOption, MemberOption, EventTypeOption } from '@/src/features/events/event.types';
 import type { AssigneeSelector, RosterEntry, TaskAutoAssignSlotRow } from '@/src/features/tasks/eventTaskAssignment.types';
+import type { TaskRow } from '@/src/features/tasks/task.types';
 
 interface Props {
-  taskLabel: string;
-  taskId: string;
-  individualOnly: boolean;
-  slotsEndpoint: string;
-  runEndpoint: string;
+  tasks: TaskRow[];
   groups: GroupOption[];
   members: MemberOption[];
   eventTypes: EventTypeOption[];
@@ -34,15 +31,23 @@ function slotAssigneeNames(
   return [...groupNames, ...memberNames];
 }
 
-// DIP-FP-180: shared panel behind both the Prayer Leader and Food Assignment
-// auto-assign screens. individualOnly is fixed by the page that renders this
-// (never derived from the tasks catalog), matching the route-level enforcement
-// in autoAssign.service.ts's validateRoster.
+// DIP-FP-180-adj-6: single generic panel behind /admin/tasks/auto-assign,
+// replacing the old hardcoded Prayer Leader/Food Assignment panel instances.
+// individualOnly is no longer route-fixed — it's read live from whichever
+// task is currently selected (tasks.individual_only), since there's no
+// per-route contract left to drift from once the screen works for any task.
 export default function TaskAutoAssignPanel({
-  taskLabel, taskId, individualOnly, slotsEndpoint, runEndpoint, groups, members, eventTypes, token,
+  tasks, groups, members, eventTypes, token,
 }: Props) {
+  // Starts unselected — nothing (roster, event types, slot list) is
+  // meaningfully interactive until a task is picked, same "nothing shown
+  // until actively chosen" posture as adj-4's event-type filter.
+  const [selectedTaskId, setSelectedTaskId] = useState('');
   const [roster, setRoster] = useState<RosterEntry[]>([]);
-  const [slots, setSlots] = useState<TaskAutoAssignSlotRow[]>([]);
+  // Only ever written by the fetch effect below — slots (derived further
+  // down) forces this back to [] whenever no task is selected, so the effect
+  // itself never needs to call setState synchronously just to clear it.
+  const [fetchedSlots, setFetchedSlots] = useState<TaskAutoAssignSlotRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,12 +66,28 @@ export default function TaskAutoAssignPanel({
 
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
+  const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null;
+  const individualOnly = selectedTask?.individual_only ?? false;
+  const taskLabel = selectedTask?.name ?? 'Task';
+
+  // A roster built for one task's individual_only constraint isn't
+  // necessarily valid for another, so switching tasks clears it. The
+  // event-type selection is independent of which task is selected, so it's
+  // left untouched.
+  function handleTaskChange(taskId: string) {
+    setSelectedTaskId(taskId);
+    setRoster([]);
+  }
+
   useEffect(() => {
-    fetch(`${slotsEndpoint}?event_type_ids=${selectedEventTypeIds.join(',')}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!selectedTaskId) return;
+    fetch(`/api/tasks/auto-assign/slots?task_id=${selectedTaskId}&event_type_ids=${selectedEventTypeIds.join(',')}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
-      .then(body => setSlots(body.data ?? []))
-      .catch(() => setSlots([]));
-  }, [slotsEndpoint, token, selectedEventTypeIds]);
+      .then(body => setFetchedSlots(body.data ?? []))
+      .catch(() => setFetchedSlots([]));
+  }, [selectedTaskId, token, selectedEventTypeIds]);
+
+  const slots = selectedTaskId ? fetchedSlots : [];
 
   const groupById = useMemo(() => new Map(groups.map(g => [g.id, g])), [groups]);
   const memberById = useMemo(() => new Map(members.map(m => [m.id, m])), [members]);
@@ -119,7 +140,7 @@ export default function TaskAutoAssignPanel({
   });
 
   async function handleRun() {
-    if (roster.length === 0 || selectedEventTypeIds.length === 0) return;
+    if (!selectedTaskId || roster.length === 0 || selectedEventTypeIds.length === 0) return;
 
     const anyAssigned = slots.some(s => (s.assignee?.group_ids?.length ?? 0) > 0 || (s.assignee?.member_ids?.length ?? 0) > 0);
     if (anyAssigned && !confirm(`Some Events have a ${taskLabel} assigned already, and will be over written. Would you like to continue?`)) {
@@ -129,10 +150,10 @@ export default function TaskAutoAssignPanel({
     setRunning(true);
     setError(null);
     try {
-      const res = await fetch(runEndpoint, {
+      const res = await fetch('/api/tasks/auto-assign', {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ roster, event_type_ids: selectedEventTypeIds }),
+        body: JSON.stringify({ task_id: selectedTaskId, roster, event_type_ids: selectedEventTypeIds }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -145,7 +166,7 @@ export default function TaskAutoAssignPanel({
       // id would silently fail to update it locally.
       const updated = (body.data ?? []) as { id: string; event_id: string; assignee: AssigneeSelector | null }[];
       const updatedByEventId = new Map(updated.map(u => [u.event_id, u]));
-      setSlots(prev => prev.map(s => {
+      setFetchedSlots(prev => prev.map(s => {
         const match = updatedByEventId.get(s.event_id);
         return match ? { ...s, id: match.id, assignee: match.assignee } : s;
       }));
@@ -177,7 +198,7 @@ export default function TaskAutoAssignPanel({
         ? await fetch('/api/event-tasks-assignments', {
             method: 'POST',
             headers: authHeaders,
-            body: JSON.stringify({ event_id: slot.event_id, task_id: taskId, assignee }),
+            body: JSON.stringify({ event_id: slot.event_id, task_id: selectedTaskId, assignee }),
           })
         : await fetch(`/api/event-tasks-assignments/${slot.id}`, {
             method: 'PATCH',
@@ -189,7 +210,7 @@ export default function TaskAutoAssignPanel({
         setError(body?.error?.message ?? 'Failed to update slot');
         return;
       }
-      setSlots(prev => prev.map(s => s.event_id === slot.event_id ? { ...s, id: body.data.id, assignee: body.data.assignee } : s));
+      setFetchedSlots(prev => prev.map(s => s.event_id === slot.event_id ? { ...s, id: body.data.id, assignee: body.data.assignee } : s));
       setEditingEventId(null);
     } catch {
       setError('Network error — please try again');
@@ -200,6 +221,20 @@ export default function TaskAutoAssignPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Task</h2>
+        <select
+          value={selectedTaskId}
+          onChange={e => handleTaskChange(e.target.value)}
+          className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+        >
+          <option value="">Select a task…</option>
+          {tasks.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Roster</h2>
         <GroupMemberChipPicker
@@ -266,7 +301,7 @@ export default function TaskAutoAssignPanel({
 
         <button
           onClick={handleRun}
-          disabled={running || roster.length === 0 || selectedEventTypeIds.length === 0}
+          disabled={running || !selectedTaskId || roster.length === 0 || selectedEventTypeIds.length === 0}
           className="mt-4 rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
           {running ? 'Running…' : 'Run auto-assign'}
@@ -300,9 +335,11 @@ export default function TaskAutoAssignPanel({
         <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{taskLabel} slots</h2>
         {slots.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {selectedEventTypeIds.length === 0
-              ? 'Check an event type above to see its open slots.'
-              : 'No open slots on upcoming events.'}
+            {!selectedTaskId
+              ? 'Select a task above to see its open slots.'
+              : selectedEventTypeIds.length === 0
+                ? 'Check an event type above to see its open slots.'
+                : 'No open slots on upcoming events.'}
           </p>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
