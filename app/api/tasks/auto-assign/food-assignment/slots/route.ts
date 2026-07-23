@@ -6,7 +6,7 @@ import { getFoodAssignmentAutoAssignData } from '@/src/features/tasks/autoAssign
 const requireLeader = requireRole('LEADER');
 
 // GET /api/tasks/auto-assign/food-assignment/slots — every open Food
-// Assignment slot on an upcoming (SCHEDULED/ACTIVE) event, for the
+// Assignment slot on an upcoming (DRAFT/SCHEDULED/ACTIVE) event, for the
 // auto-assign panel's slot list and roster-scoped summary table.
 export async function GET(req: NextRequest) {
   return withAuth(req, requireLeader(async (_, ctx) => {
