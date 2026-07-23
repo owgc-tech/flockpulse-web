@@ -73,34 +73,62 @@ export async function validateRoster(
   }
 }
 
+// DIP-FP-180-adj-4: mirrors eventTaskAssignment.service.ts's validateAssignee
+// precedent exactly — tenant-scoped, active (deleted_at IS NULL) check before
+// any ID is trusted. Unlike getPrayerLeaderAutoAssignData/
+// getFoodAssignmentAutoAssignData (which pass an empty selection straight
+// through with no validation, since all-unchecked is the screen's actual
+// default state), an empty eventTypeIds here is always a run-time
+// VALIDATION_ERROR — "Run auto-assign" requires at least one checked event
+// type, matching the button's disabled condition client-side.
+export async function validateEventTypeIds(eventTypeIds: string[], tenantId: string): Promise<void> {
+  if (!eventTypeIds || eventTypeIds.length === 0) {
+    throw err('VALIDATION_ERROR', 'eventTypeIds must contain at least one entry');
+  }
+
+  const client = serviceClient();
+  const { data, error } = await client
+    .from('event_types')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .in('id', eventTypeIds);
+  if (error) throw error;
+  if ((data ?? []).length !== new Set(eventTypeIds).size) {
+    throw err('VALIDATION_ERROR', 'eventTypeIds contains a type that is invalid, soft-deleted, or belongs to a different tenant');
+  }
+}
+
 async function getAutoAssignData(
-  tenantId: string, taskName: string
+  tenantId: string, taskName: string, eventTypeIds: string[]
 ): Promise<{ task: { id: string; individual_only: boolean }; slots: TaskAutoAssignSlotRow[] }> {
   const task = await getTaskByName(tenantId, taskName);
-  const slots = await listSlotsForTaskUpcoming(tenantId, task.id);
+  const slots = await listSlotsForTaskUpcoming(tenantId, task.id, eventTypeIds);
   return { task, slots };
 }
 
-export async function getPrayerLeaderAutoAssignData(tenantId: string) {
-  return getAutoAssignData(tenantId, PRAYER_LEADER_TASK_NAME);
+export async function getPrayerLeaderAutoAssignData(tenantId: string, eventTypeIds: string[]) {
+  return getAutoAssignData(tenantId, PRAYER_LEADER_TASK_NAME, eventTypeIds);
 }
 
-export async function getFoodAssignmentAutoAssignData(tenantId: string) {
-  return getAutoAssignData(tenantId, FOOD_ASSIGNMENT_TASK_NAME);
+export async function getFoodAssignmentAutoAssignData(tenantId: string, eventTypeIds: string[]) {
+  return getAutoAssignData(tenantId, FOOD_ASSIGNMENT_TASK_NAME, eventTypeIds);
 }
 
 export async function runPrayerLeaderAutoAssign(
-  tenantId: string, roster: RosterEntry[], actorMemberId: string
+  tenantId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
 ): Promise<EventTaskAssignmentRow[]> {
   const task = await getTaskByName(tenantId, PRAYER_LEADER_TASK_NAME);
   await validateRoster(roster, tenantId, { individualOnly: true });
-  return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId);
+  await validateEventTypeIds(eventTypeIds, tenantId);
+  return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
 }
 
 export async function runFoodAssignmentAutoAssign(
-  tenantId: string, roster: RosterEntry[], actorMemberId: string
+  tenantId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
 ): Promise<EventTaskAssignmentRow[]> {
   const task = await getTaskByName(tenantId, FOOD_ASSIGNMENT_TASK_NAME);
   await validateRoster(roster, tenantId, { individualOnly: false });
-  return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId);
+  await validateEventTypeIds(eventTypeIds, tenantId);
+  return runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
 }

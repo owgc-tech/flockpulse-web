@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import GroupMemberChipPicker from '../../events/GroupMemberChipPicker';
-import type { GroupOption, MemberOption } from '@/src/features/events/event.types';
+import type { GroupOption, MemberOption, EventTypeOption } from '@/src/features/events/event.types';
 import type { AssigneeSelector, RosterEntry, TaskAutoAssignSlotRow } from '@/src/features/tasks/eventTaskAssignment.types';
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   runEndpoint: string;
   groups: GroupOption[];
   members: MemberOption[];
+  eventTypes: EventTypeOption[];
   token: string;
 }
 
@@ -38,12 +39,17 @@ function slotAssigneeNames(
 // (never derived from the tasks catalog), matching the route-level enforcement
 // in autoAssign.service.ts's validateRoster.
 export default function TaskAutoAssignPanel({
-  taskLabel, taskId, individualOnly, slotsEndpoint, runEndpoint, groups, members, token,
+  taskLabel, taskId, individualOnly, slotsEndpoint, runEndpoint, groups, members, eventTypes, token,
 }: Props) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [slots, setSlots] = useState<TaskAutoAssignSlotRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // DIP-FP-180-adj-4: all event types start unchecked — the slot list stays
+  // empty until the organizer actively opts a type in. Ephemeral per visit,
+  // same as roster — nothing persisted between sessions.
+  const [selectedEventTypeIds, setSelectedEventTypeIds] = useState<string[]>([]);
 
   // Keyed by event_id, not slot.id — a never-before-assigned slot has
   // id: null (DIP-FP-180-adj-1), so event_id is the only field guaranteed
@@ -56,11 +62,11 @@ export default function TaskAutoAssignPanel({
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   useEffect(() => {
-    fetch(slotsEndpoint, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${slotsEndpoint}?event_type_ids=${selectedEventTypeIds.join(',')}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(body => setSlots(body.data ?? []))
       .catch(() => setSlots([]));
-  }, [slotsEndpoint, token]);
+  }, [slotsEndpoint, token, selectedEventTypeIds]);
 
   const groupById = useMemo(() => new Map(groups.map(g => [g.id, g])), [groups]);
   const memberById = useMemo(() => new Map(members.map(m => [m.id, m])), [members]);
@@ -88,6 +94,10 @@ export default function TaskAutoAssignPanel({
     setRoster(prev => prev.filter((_, i) => i !== index));
   }
 
+  function toggleEventType(id: string) {
+    setSelectedEventTypeIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
   function moveRosterEntry(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= roster.length) return;
@@ -109,7 +119,7 @@ export default function TaskAutoAssignPanel({
   });
 
   async function handleRun() {
-    if (roster.length === 0) return;
+    if (roster.length === 0 || selectedEventTypeIds.length === 0) return;
 
     const anyAssigned = slots.some(s => (s.assignee?.group_ids?.length ?? 0) > 0 || (s.assignee?.member_ids?.length ?? 0) > 0);
     if (anyAssigned && !confirm(`Some Events have a ${taskLabel} assigned already, and will be over written. Would you like to continue?`)) {
@@ -122,7 +132,7 @@ export default function TaskAutoAssignPanel({
       const res = await fetch(runEndpoint, {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ roster }),
+        body: JSON.stringify({ roster, event_type_ids: selectedEventTypeIds }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -256,7 +266,7 @@ export default function TaskAutoAssignPanel({
 
         <button
           onClick={handleRun}
-          disabled={running || roster.length === 0}
+          disabled={running || roster.length === 0 || selectedEventTypeIds.length === 0}
           className="mt-4 rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
           {running ? 'Running…' : 'Run auto-assign'}
@@ -270,9 +280,30 @@ export default function TaskAutoAssignPanel({
       )}
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Event types</h2>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
+          {eventTypes.map(et => (
+            <label key={et.id} className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                checked={selectedEventTypeIds.includes(et.id)}
+                onChange={() => toggleEventType(et.id)}
+                className="rounded border-zinc-300 dark:border-zinc-600"
+              />
+              {et.name}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{taskLabel} slots</h2>
         {slots.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">No open slots on upcoming events.</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {selectedEventTypeIds.length === 0
+              ? 'Check an event type above to see its open slots.'
+              : 'No open slots on upcoming events.'}
+          </p>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
             <table className="w-full text-sm">
