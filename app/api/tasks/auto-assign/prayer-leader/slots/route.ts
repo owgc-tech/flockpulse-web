@@ -6,8 +6,8 @@ import { getPrayerLeaderAutoAssignData } from '@/src/features/tasks/autoAssign.s
 const requireLeader = requireRole('LEADER');
 
 // GET /api/tasks/auto-assign/prayer-leader/slots — every open Prayer Leader
-// slot on an upcoming (SCHEDULED/ACTIVE) event, for the auto-assign panel's
-// slot list and roster-scoped summary table.
+// slot on an upcoming (DRAFT/SCHEDULED/ACTIVE) event, for the auto-assign
+// panel's slot list and roster-scoped summary table.
 export async function GET(req: NextRequest) {
   return withAuth(req, requireLeader(async (_, ctx) => {
     try {

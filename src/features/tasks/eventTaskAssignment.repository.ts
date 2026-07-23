@@ -107,12 +107,12 @@ export async function getTaskByName(tenantId: string, name: string): Promise<{ i
   return data as { id: string; individual_only: boolean };
 }
 
-// DIP-FP-180-adj-1: every upcoming (SCHEDULED/ACTIVE) event is an open slot
-// for this task, whether or not event_tasks_assignments has a row for it yet
-// (EventForm.tsx's syncTaskAssignments never creates one for an unassigned
-// task). Driven by events first, then this task's existing rows are
-// overlaid on top in JS — a LEFT JOIN done in application code, matching the
-// established fetch-and-reduce convention (getEligibleAttendanceRows).
+// DIP-FP-180-adj-2: every upcoming (DRAFT/SCHEDULED/ACTIVE) event is an open
+// slot for this task, whether or not event_tasks_assignments has a row for
+// it yet (EventForm.tsx's syncTaskAssignments never creates one for an
+// unassigned task). Driven by events first, then this task's existing rows
+// are overlaid on top in JS — a LEFT JOIN done in application code, matching
+// the established fetch-and-reduce convention (getEligibleAttendanceRows).
 // Events with no row surface with id: null, assignee: null.
 export async function listSlotsForTaskUpcoming(
   tenantId: string, taskId: string
@@ -136,7 +136,7 @@ export async function listSlotsForTaskUpcoming(
 
   const upcomingEventIds = new Set(
     ((statusRows ?? []) as { event_id: string; effective_status: string }[])
-      .filter((r) => r.effective_status === 'SCHEDULED' || r.effective_status === 'ACTIVE')
+      .filter((r) => r.effective_status === 'DRAFT' || r.effective_status === 'SCHEDULED' || r.effective_status === 'ACTIVE')
       .map((r) => r.event_id)
   );
 
