@@ -6,6 +6,10 @@ import {
   getAttendanceReport as getAttendanceReportRepo,
   getAttendanceMatrixByEventType as getAttendanceMatrixByEventTypeRepo,
   getAttendancePercentage as getAttendancePercentageRepo,
+  getDashboardEventTypes as getDashboardEventTypesRepo,
+  getDashboardEventsForType as getDashboardEventsForTypeRepo,
+  getDefaultDashboardEvent as getDefaultDashboardEventRepo,
+  getDashboardStats as getDashboardStatsRepo,
   type RsvpReportFilters,
   type AttendanceReportFilters,
   type AttendanceMatrixFilters,
@@ -15,6 +19,10 @@ import {
   type AttendanceReportRow,
   type AttendanceMatrixResult,
   type AttendancePercentageRow,
+  type DashboardEventType,
+  type DashboardEventOption,
+  type DefaultDashboardEvent,
+  type DashboardStatsResult,
 } from './report.repository';
 
 function serviceError(code: string, message: string): Error & { code: string } {
@@ -94,4 +102,34 @@ export async function getAttendancePercentage(
 
   const leaderScopedMemberIds = await resolveLeaderScope(tenantId, callerId, callerRole);
   return getAttendancePercentageRepo(tenantId, { ...filters, leaderScopedMemberIds });
+}
+
+// DIP-FP-182-web: mobile Dashboard tab. Thin pass-throughs — no
+// resolveLeaderScope() here, since that function answers "which members,"
+// not "which events." This story's own visibility split (Admin-tier vs.
+// everyone-else, via getVisibleEventIds()) lives entirely in the repository
+// layer already, keyed on the caller's own event_attendees rows.
+
+export async function getDashboardEventTypes(
+  tenantId: string, callerId: string, callerRole: Role
+): Promise<DashboardEventType[]> {
+  return getDashboardEventTypesRepo(tenantId, callerId, callerRole);
+}
+
+export async function getDashboardEventsForType(
+  tenantId: string, callerId: string, callerRole: Role, eventTypeId: string
+): Promise<DashboardEventOption[]> {
+  return getDashboardEventsForTypeRepo(tenantId, callerId, callerRole, eventTypeId);
+}
+
+export async function getDefaultDashboardEvent(
+  tenantId: string, callerId: string, callerRole: Role
+): Promise<DefaultDashboardEvent | null> {
+  return getDefaultDashboardEventRepo(tenantId, callerId, callerRole);
+}
+
+export async function getDashboardStats(
+  tenantId: string, callerId: string, callerRole: Role, eventId: string
+): Promise<DashboardStatsResult> {
+  return getDashboardStatsRepo(tenantId, callerId, callerRole, eventId);
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getGroupMembers } from '@/src/features/assignments/service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
 function serviceClient() {
   return createClient(
@@ -672,4 +673,280 @@ export async function getAttendancePercentage(
     absent,
     percent: roundToOneDecimal(present, absent),
   }];
+}
+
+// ── DIP-FP-182-web: mobile Dashboard tab ─────────────────────────────────
+//
+// Visibility is Admin-tier vs. everyone-else, not Admin/Leader/Member —
+// "invited to an event" (event_attendees) is a personal fact, not something
+// Leader-tier inherently has more of. getVisibleEventIds() mirrors
+// resolveMemberIdFilter()'s null = "unrestricted" / array = "intersect with
+// this" convention, keyed on event_id membership instead of member_id
+// membership.
+
+// null for Admin-tier (unrestricted); otherwise the caller's own
+// event_attendees.event_id list — the same "invited to" pattern
+// events/service.ts's listEventsForMember() already uses for the mobile "My
+// Events" tab.
+export async function getVisibleEventIds(tenantId: string, memberId: string, role: Role): Promise<string[] | null> {
+  if (isAdminTier(role)) return null;
+
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('event_attendees')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId);
+
+  if (error) throw error;
+  return [...new Set((data ?? []).map((r: { event_id: string }) => r.event_id))];
+}
+
+export interface DashboardEventType {
+  id: string;
+  name: string;
+}
+
+// Admin-tier: every active event type tenant-wide. Everyone else: only
+// types with at least one event in the caller's visible-event-id set —
+// avoids a dropdown entry with nothing selectable behind it.
+export async function getDashboardEventTypes(
+  tenantId: string, memberId: string, role: Role
+): Promise<DashboardEventType[]> {
+  const db = serviceClient();
+
+  if (isAdminTier(role)) {
+    const { data, error } = await db
+      .from('event_types')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('name', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as DashboardEventType[];
+  }
+
+  const visibleEventIds = await getVisibleEventIds(tenantId, memberId, role);
+  if (!visibleEventIds || visibleEventIds.length === 0) return [];
+
+  const { data: eventRows, error: eventError } = await db
+    .from('events')
+    .select('event_type_id')
+    .eq('tenant_id', tenantId)
+    .in('id', visibleEventIds);
+  if (eventError) throw eventError;
+
+  const typeIds = [...new Set((eventRows ?? []).map((r: { event_type_id: string }) => r.event_type_id))];
+  if (typeIds.length === 0) return [];
+
+  const { data: typeRows, error: typeError } = await db
+    .from('event_types')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .in('id', typeIds)
+    .order('name', { ascending: true });
+  if (typeError) throw typeError;
+  return (typeRows ?? []) as DashboardEventType[];
+}
+
+export interface DashboardEventOption {
+  id: string;
+  name: string;
+  start_datetime: string;
+}
+
+// Every event of the given type, current calendar year, already started
+// (start_datetime <= now — "all [X] of the current year", generalized off
+// the original story's literal wording), intersected with visibility for
+// non-Admin, most recent first.
+export async function getDashboardEventsForType(
+  tenantId: string, memberId: string, role: Role, eventTypeId: string
+): Promise<DashboardEventOption[]> {
+  const visibleEventIds = await getVisibleEventIds(tenantId, memberId, role);
+  if (visibleEventIds !== null && visibleEventIds.length === 0) return [];
+
+  const now = new Date();
+  const yearStart = new Date(Date.UTC(now.getFullYear(), 0, 1)).toISOString();
+
+  const db = serviceClient();
+  let q = db
+    .from('events')
+    .select('id, name, start_datetime')
+    .eq('tenant_id', tenantId)
+    .eq('event_type_id', eventTypeId)
+    .gte('start_datetime', yearStart)
+    .lte('start_datetime', now.toISOString())
+    .order('start_datetime', { ascending: false });
+
+  if (visibleEventIds !== null) q = q.in('id', visibleEventIds);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as DashboardEventOption[];
+}
+
+export interface DefaultDashboardEvent {
+  event_type: { id: string; name: string };
+  event: DashboardEventOption;
+}
+
+// The single most recent already-held event across every type, intersected
+// with visibility — no year restriction (unlike getDashboardEventsForType;
+// Joseph's own wording for the default was "the latest event the user is
+// allowed to see," with no year qualifier). Backs the landing state before
+// any manual type/event selection.
+export async function getDefaultDashboardEvent(
+  tenantId: string, memberId: string, role: Role
+): Promise<DefaultDashboardEvent | null> {
+  const visibleEventIds = await getVisibleEventIds(tenantId, memberId, role);
+  if (visibleEventIds !== null && visibleEventIds.length === 0) return null;
+
+  const db = serviceClient();
+  let q = db
+    .from('events')
+    .select('id, name, start_datetime, event_type_id, event_types(id, name)')
+    .eq('tenant_id', tenantId)
+    .lte('start_datetime', new Date().toISOString())
+    .order('start_datetime', { ascending: false })
+    .limit(1);
+
+  if (visibleEventIds !== null) q = q.in('id', visibleEventIds);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const row = data[0] as {
+    id: string; name: string; start_datetime: string; event_type_id: string;
+    event_types: { id: string; name: string } | { id: string; name: string }[] | null;
+  };
+  const eventType = Array.isArray(row.event_types) ? row.event_types[0] : row.event_types;
+
+  return {
+    event_type: { id: eventType?.id ?? row.event_type_id, name: eventType?.name ?? '' },
+    event: { id: row.id, name: row.name, start_datetime: row.start_datetime },
+  };
+}
+
+export interface DashboardStatsResult {
+  attendance: { expected_count: number; attended_count: number; percent: number | null };
+  rsvp: { yes_count: number; no_count: number; tentative_count: number; no_response_count: number };
+  rating: { average_rating: number | null; rating_count: number; feedback: string[] };
+}
+
+// Scoped to a single event_id — once resolved, the three-card computation
+// doesn't need to know or care what event type it is; only the dropdown-
+// listing and default-resolution functions above are type/visibility-aware.
+//
+// Feedback anonymization: the feedback query's SELECT list below never
+// includes member_id or any joined member field — feedback text comes back
+// with no way to trace it to who submitted it.
+//
+// Round-half-up via Math.round() for average_rating, matching the
+// convention used elsewhere in this file.
+export async function getDashboardStats(
+  tenantId: string, memberId: string, role: Role, eventId: string
+): Promise<DashboardStatsResult> {
+  const db = serviceClient();
+
+  const { data: eventRow, error: eventError } = await db
+    .from('events')
+    .select('id')
+    .eq('id', eventId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (eventError) throw eventError;
+  if (!eventRow) {
+    const err = new Error('Event not found for this tenant') as Error & { code: string };
+    err.code = 'NOT_FOUND_IN_TENANT';
+    throw err;
+  }
+
+  if (!isAdminTier(role)) {
+    const { data: attendeeRow, error: attendeeError } = await db
+      .from('event_attendees')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('member_id', memberId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (attendeeError) throw attendeeError;
+    if (!attendeeRow) {
+      const err = new Error('You are not invited to this event') as Error & { code: string };
+      err.code = 'FORBIDDEN_SCOPE';
+      throw err;
+    }
+  }
+
+  // Card 1: attendance.
+  const { data: attendeeRows, error: attendeeCountError } = await db
+    .from('event_attendees')
+    .select('member_id')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+  if (attendeeCountError) throw attendeeCountError;
+  const expectedCount = (attendeeRows ?? []).length;
+
+  const { data: attendanceRows, error: attendanceError } = await db
+    .from('attendance')
+    .select('attendance_status')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+  if (attendanceError) throw attendanceError;
+  const attendedCount = ((attendanceRows ?? []) as { attendance_status: string }[])
+    .filter((r) => r.attendance_status === 'ATTENDED').length;
+
+  // Card 2: RSVP.
+  const { data: rsvpRows, error: rsvpError } = await db
+    .from('rsvps')
+    .select('rsvp_status')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+  if (rsvpError) throw rsvpError;
+
+  let yesCount = 0, noCount = 0, tentativeCount = 0;
+  for (const r of (rsvpRows ?? []) as { rsvp_status: string }[]) {
+    if (r.rsvp_status === 'YES') yesCount += 1;
+    else if (r.rsvp_status === 'NO') noCount += 1;
+    else if (r.rsvp_status === 'TENTATIVE') tentativeCount += 1;
+  }
+  const noResponseCount = Math.max(expectedCount - (yesCount + noCount + tentativeCount), 0);
+
+  // Card 3: rating + feedback — anonymized (see doc comment above).
+  const { data: ratingRows, error: ratingError } = await db
+    .from('member_attendance_reports')
+    .select('star_rating, feedback')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId)
+    .eq('self_report_status', 'SELF_REPORTED_YES');
+  if (ratingError) throw ratingError;
+
+  const typedRatingRows = (ratingRows ?? []) as { star_rating: number | null; feedback: string | null }[];
+  const ratings = typedRatingRows.map((r) => r.star_rating).filter((r): r is number => r !== null);
+  const averageRating = ratings.length > 0
+    ? Math.round(ratings.reduce((sum, r) => sum + r, 0) / ratings.length)
+    : null;
+  const feedback = typedRatingRows
+    .map((r) => r.feedback)
+    .filter((f): f is string => !!f && f.trim().length > 0);
+
+  return {
+    attendance: {
+      expected_count: expectedCount,
+      attended_count: attendedCount,
+      percent: roundToOneDecimal(attendedCount, expectedCount - attendedCount),
+    },
+    rsvp: {
+      yes_count: yesCount,
+      no_count: noCount,
+      tentative_count: tentativeCount,
+      no_response_count: noResponseCount,
+    },
+    rating: {
+      average_rating: averageRating,
+      rating_count: ratings.length,
+      feedback,
+    },
+  };
 }
