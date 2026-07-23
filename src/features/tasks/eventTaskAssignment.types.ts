@@ -49,8 +49,13 @@ export interface RosterEntry {
 // DIP-FP-180: one row per open slot for a fixed task on an upcoming event,
 // as returned by listSlotsForTaskUpcoming — enough to render the auto-assign
 // panel's slot list and derive the roster-scoped summary count table.
+//
+// DIP-FP-180-adj-1: id is now string | null — an upcoming event with no
+// event_tasks_assignments row yet for this task still surfaces here (it's
+// an open slot, not an absent one), just with no row to PATCH until one is
+// created.
 export interface TaskAutoAssignSlotRow {
-  id: string;
+  id: string | null;
   event_id: string;
   event_name: string;
   start_datetime: string;

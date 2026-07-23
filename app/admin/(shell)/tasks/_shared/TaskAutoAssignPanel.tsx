@@ -7,6 +7,7 @@ import type { AssigneeSelector, RosterEntry, TaskAutoAssignSlotRow } from '@/src
 
 interface Props {
   taskLabel: string;
+  taskId: string;
   individualOnly: boolean;
   slotsEndpoint: string;
   runEndpoint: string;
@@ -37,17 +38,20 @@ function slotAssigneeNames(
 // (never derived from the tasks catalog), matching the route-level enforcement
 // in autoAssign.service.ts's validateRoster.
 export default function TaskAutoAssignPanel({
-  taskLabel, individualOnly, slotsEndpoint, runEndpoint, groups, members, token,
+  taskLabel, taskId, individualOnly, slotsEndpoint, runEndpoint, groups, members, token,
 }: Props) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [slots, setSlots] = useState<TaskAutoAssignSlotRow[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  // Keyed by event_id, not slot.id — a never-before-assigned slot has
+  // id: null (DIP-FP-180-adj-1), so event_id is the only field guaranteed
+  // unique and present for every row.
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
   const [editMemberIds, setEditMemberIds] = useState<string[]>([]);
-  const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
+  const [savingEventId, setSavingEventId] = useState<string | null>(null);
 
   const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
@@ -108,7 +112,7 @@ export default function TaskAutoAssignPanel({
     if (roster.length === 0) return;
 
     const anyAssigned = slots.some(s => (s.assignee?.group_ids?.length ?? 0) > 0 || (s.assignee?.member_ids?.length ?? 0) > 0);
-    if (anyAssigned && !confirm(`Run auto-assign for ${taskLabel}? This will overwrite every existing assignment on the open slots below.`)) {
+    if (anyAssigned && !confirm(`Some Events have a ${taskLabel} assigned already, and will be over written. Would you like to continue?`)) {
       return;
     }
 
@@ -126,9 +130,15 @@ export default function TaskAutoAssignPanel({
         return;
       }
 
-      const updated = (body.data ?? []) as { id: string; assignee: AssigneeSelector | null }[];
-      const updatedById = new Map(updated.map(u => [u.id, u.assignee]));
-      setSlots(prev => prev.map(s => updatedById.has(s.id) ? { ...s, assignee: updatedById.get(s.id)! } : s));
+      // Matched by event_id, not id — a previously-row-less slot has a real
+      // id for the first time after this run, so matching by the old (null)
+      // id would silently fail to update it locally.
+      const updated = (body.data ?? []) as { id: string; event_id: string; assignee: AssigneeSelector | null }[];
+      const updatedByEventId = new Map(updated.map(u => [u.event_id, u]));
+      setSlots(prev => prev.map(s => {
+        const match = updatedByEventId.get(s.event_id);
+        return match ? { ...s, id: match.id, assignee: match.assignee } : s;
+      }));
     } catch {
       setError('Network error — please try again');
     } finally {
@@ -137,35 +147,44 @@ export default function TaskAutoAssignPanel({
   }
 
   function startEditSlot(slot: TaskAutoAssignSlotRow) {
-    setEditingSlotId(slot.id);
+    setEditingEventId(slot.event_id);
     setEditGroupIds(slot.assignee?.group_ids ?? []);
     setEditMemberIds(slot.assignee?.member_ids ?? []);
   }
 
   function cancelEditSlot() {
-    setEditingSlotId(null);
+    setEditingEventId(null);
   }
 
-  async function saveEditSlot(slotId: string) {
-    setSavingSlotId(slotId);
+  // A never-before-assigned slot has id: null — POST to create the row;
+  // otherwise PATCH the existing one, matching (DIP-FP-180-adj-1).
+  async function saveEditSlot(slot: TaskAutoAssignSlotRow) {
+    setSavingEventId(slot.event_id);
     setError(null);
     try {
-      const res = await fetch(`/api/event-tasks-assignments/${slotId}`, {
-        method: 'PATCH',
-        headers: authHeaders,
-        body: JSON.stringify({ assignee: { group_ids: editGroupIds, member_ids: editMemberIds } }),
-      });
+      const assignee = { group_ids: editGroupIds, member_ids: editMemberIds };
+      const res = slot.id === null
+        ? await fetch('/api/event-tasks-assignments', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ event_id: slot.event_id, task_id: taskId, assignee }),
+          })
+        : await fetch(`/api/event-tasks-assignments/${slot.id}`, {
+            method: 'PATCH',
+            headers: authHeaders,
+            body: JSON.stringify({ assignee }),
+          });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(body?.error?.message ?? 'Failed to update slot');
         return;
       }
-      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, assignee: body.data.assignee } : s));
-      setEditingSlotId(null);
+      setSlots(prev => prev.map(s => s.event_id === slot.event_id ? { ...s, id: body.data.id, assignee: body.data.assignee } : s));
+      setEditingEventId(null);
     } catch {
       setError('Network error — please try again');
     } finally {
-      setSavingSlotId(null);
+      setSavingEventId(null);
     }
   }
 
@@ -266,10 +285,10 @@ export default function TaskAutoAssignPanel({
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {slots.map(slot => {
-                  const isEditing = editingSlotId === slot.id;
+                  const isEditing = editingEventId === slot.event_id;
                   const names = slotAssigneeNames(slot.assignee, groupById, memberById);
                   return (
-                    <tr key={slot.id}>
+                    <tr key={slot.event_id}>
                       <td className="px-4 py-3 text-zinc-900 dark:text-zinc-100">
                         {slot.event_name}
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -296,15 +315,15 @@ export default function TaskAutoAssignPanel({
                         {isEditing ? (
                           <div className="flex justify-end gap-2">
                             <button
-                              onClick={() => saveEditSlot(slot.id)}
-                              disabled={savingSlotId === slot.id}
+                              onClick={() => saveEditSlot(slot)}
+                              disabled={savingEventId === slot.event_id}
                               className="rounded px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
                             >
-                              {savingSlotId === slot.id ? 'Saving…' : 'Save'}
+                              {savingEventId === slot.event_id ? 'Saving…' : 'Save'}
                             </button>
                             <button
                               onClick={cancelEditSlot}
-                              disabled={savingSlotId === slot.id}
+                              disabled={savingEventId === slot.event_id}
                               className="rounded px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
                             >
                               Cancel

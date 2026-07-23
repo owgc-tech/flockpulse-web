@@ -23,8 +23,10 @@ export default async function PrayerLeaderAutoAssignPage() {
 
   // getPrayerLeaderAutoAssignData resolves and validates the "Prayer Leader"
   // task exists in this tenant's catalog before the panel renders — its
-  // slots are re-fetched live by the client via slotsEndpoint below.
-  const [members] = await Promise.all([
+  // slots are re-fetched live by the client via slotsEndpoint below. task.id
+  // is passed to the panel so it can create a row for a never-before-assigned
+  // slot (DIP-FP-180-adj-1).
+  const [members, { task }] = await Promise.all([
     listMembers(tenantId),
     getPrayerLeaderAutoAssignData(tenantId),
   ]);
@@ -40,6 +42,7 @@ export default async function PrayerLeaderAutoAssignPage() {
         </div>
         <TaskAutoAssignPanel
           taskLabel="Prayer Leader"
+          taskId={task.id}
           individualOnly={true}
           slotsEndpoint="/api/tasks/auto-assign/prayer-leader/slots"
           runEndpoint="/api/tasks/auto-assign/prayer-leader"
