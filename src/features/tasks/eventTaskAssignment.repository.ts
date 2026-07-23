@@ -3,6 +3,8 @@ import type {
   EventTaskAssignmentRow,
   CreateEventTaskAssignmentInput,
   UpdateEventTaskAssignmentInput,
+  RosterEntry,
+  TaskAutoAssignSlotRow,
 } from './eventTaskAssignment.types';
 
 const COLS = 'id, tenant_id, event_id, task_id, assignee, created_at, updated_at';
@@ -84,4 +86,95 @@ export async function deleteEventTaskAssignment(id: string, tenantId: string): P
 
   if (error) throw error;
   return (count ?? 0) > 0;
+}
+
+// DIP-FP-180: single-task-by-name lookup backing both auto-assign screens'
+// hardcoded server-side task resolution (the client never supplies a task_id).
+export async function getTaskByName(tenantId: string, name: string): Promise<{ id: string; individual_only: boolean }> {
+  const { data, error } = await serviceClient()
+    .from('tasks')
+    .select('id, individual_only')
+    .eq('tenant_id', tenantId)
+    .eq('name', name)
+    .is('deleted_at', null)
+    .single();
+
+  if (error || !data) {
+    const err = new Error(`Task "${name}" not found for this tenant`) as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  return data as { id: string; individual_only: boolean };
+}
+
+// DIP-FP-180: every open slot for a fixed task on upcoming (SCHEDULED/ACTIVE)
+// events — fetch-and-reduce via get_events_effective_statuses, matching the
+// established convention (getEligibleAttendanceRows) rather than a JOIN
+// PostgREST can't express against a derived status.
+export async function listSlotsForTaskUpcoming(
+  tenantId: string, taskId: string
+): Promise<TaskAutoAssignSlotRow[]> {
+  const db = serviceClient();
+
+  const { data: slotRows, error: slotError } = await db
+    .from('event_tasks_assignments')
+    .select('id, event_id, assignee')
+    .eq('tenant_id', tenantId)
+    .eq('task_id', taskId);
+  if (slotError) throw slotError;
+  if (!slotRows || slotRows.length === 0) return [];
+
+  const eventIds = [...new Set(slotRows.map((s: { event_id: string }) => s.event_id))];
+
+  const { data: eventRows, error: eventError } = await db
+    .from('events')
+    .select('id, name, start_datetime')
+    .eq('tenant_id', tenantId)
+    .in('id', eventIds);
+  if (eventError) throw eventError;
+
+  const { data: statusRows, error: statusError } = await db.rpc('get_events_effective_statuses', {
+    p_tenant_id: tenantId,
+    p_event_ids: eventIds,
+  });
+  if (statusError) throw statusError;
+
+  const upcomingEventIds = new Set(
+    ((statusRows ?? []) as { event_id: string; effective_status: string }[])
+      .filter((r) => r.effective_status === 'SCHEDULED' || r.effective_status === 'ACTIVE')
+      .map((r) => r.event_id)
+  );
+
+  const eventById = new Map(
+    (eventRows ?? []).map((e: { id: string; name: string; start_datetime: string }) => [e.id, e])
+  );
+
+  return slotRows
+    .filter((s: { event_id: string }) => upcomingEventIds.has(s.event_id))
+    .map((s: { id: string; event_id: string; assignee: TaskAutoAssignSlotRow['assignee'] }) => {
+      const event = eventById.get(s.event_id)!;
+      return {
+        id: s.id,
+        event_id: s.event_id,
+        event_name: event.name,
+        start_datetime: event.start_datetime,
+        assignee: s.assignee,
+      };
+    })
+    .sort((a, b) => a.start_datetime.localeCompare(b.start_datetime) || a.id.localeCompare(b.id));
+}
+
+// DIP-FP-180: invokes the SECURITY DEFINER round-robin fill. Roster is trusted
+// pre-validated by the caller (autoAssign.service.ts's validateRoster).
+export async function runAutoAssignTaskSlots(
+  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string
+): Promise<EventTaskAssignmentRow[]> {
+  const { data, error } = await serviceClient().rpc('auto_assign_task_slots', {
+    p_tenant_id: tenantId,
+    p_task_id: taskId,
+    p_roster: roster,
+    p_actor_member_id: actorMemberId,
+  });
+  if (error) throw error;
+  return (data ?? []) as EventTaskAssignmentRow[];
 }

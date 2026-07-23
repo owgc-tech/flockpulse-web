@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listTasks } from '@/src/features/tasks/task.service';
@@ -29,6 +30,20 @@ export default async function TasksPage() {
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             The task catalog available for assignment on events in this organisation.
           </p>
+        </div>
+        <div className="mb-6 flex gap-3">
+          <Link
+            href="/admin/tasks/prayer-leader-auto-assign"
+            className="rounded-full border border-zinc-200 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Auto-assign Prayer Leader
+          </Link>
+          <Link
+            href="/admin/tasks/food-assignment-auto-assign"
+            className="rounded-full border border-zinc-200 px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Auto-assign Food Assignment
+          </Link>
         </div>
         <TasksTable initialTasks={tasks} token={token} />
       </div>

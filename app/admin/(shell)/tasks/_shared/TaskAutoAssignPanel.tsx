@@ -1,0 +1,354 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import GroupMemberChipPicker from '../../events/GroupMemberChipPicker';
+import type { GroupOption, MemberOption } from '@/src/features/events/event.types';
+import type { AssigneeSelector, RosterEntry, TaskAutoAssignSlotRow } from '@/src/features/tasks/eventTaskAssignment.types';
+
+interface Props {
+  taskLabel: string;
+  individualOnly: boolean;
+  slotsEndpoint: string;
+  runEndpoint: string;
+  groups: GroupOption[];
+  members: MemberOption[];
+  token: string;
+}
+
+function rosterEntryName(entry: RosterEntry, groupById: Map<string, GroupOption>, memberById: Map<string, MemberOption>): string {
+  if (entry.type === 'group') return groupById.get(entry.id)?.name ?? 'Unknown group';
+  const m = memberById.get(entry.id);
+  return m ? `${m.first_name} ${m.last_name}` : 'Unknown member';
+}
+
+function slotAssigneeNames(
+  assignee: AssigneeSelector | null, groupById: Map<string, GroupOption>, memberById: Map<string, MemberOption>
+): string[] {
+  const groupNames = (assignee?.group_ids ?? []).map(id => groupById.get(id)?.name ?? 'Unknown group');
+  const memberNames = (assignee?.member_ids ?? [])
+    .map(id => memberById.get(id))
+    .filter((m): m is MemberOption => !!m)
+    .map(m => `${m.first_name} ${m.last_name}`);
+  return [...groupNames, ...memberNames];
+}
+
+// DIP-FP-180: shared panel behind both the Prayer Leader and Food Assignment
+// auto-assign screens. individualOnly is fixed by the page that renders this
+// (never derived from the tasks catalog), matching the route-level enforcement
+// in autoAssign.service.ts's validateRoster.
+export default function TaskAutoAssignPanel({
+  taskLabel, individualOnly, slotsEndpoint, runEndpoint, groups, members, token,
+}: Props) {
+  const [roster, setRoster] = useState<RosterEntry[]>([]);
+  const [slots, setSlots] = useState<TaskAutoAssignSlotRow[]>([]);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
+  const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
+  const [editMemberIds, setEditMemberIds] = useState<string[]>([]);
+  const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
+
+  const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  useEffect(() => {
+    fetch(slotsEndpoint, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then(body => setSlots(body.data ?? []))
+      .catch(() => setSlots([]));
+  }, [slotsEndpoint, token]);
+
+  const groupById = useMemo(() => new Map(groups.map(g => [g.id, g])), [groups]);
+  const memberById = useMemo(() => new Map(members.map(m => [m.id, m])), [members]);
+
+  const rosterGroupIds = roster.filter(r => r.type === 'group').map(r => r.id);
+  const rosterMemberIds = roster.filter(r => r.type === 'member').map(r => r.id);
+
+  function toggleRosterGroup(id: string) {
+    setRoster(prev =>
+      prev.some(r => r.type === 'group' && r.id === id)
+        ? prev.filter(r => !(r.type === 'group' && r.id === id))
+        : [...prev, { type: 'group', id }]
+    );
+  }
+
+  function toggleRosterMember(id: string) {
+    setRoster(prev =>
+      prev.some(r => r.type === 'member' && r.id === id)
+        ? prev.filter(r => !(r.type === 'member' && r.id === id))
+        : [...prev, { type: 'member', id }]
+    );
+  }
+
+  function removeRosterEntry(index: number) {
+    setRoster(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function moveRosterEntry(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= roster.length) return;
+    setRoster(prev => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  // Roster-scoped summary: for each roster entry, how many currently-fetched
+  // slots have that entry as assignee — recalculated on every local edit.
+  const summary = roster.map(entry => {
+    const count = slots.filter(s => {
+      if (entry.type === 'group') return (s.assignee?.group_ids ?? []).includes(entry.id);
+      return (s.assignee?.member_ids ?? []).includes(entry.id);
+    }).length;
+    return { entry, name: rosterEntryName(entry, groupById, memberById), count };
+  });
+
+  async function handleRun() {
+    if (roster.length === 0) return;
+
+    const anyAssigned = slots.some(s => (s.assignee?.group_ids?.length ?? 0) > 0 || (s.assignee?.member_ids?.length ?? 0) > 0);
+    if (anyAssigned && !confirm(`Run auto-assign for ${taskLabel}? This will overwrite every existing assignment on the open slots below.`)) {
+      return;
+    }
+
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch(runEndpoint, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ roster }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body?.error?.message ?? 'Failed to run auto-assign');
+        return;
+      }
+
+      const updated = (body.data ?? []) as { id: string; assignee: AssigneeSelector | null }[];
+      const updatedById = new Map(updated.map(u => [u.id, u.assignee]));
+      setSlots(prev => prev.map(s => updatedById.has(s.id) ? { ...s, assignee: updatedById.get(s.id)! } : s));
+    } catch {
+      setError('Network error — please try again');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function startEditSlot(slot: TaskAutoAssignSlotRow) {
+    setEditingSlotId(slot.id);
+    setEditGroupIds(slot.assignee?.group_ids ?? []);
+    setEditMemberIds(slot.assignee?.member_ids ?? []);
+  }
+
+  function cancelEditSlot() {
+    setEditingSlotId(null);
+  }
+
+  async function saveEditSlot(slotId: string) {
+    setSavingSlotId(slotId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/event-tasks-assignments/${slotId}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ assignee: { group_ids: editGroupIds, member_ids: editMemberIds } }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body?.error?.message ?? 'Failed to update slot');
+        return;
+      }
+      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, assignee: body.data.assignee } : s));
+      setEditingSlotId(null);
+    } catch {
+      setError('Network error — please try again');
+    } finally {
+      setSavingSlotId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Roster</h2>
+        <GroupMemberChipPicker
+          groups={groups}
+          members={members}
+          groupIds={rosterGroupIds}
+          memberIds={rosterMemberIds}
+          onToggleGroup={toggleRosterGroup}
+          onToggleMember={toggleRosterMember}
+          individualOnly={individualOnly}
+          label={`Add to the ${taskLabel} roster`}
+        />
+
+        {roster.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">Priority order</p>
+            <ol className="flex flex-col gap-1.5">
+              {roster.map((entry, i) => (
+                <li
+                  key={`${entry.type}-${entry.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <span className="text-zinc-900 dark:text-zinc-100">
+                    {i + 1}. {rosterEntryName(entry, groupById, memberById)}
+                    {entry.type === 'group' && (
+                      <span className="ml-1.5 inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                        Group
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveRosterEntry(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move up"
+                      className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveRosterEntry(i, 1)}
+                      disabled={i === roster.length - 1}
+                      aria-label="Move down"
+                      className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRosterEntry(i)}
+                      aria-label="Remove"
+                      className="rounded px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        <button
+          onClick={handleRun}
+          disabled={running || roster.length === 0}
+          className="mt-4 rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        >
+          {running ? 'Running…' : 'Run auto-assign'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">{taskLabel} slots</h2>
+        {slots.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">No open slots on upcoming events.</p>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-100 dark:border-zinc-800">
+                  <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Event</th>
+                  <th className="px-4 py-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Assignee</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {slots.map(slot => {
+                  const isEditing = editingSlotId === slot.id;
+                  const names = slotAssigneeNames(slot.assignee, groupById, memberById);
+                  return (
+                    <tr key={slot.id}>
+                      <td className="px-4 py-3 text-zinc-900 dark:text-zinc-100">
+                        {slot.event_name}
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {new Date(slot.start_datetime).toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {isEditing ? (
+                          <GroupMemberChipPicker
+                            groups={groups}
+                            members={members}
+                            groupIds={editGroupIds}
+                            memberIds={editMemberIds}
+                            onToggleGroup={id => setEditGroupIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                            onToggleMember={id => setEditMemberIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                            individualOnly={individualOnly}
+                            label="Assignee"
+                          />
+                        ) : (
+                          <span className="text-zinc-900 dark:text-zinc-100">{names.length > 0 ? names.join(', ') : '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isEditing ? (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => saveEditSlot(slot.id)}
+                              disabled={savingSlotId === slot.id}
+                              className="rounded px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                            >
+                              {savingSlotId === slot.id ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              onClick={cancelEditSlot}
+                              disabled={savingSlotId === slot.id}
+                              className="rounded px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEditSlot(slot)}
+                            className="rounded px-2 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {roster.length > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Assignment distribution</h2>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-100 dark:border-zinc-800">
+                <th className="px-4 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Roster member</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Assigned slots</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {summary.map(row => (
+                <tr key={`${row.entry.type}-${row.entry.id}`}>
+                  <td className="px-4 py-2 text-zinc-900 dark:text-zinc-100">{row.name}</td>
+                  <td className="px-4 py-2 text-zinc-900 dark:text-zinc-100">{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

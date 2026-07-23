@@ -37,3 +37,22 @@ export interface MyTaskAssignmentRow {
   location_name: string;
   effective_status: string;
 }
+
+// DIP-FP-180: roster entry for the Prayer Leader / Food Assignment round-robin
+// auto-assign screens — an ordered, hand-picked subset the admin builds fresh
+// each visit (never persisted).
+export interface RosterEntry {
+  type: 'member' | 'group';
+  id: string;
+}
+
+// DIP-FP-180: one row per open slot for a fixed task on an upcoming event,
+// as returned by listSlotsForTaskUpcoming — enough to render the auto-assign
+// panel's slot list and derive the roster-scoped summary count table.
+export interface TaskAutoAssignSlotRow {
+  id: string;
+  event_id: string;
+  event_name: string;
+  start_datetime: string;
+  assignee: AssigneeSelector | null;
+}
