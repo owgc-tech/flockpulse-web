@@ -842,6 +842,7 @@ export interface DashboardStatsResult {
     average: number | null;
     rounded: number | null;
     rating_count: number;
+    breakdown: { star: number; count: number }[];
     feedback: { star_rating: number | null; feedback: string }[];
   };
 }
@@ -963,6 +964,14 @@ export async function getDashboardStats(
     ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
     : null;
   const roundedRating = averageRating !== null ? Math.round(averageRating) : null;
+  // DIP-FP-182-web-adj-2: count-by-value over the same `ratings` array
+  // already computed above — no new query. All five star values always
+  // present, 5 down to 1, even at count 0 (needed for the bar-graph's
+  // fixed five-row scale, not just the stars that got at least one rating).
+  const breakdown = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: ratings.filter((r) => r === star).length,
+  }));
   const feedback = typedRatingRows
     .filter((r): r is { star_rating: number | null; feedback: string } => !!r.feedback && r.feedback.trim().length > 0)
     .map((r) => ({ star_rating: r.star_rating, feedback: r.feedback }));
@@ -985,6 +994,7 @@ export async function getDashboardStats(
       average: averageRating,
       rounded: roundedRating,
       rating_count: ratings.length,
+      breakdown,
       feedback,
     },
   };
