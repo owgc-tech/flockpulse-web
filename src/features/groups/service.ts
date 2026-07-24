@@ -72,6 +72,16 @@ export async function updateGroup(id: string, tenantId: string, name: string, ac
       err.code = 'NOT_FOUND_IN_TENANT';
       throw err;
     }
+    // DIP-FP-181: trigger_block_system_group_rename_or_delete lives on groups
+    // itself (BEFORE UPDATE), so it fires identically whether this RPC's own
+    // internal UPDATE is the source or a hypothetical direct client write —
+    // same P0001 + message-substring convention as members.service.ts's
+    // guard-trigger mappings.
+    if (error.code === 'P0001' && (error.message ?? '').includes('SYSTEM_MANAGED_GROUP')) {
+      const err = new Error(error.message) as Error & { code: string };
+      err.code = 'SYSTEM_MANAGED_GROUP';
+      throw err;
+    }
     throw error;
   }
   const row = Array.isArray(data) ? data[0] : data;
@@ -89,6 +99,12 @@ export async function softDeleteGroup(id: string, tenantId: string, actorMemberI
     if ((error.message ?? '').includes('NOT_FOUND_IN_TENANT')) {
       const err = new Error('Group not found for this tenant') as Error & { code: string };
       err.code = 'NOT_FOUND_IN_TENANT';
+      throw err;
+    }
+    // DIP-FP-181: same guard-trigger mapping as updateGroup() above.
+    if (error.code === 'P0001' && (error.message ?? '').includes('SYSTEM_MANAGED_GROUP')) {
+      const err = new Error(error.message) as Error & { code: string };
+      err.code = 'SYSTEM_MANAGED_GROUP';
       throw err;
     }
     throw error;

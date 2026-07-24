@@ -68,6 +68,11 @@ export const PATCH = (req: NextRequest) =>
       if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
         return errorResponse('NOT_FOUND_IN_TENANT', 'Group not found for this tenant', 404);
       }
+      // DIP-FP-181: trigger_block_system_group_rename_or_delete blocks
+      // renaming a system-managed group (e.g. Everyone), for every role.
+      if ((err as { code?: string }).code === 'SYSTEM_MANAGED_GROUP') {
+        return errorResponse('SYSTEM_MANAGED_GROUP', (err as Error).message, 409);
+      }
       throw err;
     }
   }));
@@ -84,6 +89,11 @@ export const DELETE = (req: NextRequest) =>
     } catch (err: unknown) {
       if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
         return errorResponse('NOT_FOUND_IN_TENANT', 'Group not found for this tenant', 404);
+      }
+      // DIP-FP-181: trigger_block_system_group_rename_or_delete blocks
+      // deleting a system-managed group (e.g. Everyone), for every role.
+      if ((err as { code?: string }).code === 'SYSTEM_MANAGED_GROUP') {
+        return errorResponse('SYSTEM_MANAGED_GROUP', (err as Error).message, 409);
       }
       throw err;
     }

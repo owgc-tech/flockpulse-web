@@ -70,6 +70,18 @@ export const DELETE = (req: NextRequest) =>
     const id = searchParams.get('id');
     if (!id) return errorResponse('MISSING_PARAM', 'id query param required', 400);
 
-    await softDeleteAssignment(id, ctx.tenantId);
-    return NextResponse.json({ data: { id, deleted: true } });
+    // DIP-FP-181: trigger_block_manual_removal_from_system_group blocks
+    // removing an active member from a system-managed group (e.g. Everyone)
+    // — 409, matching the existing INVALID_STATE_TRANSITION convention's
+    // status code exactly.
+    try {
+      await softDeleteAssignment(id, ctx.tenantId);
+      return NextResponse.json({ data: { id, deleted: true } });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === 'SYSTEM_MANAGED_GROUP') {
+        return errorResponse('SYSTEM_MANAGED_GROUP', (err as Error).message, 409);
+      }
+      throw err;
+    }
   }));
