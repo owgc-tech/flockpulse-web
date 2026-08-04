@@ -72,3 +72,22 @@ export async function isAnnouncementEvent(tenantId: string, eventId: string): Pr
 
   return (count ?? 0) > 0;
 }
+
+// DIP-FP-191-web-adj-1: per-caller acknowledgement state for GET /api/events/:id
+// — null means this specific member hasn't acknowledged this specific event
+// (including every non-Announcement event, which simply has no row here).
+export async function getAcknowledgedAt(
+  tenantId: string,
+  eventId: string,
+  memberId: string
+): Promise<string | null> {
+  const { data } = await serviceClient()
+    .from('announcement_acknowledgements')
+    .select('acknowledged_at')
+    .eq('tenant_id', tenantId)
+    .eq('event_id', eventId)
+    .eq('member_id', memberId)
+    .maybeSingle();
+
+  return data?.acknowledged_at ?? null;
+}

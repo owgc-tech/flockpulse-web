@@ -13,7 +13,9 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
 
     try {
-      const event = await getEventById(id, ctx.tenantId);
+      // DIP-FP-191-web-adj-1: callerMemberId so acknowledged_at reflects this
+      // specific caller's state, not a shared/global value.
+      const event = await getEventById(id, ctx.tenantId, ctx.memberId);
       return NextResponse.json({ data: event });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === 'NOT_FOUND') {

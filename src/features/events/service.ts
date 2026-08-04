@@ -6,6 +6,7 @@ import { getModule } from '@/src/features/formation/module.repository';
 import { getCourse } from '@/src/features/formation/course.repository';
 import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
 import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
+import { getAcknowledgedAt } from '@/src/features/announcements/announcement.repository';
 import type { EventListItemRow } from './event.types';
 
 function serviceClient() {
@@ -668,7 +669,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, event_type:event_types(id, name, system_key)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -679,9 +680,13 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
   // single-element array depending on how PostgREST infers the relationship
   // cardinality — normalized here rather than at every call site, same
   // defensive pattern as getEventRoster()'s members embed below.
+  // DIP-FP-191-web-adj-1: created_by_member gets the same normalization —
+  // additionally null (not just possibly-array) for events that predate
+  // FP-114-web's created_by_member_id column.
   const normalizedEvents = (events ?? []).map((e) => ({
     ...e,
     event_type: Array.isArray(e.event_type) ? e.event_type[0] : e.event_type,
+    created_by_member: Array.isArray(e.created_by_member) ? (e.created_by_member[0] ?? null) : e.created_by_member,
   }));
 
   const withEffectiveStatus = await attachEffectiveStatus(normalizedEvents);
@@ -721,10 +726,14 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
   });
 }
 
-export async function getEventById(id: string, tenantId: string) {
+// DIP-FP-191-web-adj-1: callerMemberId is optional and additive — existing
+// callers (getEventRoster, cancelEvent, getEventReminderContext) pass only
+// (id, tenantId) and get acknowledged_at: null with no extra query, since
+// none of them need per-caller state. Only GET /api/events/:id passes it.
+export async function getEventById(id: string, tenantId: string, callerMemberId?: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -735,18 +744,22 @@ export async function getEventById(id: string, tenantId: string) {
     throw err;
   }
 
-  const [{ data: effectiveStatus, error: statusError }, tenantDefaultDays] = await Promise.all([
+  const [{ data: effectiveStatus, error: statusError }, tenantDefaultDays, acknowledgedAt] = await Promise.all([
     serviceClient().rpc('get_event_effective_status', { p_event_id: id }),
     getTenantRsvpClosureDaysDefault(tenantId),
+    callerMemberId ? getAcknowledgedAt(tenantId, id, callerMemberId) : Promise.resolve(null),
   ]);
   if (statusError) throw statusError;
 
   // DIP-FP-191-web: same embed-cardinality normalization as listEventsForMember.
   const eventType = Array.isArray(event.event_type) ? event.event_type[0] : event.event_type;
+  const createdByMember = Array.isArray(event.created_by_member) ? (event.created_by_member[0] ?? null) : event.created_by_member;
 
   return {
     ...event,
     event_type: eventType,
+    created_by_member: createdByMember,
+    acknowledged_at: acknowledgedAt,
     effective_status: effectiveStatus as string,
     rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
   };
