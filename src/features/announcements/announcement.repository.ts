@@ -91,3 +91,28 @@ export async function getAcknowledgedAt(
 
   return data?.acknowledged_at ?? null;
 }
+
+// DIP-FP-191-web-adj-2: batch equivalent of getAcknowledgedAt for a whole list
+// — one query for the caller's own acknowledgement rows across eventIds,
+// merged client-side by the caller (listEventsForMember), rather than a
+// per-row query per event. Missing from the map means not yet acknowledged
+// (or not an Announcement at all) — same "absence = null" contract as the
+// single-event lookup above.
+export async function getAcknowledgedAtMap(
+  tenantId: string,
+  memberId: string,
+  eventIds: string[]
+): Promise<Map<string, string>> {
+  if (eventIds.length === 0) return new Map();
+
+  const { data, error } = await serviceClient()
+    .from('announcement_acknowledgements')
+    .select('event_id, acknowledged_at')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .in('event_id', eventIds);
+
+  if (error) throw error;
+
+  return new Map((data ?? []).map((r: { event_id: string; acknowledged_at: string }) => [r.event_id, r.acknowledged_at]));
+}
