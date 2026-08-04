@@ -36,7 +36,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     const {
       name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, eventTypeId, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
-      rsvpClosureDays, announcementBody,
+      rsvpClosureDays, announcementBody, guestsAllowed,
     } = body;
 
     try {
@@ -55,6 +55,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         onlineMeetingPlatformLabel,
         rsvpClosureDays,
         announcementBody,
+        guestsAllowed,
         actorMemberId: ctx.memberId,
       }, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
       return NextResponse.json({ data: event });

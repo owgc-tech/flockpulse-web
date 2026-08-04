@@ -21,7 +21,7 @@ export async function submitRsvp(
   memberId: string,
   input: SubmitRsvpInput
 ): Promise<RsvpResponse> {
-  const { eventId, rsvpStatus, rsvpReason } = input;
+  const { eventId, rsvpStatus, rsvpReason, guestCount } = input;
 
   // Step 1: Member must be an expected attendee — no RSVP on events they weren't targeted for.
   const attendee = await isExpectedAttendee(tenantId, eventId, memberId);
@@ -71,13 +71,48 @@ export async function submitRsvp(
     throw serviceError('RSVP_REASON_REQUIRED', 'A reason is required when declining (rsvp_status = NO)');
   }
 
-  const row = await upsertRsvp(
-    tenantId,
-    eventId,
-    memberId,
-    rsvpStatus,
-    rsvpStatus === 'YES' ? null : (rsvpReason ?? null)
-  );
+  // Step 5: DIP-FP-189-web — guest_count is only meaningful for Yes/Tentative
+  // (the database's rsvps_guest_count_status_check is the real enforcement;
+  // this gives a clean error instead of a raw 23514 for the common client
+  // mistake). Not explicitly asked for by the DIP's Implementation Plan, but
+  // required for the "Guests Allowed toggle ... no effect on any existing
+  // event" story goal to actually hold: without this, guest_count would be
+  // acceptable on any event regardless of whether it allows guests, making
+  // the toggle meaningless. See PR description for this judgment call.
+  if (guestCount !== undefined) {
+    if (rsvpStatus === 'NO') {
+      throw serviceError('GUEST_COUNT_NOT_ALLOWED', 'guest_count is not allowed when declining (rsvp_status = NO)');
+    }
+    if (!Number.isInteger(guestCount) || guestCount < 0) {
+      throw serviceError('VALIDATION_ERROR', 'guest_count must be a non-negative integer');
+    }
+    if (closureInfo && !closureInfo.guests_allowed) {
+      throw serviceError('GUEST_COUNT_NOT_ALLOWED', 'This event does not allow guests');
+    }
+  }
+
+  let row;
+  try {
+    row = await upsertRsvp(
+      tenantId,
+      eventId,
+      memberId,
+      rsvpStatus,
+      rsvpStatus === 'YES' ? null : (rsvpReason ?? null),
+      guestCount ?? null
+    );
+  } catch (error: unknown) {
+    // DIP-FP-189-web: trigger_enforce_rsvp_guest_count_max is the real,
+    // authoritative enforcement of the tenant max (a CHECK constraint can't
+    // reference another table) — mapped here the same P0001 + message-
+    // substring convention used for every other guard trigger in this
+    // codebase (e.g. FP-191's SYSTEM_MANAGED_GROUP/ANNOUNCEMENT_MISSING_EVERYONE_GROUP).
+    const err = error as { code?: string; message?: string };
+    if (err.code === 'P0001' && (err.message ?? '').includes('GUEST_COUNT_EXCEEDS_MAX')) {
+      throw serviceError('GUEST_COUNT_EXCEEDS_MAX', err.message ?? 'guest_count exceeds this community\'s max');
+    }
+    throw error;
+  }
 
   return {
     id: row.id,
@@ -85,6 +120,7 @@ export async function submitRsvp(
     member_id: row.member_id,
     rsvp_status: row.rsvp_status,
     rsvp_reason: row.rsvp_reason,
+    guest_count: row.guest_count,
     responded_at: row.responded_at,
     is_late: false, // No lateness semantics defined in FP-16/FP-17 ACs — assumption documented in PR
   };

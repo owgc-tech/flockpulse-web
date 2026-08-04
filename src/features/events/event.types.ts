@@ -55,6 +55,9 @@ export interface EventListRow {
   announcement_body: string | null;
   event_type: EventTypeSummary;
   created_by_member: CreatedByMemberSummary | null;
+  // DIP-FP-189-web: default false — no effect on any event created before this
+  // field existed. Whether this event's RSVP flow accepts a guest_count at all.
+  guests_allowed: boolean;
   // DIP-FP-191-web-adj-1, widened to list scope by DIP-FP-191-web-adj-2: whether
   // the current authenticated caller has acknowledged this event, from
   // announcement_acknowledgements. Null for any event the caller hasn't

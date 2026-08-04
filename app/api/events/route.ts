@@ -38,7 +38,7 @@ export const POST = (req: NextRequest) =>
     const {
       eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
-      rsvpClosureDays, announcementBody,
+      rsvpClosureDays, announcementBody, guestsAllowed,
     } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
@@ -61,6 +61,7 @@ export const POST = (req: NextRequest) =>
         onlineMeetingPlatformLabel,
         rsvpClosureDays,
         announcementBody,
+        guestsAllowed,
         actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event }, { status: 201 });
