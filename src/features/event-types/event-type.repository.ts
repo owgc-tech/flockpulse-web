@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { EventTypeRow, CreateEventTypeInput, UpdateEventTypeInput } from './event-type.types';
 
-const COLS = 'id, tenant_id, name, code, deleted_at, created_at, updated_at';
+const COLS = 'id, tenant_id, name, code, system_key, deleted_at, created_at, updated_at';
 
 function serviceClient() {
   return createClient(

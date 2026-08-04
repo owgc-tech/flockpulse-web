@@ -65,6 +65,9 @@ export interface CreateEventInput {
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
   rsvpClosureDays?: number | null;
+  // DIP-FP-191-web: only meaningful for the Announcement system type — passed
+  // through as-is; insert_event_with_audit ignores it for every other type.
+  announcementBody?: string | null;
   actorMemberId?: string | null;
 }
 
@@ -196,11 +199,17 @@ export async function createEvent(input: CreateEventInput) {
     p_online_meeting_url: input.onlineMeetingUrl ?? null,
     p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
     p_rsvp_closure_days: input.rsvpClosureDays ?? null,
+    p_announcement_body: input.announcementBody ?? null,
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
   if (error) {
     if (isMeetingResourceExclusionViolation(error)) throw meetingResourceRaceError();
+    if ((error.message ?? '').includes('ANNOUNCEMENT_MISSING_EVERYONE_GROUP')) {
+      const err = new Error('This tenant has no Everyone system group to target — FP-181 must be provisioned first') as Error & { code: string };
+      err.code = 'ANNOUNCEMENT_MISSING_EVERYONE_GROUP';
+      throw err;
+    }
     throw error;
   }
 
@@ -225,7 +234,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId, owner_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at, created_by_member_id, owner_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, created_by_member_id, owner_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -308,6 +317,8 @@ export interface UpdateEventInput {
   onlineMeetingUrl?: string | null;
   onlineMeetingPlatformLabel?: string | null;
   rsvpClosureDays?: number | null;
+  // DIP-FP-191-web: see CreateEventInput.announcementBody.
+  announcementBody?: string | null;
   actorMemberId?: string | null;
 }
 
@@ -419,6 +430,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.onlineMeetingPlatformLabel !== undefined) patch.online_meeting_platform_label = input.onlineMeetingPlatformLabel;
   if (input.rsvpClosureDays !== undefined) patch.rsvp_closure_days = input.rsvpClosureDays;
   if (input.eventTypeId !== undefined) patch.event_type_id = input.eventTypeId;
+  if (input.announcementBody !== undefined) patch.announcement_body = input.announcementBody;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,
@@ -429,6 +441,11 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
 
   if (updateError) {
     if (isMeetingResourceExclusionViolation(updateError)) throw meetingResourceRaceError();
+    if ((updateError.message ?? '').includes('ANNOUNCEMENT_MISSING_EVERYONE_GROUP')) {
+      const err = new Error('This tenant has no Everyone system group to target — FP-181 must be provisioned first') as Error & { code: string };
+      err.code = 'ANNOUNCEMENT_MISSING_EVERYONE_GROUP';
+      throw err;
+    }
     throw updateError;
   }
 
@@ -651,14 +668,23 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, event_type:event_types(id, name, system_key)')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
 
   if (eventsError) throw eventsError;
 
-  const withEffectiveStatus = await attachEffectiveStatus(events ?? []);
+  // DIP-FP-191-web: event_type embed comes back as either an object or a
+  // single-element array depending on how PostgREST infers the relationship
+  // cardinality — normalized here rather than at every call site, same
+  // defensive pattern as getEventRoster()'s members embed below.
+  const normalizedEvents = (events ?? []).map((e) => ({
+    ...e,
+    event_type: Array.isArray(e.event_type) ? e.event_type[0] : e.event_type,
+  }));
+
+  const withEffectiveStatus = await attachEffectiveStatus(normalizedEvents);
 
   // FP-166: reverses FP-94/FP-66's original decision to let CANCELLED events pass
   // through regardless of timing — Joseph now wants them filtered out of My Events
@@ -698,7 +724,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_by_member_id, owner_member_id')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key)')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -715,8 +741,12 @@ export async function getEventById(id: string, tenantId: string) {
   ]);
   if (statusError) throw statusError;
 
+  // DIP-FP-191-web: same embed-cardinality normalization as listEventsForMember.
+  const eventType = Array.isArray(event.event_type) ? event.event_type[0] : event.event_type;
+
   return {
     ...event,
+    event_type: eventType,
     effective_status: effectiveStatus as string,
     rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
   };

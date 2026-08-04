@@ -45,6 +45,13 @@ export async function updateEventType(
     if (code === '23505') {
       throw err('VALIDATION_ERROR', `code ${input.code} is already taken in this tenant`);
     }
+    // DIP-FP-191-web: trigger_block_system_event_type_rename_or_delete lives on
+    // event_types itself (BEFORE UPDATE) — same P0001 + message-substring
+    // convention as groups.service.ts's updateGroup()/softDeleteGroup() mapping
+    // for the FP-181 guard trigger.
+    if ((e as { code?: string; message?: string }).code === 'P0001' && ((e as { message?: string }).message ?? '').includes('SYSTEM_MANAGED_GROUP')) {
+      throw err('SYSTEM_MANAGED_GROUP', (e as Error).message);
+    }
     throw e;
   }
 }
