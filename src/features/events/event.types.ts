@@ -15,6 +15,16 @@ export interface EventTypeSummary {
   system_key: string | null;
 }
 
+// DIP-FP-191-web-adj-1: nested on EventListRow/EventDetailRow via the
+// existing events.created_by_member_id column (added by FP-114-web, already
+// populated on every create) — null for events that predate that column or
+// whose creator was later anonymized/deleted.
+export interface CreatedByMemberSummary {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
 export interface EventListRow {
   id: string;
   name: string;
@@ -44,6 +54,7 @@ export interface EventListRow {
   // DIP-FP-191-web: null for every non-Announcement event.
   announcement_body: string | null;
   event_type: EventTypeSummary;
+  created_by_member: CreatedByMemberSummary | null;
 }
 
 // FP-167-1: the admin Events page's paginated list row shape. Deliberately not
@@ -82,6 +93,11 @@ export interface EventDetailRow extends EventListRow {
   // meaning created_by_member_id === null did: Admin-tier only can manage this event
   // (events predating FP-114-web, or predating this column's backfill).
   owner_member_id: string | null;
+  // DIP-FP-191-web-adj-1: detail-only (not on EventListRow/EventListItemRow) —
+  // whether the current authenticated caller has acknowledged this event, from
+  // announcement_acknowledgements. Null for any event the caller hasn't
+  // acknowledged, including every non-Announcement event.
+  acknowledged_at: string | null;
 }
 
 export interface EventTypeOption {
