@@ -36,8 +36,15 @@ export interface SelfReportResponse {
   submitted_at: string;
 }
 
+// DIP-FP-191-web: 'self_report' is the original FP-119-web row; 'announcement'
+// is an Announcement-type event this member hasn't acknowledged yet — same
+// shape, unioned into the same array so mobile's Check-In badge count can
+// combine both without a second endpoint.
+export type PendingSelfReportKind = 'self_report' | 'announcement';
+
 // DIP-FP-119-web: shape for GET /api/self-reports/pending.
 export interface PendingSelfReportRow {
+  kind: PendingSelfReportKind;
   event_id: string;
   event_name: string;
   event_start_datetime: string;

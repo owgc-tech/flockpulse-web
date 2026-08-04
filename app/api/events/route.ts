@@ -38,7 +38,7 @@ export const POST = (req: NextRequest) =>
     const {
       eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
-      rsvpClosureDays,
+      rsvpClosureDays, announcementBody,
     } = body;
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
@@ -60,6 +60,7 @@ export const POST = (req: NextRequest) =>
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,
         rsvpClosureDays,
+        announcementBody,
         actorMemberId: ctx.memberId,
       });
       return NextResponse.json({ data: event }, { status: 201 });
@@ -69,6 +70,7 @@ export const POST = (req: NextRequest) =>
       if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
       if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
       if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
+      if (code === 'ANNOUNCEMENT_MISSING_EVERYONE_GROUP') return errorResponse('ANNOUNCEMENT_MISSING_EVERYONE_GROUP', (err as Error).message, 422);
       // DIP-FP-120-web: 409 with the structured conflict detail (when the
       // pre-check found one) so the client can render "This account is
       // already booked for [Event Name] on [date/time] by [Name]" — the rare

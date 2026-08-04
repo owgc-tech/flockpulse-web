@@ -25,6 +25,7 @@ export async function PATCH(
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', (err as Error).message, 404);
       if (code === 'VALIDATION_ERROR') return errorResponse('VALIDATION_ERROR', (err as Error).message, 422);
+      if (code === 'SYSTEM_MANAGED_GROUP') return errorResponse('SYSTEM_MANAGED_GROUP', (err as Error).message, 409);
       throw err;
     }
   }));

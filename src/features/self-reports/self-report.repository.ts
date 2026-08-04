@@ -112,6 +112,15 @@ export async function callSubmitSelfReportNo(
 // attachEffectiveStatus() pattern (events/service.ts), then narrows to
 // COMPLETED (excludes CANCELLED for free — see DIP Grounding Check) and
 // bulk-excludes events this member has already self-reported for.
+//
+// DIP-FP-191-web: additionally unions in Announcement-type events (identified
+// by the tenant's event_types row with system_key = 'ANNOUNCEMENT' — there is
+// at most one) this member is an expected attendee of, whose effective status
+// is COMPLETED or LOCKED (unlike the self-report half, LOCKED is included —
+// acknowledging isn't gated by the same window self-reports are), and that
+// this member hasn't already acknowledged (announcement_acknowledgements is a
+// wholly separate table from member_attendance_reports — see migration
+// 20260803000062's header comment for why that separation is non-negotiable).
 export async function getPendingSelfReports(
   tenantId: string,
   memberId: string
@@ -129,40 +138,85 @@ export async function getPendingSelfReports(
   const eventIds = (attendeeRows ?? []).map((r: { event_id: string }) => r.event_id);
   if (eventIds.length === 0) return [];
 
-  const { data: events, error: eventsError } = await db
-    .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name')
-    .eq('tenant_id', tenantId)
-    .in('id', eventIds);
+  const [{ data: events, error: eventsError }, { data: announcementType }] = await Promise.all([
+    db
+      .from('events')
+      .select('id, name, status, start_datetime, end_datetime, location_name, event_type_id')
+      .eq('tenant_id', tenantId)
+      .in('id', eventIds),
+    db
+      .from('event_types')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('system_key', 'ANNOUNCEMENT')
+      .maybeSingle(),
+  ]);
 
   if (eventsError) throw eventsError;
 
+  const announcementTypeId = announcementType?.id ?? null;
   const withEffectiveStatus = await attachEffectiveStatus(events ?? []);
-  const completed = withEffectiveStatus.filter((e) => e.effective_status === 'COMPLETED');
-  if (completed.length === 0) return [];
 
-  const { data: existingReports, error: reportsError } = await db
-    .from('member_attendance_reports')
-    .select('event_id')
-    .eq('tenant_id', tenantId)
-    .eq('member_id', memberId)
-    .in('event_id', completed.map((e) => e.id));
-
-  if (reportsError) throw reportsError;
-
-  const reportedEventIds = new Set(
-    (existingReports ?? []).map((r: { event_id: string }) => r.event_id)
+  const completed = withEffectiveStatus.filter(
+    (e) => e.effective_status === 'COMPLETED' && e.event_type_id !== announcementTypeId
   );
+  const announcementCandidates = announcementTypeId
+    ? withEffectiveStatus.filter(
+        (e) => e.event_type_id === announcementTypeId && ['COMPLETED', 'LOCKED'].includes(e.effective_status)
+      )
+    : [];
 
-  return completed
+  if (completed.length === 0 && announcementCandidates.length === 0) return [];
+
+  let reportedEventIds = new Set<string>();
+  if (completed.length > 0) {
+    const { data: existingReports, error: reportsError } = await db
+      .from('member_attendance_reports')
+      .select('event_id')
+      .eq('tenant_id', tenantId)
+      .eq('member_id', memberId)
+      .in('event_id', completed.map((e) => e.id));
+
+    if (reportsError) throw reportsError;
+    reportedEventIds = new Set((existingReports ?? []).map((r: { event_id: string }) => r.event_id));
+  }
+
+  let acknowledgedEventIds = new Set<string>();
+  if (announcementCandidates.length > 0) {
+    const { data: existingAcks, error: acksError } = await db
+      .from('announcement_acknowledgements')
+      .select('event_id')
+      .eq('tenant_id', tenantId)
+      .eq('member_id', memberId)
+      .in('event_id', announcementCandidates.map((e) => e.id));
+
+    if (acksError) throw acksError;
+    acknowledgedEventIds = new Set((existingAcks ?? []).map((r: { event_id: string }) => r.event_id));
+  }
+
+  const selfReportRows: PendingSelfReportRow[] = completed
     .filter((e) => !reportedEventIds.has(e.id))
     .map((e) => ({
+      kind: 'self_report',
       event_id: e.id,
       event_name: e.name,
       event_start_datetime: e.start_datetime,
       event_end_datetime: e.end_datetime,
       event_location_name: e.location_name,
     }));
+
+  const announcementRows: PendingSelfReportRow[] = announcementCandidates
+    .filter((e) => !acknowledgedEventIds.has(e.id))
+    .map((e) => ({
+      kind: 'announcement',
+      event_id: e.id,
+      event_name: e.name,
+      event_start_datetime: e.start_datetime,
+      event_end_datetime: e.end_datetime,
+      event_location_name: e.location_name,
+    }));
+
+  return [...selfReportRows, ...announcementRows];
 }
 
 export async function getSelfReportById(id: string): Promise<SelfReportRow> {

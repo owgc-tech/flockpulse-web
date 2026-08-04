@@ -77,7 +77,14 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   }
 
   const [name, setName] = useState(initialEvent?.name ?? '');
-  const [eventTypeId, setEventTypeId] = useState(initialEvent?.event_type_id ?? eventTypes[0]?.id ?? '');
+  // DIP-FP-191-web: eventTypes is ordered by name ascending (event-type.repository.ts's
+  // listEventTypes()), and 'Announcement' sorts first alphabetically ahead of most real
+  // type names — a plain eventTypes[0] default would silently pre-select Announcement for
+  // every new event. Prefer the first non-Announcement type; Announcement is still always
+  // reachable via the dropdown, just never the accidental default.
+  const [eventTypeId, setEventTypeId] = useState(
+    initialEvent?.event_type_id ?? eventTypes.find(t => t.code !== 'ANNOUNCEMENT')?.id ?? eventTypes[0]?.id ?? ''
+  );
   const [locationName, setLocationName] = useState(initialEvent?.location_name ?? '');
   const [locationAddress, setLocationAddress] = useState(initialEvent?.location_address ?? '');
   const [locationUrl, setLocationUrl] = useState(initialEvent?.location_url ?? '');
@@ -131,6 +138,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [moduleId, setModuleId] = useState('');
   const [talkId, setTalkId] = useState<string>(initialEvent?.talk_id ?? '');
 
+  // DIP-FP-191-web: Announcement body — only meaningful when isAnnouncement below.
+  const [announcementBody, setAnnouncementBody] = useState(initialEvent?.announcement_body ?? '');
+
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -144,6 +154,13 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
   const selectedEventType = eventTypes.find(t => t.id === eventTypeId);
   const isFormation = selectedEventType?.code === 'FORMATION';
+  // DIP-FP-191-web: same code-based detection convention as isFormation above.
+  // Location/online-meeting/target/RSVP/Tasks/Repeats are all server-enforced or
+  // meaningless for Announcements — hidden rather than shown-but-ignored.
+  const isAnnouncement = selectedEventType?.code === 'ANNOUNCEMENT';
+  const announcementEndPreview = isAnnouncement && startDatetime
+    ? new Date(new Date(startDatetime).getTime() + 24 * 60 * 60 * 1000)
+    : null;
 
   // DIP-FP-120-web: meeting_resources dropdown options — loaded unconditionally
   // (unlike Course, which only loads for the Formation event type) since Online
@@ -343,20 +360,40 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       return;
     }
 
+    if (isAnnouncement && !announcementBody.trim()) {
+      setError('Announcement body is required');
+      return;
+    }
+
     setIsPending(true);
 
+    // DIP-FP-191-web: repeats is unreachable while isAnnouncement (the Repeats
+    // section itself is hidden below), so useSeries can never be true here for
+    // an Announcement — the series-creation endpoint was deliberately left out
+    // of this DIP's scope (see migration 20260803000062's header comment).
     const useSeries = !isEdit && repeats;
+
+    // DIP-FP-191-web: the server (insert_event_with_audit/update_event_with_audit)
+    // is the real enforcement and overrides these regardless of what's sent — these
+    // are just non-misleading placeholders so the still-required NOT NULL/target
+    // fields don't need real values typed into hidden inputs.
+    const effectiveEndDatetime = isAnnouncement && announcementEndPreview
+      ? announcementEndPreview.toISOString()
+      : new Date(endDatetime).toISOString();
+    const effectiveLocationName = isAnnouncement ? 'Announcement' : locationName;
+    const effectiveLocationAddress = isAnnouncement ? 'N/A' : locationAddress;
+    const effectiveTarget = isAnnouncement ? { group_ids: [], member_ids: [] } : { group_ids: groupIds, member_ids: memberIds };
 
     const payload = useSeries
       ? {
           eventTypeId,
           name,
           startDatetime: new Date(startDatetime).toISOString(),
-          endDatetime: new Date(endDatetime).toISOString(),
-          locationName,
-          locationAddress,
+          endDatetime: effectiveEndDatetime,
+          locationName: effectiveLocationName,
+          locationAddress: effectiveLocationAddress,
           locationUrl: locationUrl || null,
-          target: { group_ids: groupIds, member_ids: memberIds },
+          target: effectiveTarget,
           talkId: isFormation && talkId ? talkId : null,
           frequency,
           mode: repeatMode,
@@ -367,11 +404,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           eventTypeId,
           name,
           startDatetime: new Date(startDatetime).toISOString(),
-          endDatetime: new Date(endDatetime).toISOString(),
-          locationName,
-          locationAddress,
+          endDatetime: effectiveEndDatetime,
+          locationName: effectiveLocationName,
+          locationAddress: effectiveLocationAddress,
           locationUrl: locationUrl || null,
-          target: { group_ids: groupIds, member_ids: memberIds },
+          target: effectiveTarget,
           talkId: isFormation && talkId ? talkId : null,
           // DIP-FP-120-web: same series-scope boundary FP-107 established for the fields
           // FP-161-3 replaced — not templated onto series-generated occurrences. Task
@@ -383,6 +420,8 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           // FP-133: same series-scope boundary as above — not templated onto
           // series-generated occurrences.
           rsvpClosureDays: rsvpClosureDays.trim() === '' ? null : Number(rsvpClosureDays),
+          // DIP-FP-191-web: null for every non-Announcement type — the RPC ignores it either way.
+          announcementBody: isAnnouncement ? announcementBody.trim() : null,
         };
 
     try {
@@ -487,176 +526,216 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           <label className={labelClass}>Start</label>
           <input type="datetime-local" className={inputClass} value={startDatetime} onChange={e => setStartDatetime(e.target.value)} required />
         </div>
-        <div className={fieldClass}>
-          <label className={labelClass}>End</label>
-          <input type="datetime-local" className={inputClass} value={endDatetime} onChange={e => setEndDatetime(e.target.value)} required />
-        </div>
-      </div>
-
-      <div className={fieldClass}>
-        <label className={labelClass}>Location name</label>
-        <input className={inputClass} value={locationName} onChange={e => setLocationName(e.target.value)} required />
-      </div>
-
-      <div className={fieldClass}>
-        <label className={labelClass}>Location address</label>
-        <input className={inputClass} value={locationAddress} onChange={e => setLocationAddress(e.target.value)} required />
-      </div>
-
-      <div className={fieldClass}>
-        <label className={labelClass}>
-          Location URL <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — overrides the default maps link)</span>
-        </label>
-        <input className={inputClass} value={locationUrl} onChange={e => setLocationUrl(e.target.value)} placeholder="https://…" />
-        {locationAddress && (
-          <a
-            href={getMapsUrl(locationAddress, locationUrl || null)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
-          >
-            Preview navigation link →
-          </a>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Online Meeting <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — additive to the location above, not a replacement)</span>
-        </p>
-        <div className="flex gap-4">
-          {(['NONE', 'ZOOM', 'OTHER'] as const).map(mode => (
-            <label key={mode} className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-              <input
-                type="radio"
-                name="onlineMeetingMode"
-                checked={onlineMeetingMode === mode}
-                onChange={() => setOnlineMeetingMode(mode)}
-              />
-              {mode === 'NONE' ? 'None' : mode === 'ZOOM' ? 'Zoom account' : 'Other platform'}
-            </label>
-          ))}
-        </div>
-
-        {onlineMeetingMode === 'ZOOM' && (
+        {isAnnouncement ? (
           <div className={fieldClass}>
-            <label className={labelClass}>Zoom account</label>
-            <select
-              className={inputClass}
-              value={onlineMeetingResourceId}
-              onChange={e => setOnlineMeetingResourceId(e.target.value)}
-              required
+            <label className={labelClass}>End <span className="font-normal text-zinc-400 dark:text-zinc-500">(computed)</span></label>
+            <p className={`${inputClass} flex items-center bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400`}>
+              {announcementEndPreview ? announcementEndPreview.toLocaleString() : 'Set a start date first'}
+            </p>
+          </div>
+        ) : (
+          <div className={fieldClass}>
+            <label className={labelClass}>End</label>
+            <input type="datetime-local" className={inputClass} value={endDatetime} onChange={e => setEndDatetime(e.target.value)} required />
+          </div>
+        )}
+      </div>
+
+      {isAnnouncement && (
+        <div className={fieldClass}>
+          <label className={labelClass}>Announcement body</label>
+          <textarea
+            className={`${inputClass} min-h-32`}
+            value={announcementBody}
+            onChange={e => setAnnouncementBody(e.target.value)}
+            required
+          />
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className={fieldClass}>
+          <label className={labelClass}>Location name</label>
+          <input className={inputClass} value={locationName} onChange={e => setLocationName(e.target.value)} required />
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className={fieldClass}>
+          <label className={labelClass}>Location address</label>
+          <input className={inputClass} value={locationAddress} onChange={e => setLocationAddress(e.target.value)} required />
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className={fieldClass}>
+          <label className={labelClass}>
+            Location URL <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — overrides the default maps link)</span>
+          </label>
+          <input className={inputClass} value={locationUrl} onChange={e => setLocationUrl(e.target.value)} placeholder="https://…" />
+          {locationAddress && (
+            <a
+              href={getMapsUrl(locationAddress, locationUrl || null)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
             >
-              <option value="" disabled>Select…</option>
-              {meetingResources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
+              Preview navigation link →
+            </a>
+          )}
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Online Meeting <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — additive to the location above, not a replacement)</span>
+          </p>
+          <div className="flex gap-4">
+            {(['NONE', 'ZOOM', 'OTHER'] as const).map(mode => (
+              <label key={mode} className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+                <input
+                  type="radio"
+                  name="onlineMeetingMode"
+                  checked={onlineMeetingMode === mode}
+                  onChange={() => setOnlineMeetingMode(mode)}
+                />
+                {mode === 'NONE' ? 'None' : mode === 'ZOOM' ? 'Zoom account' : 'Other platform'}
+              </label>
+            ))}
           </div>
-        )}
 
-        {onlineMeetingMode === 'OTHER' && (
-          <div className="grid grid-cols-2 gap-3">
+          {onlineMeetingMode === 'ZOOM' && (
             <div className={fieldClass}>
-              <label className={labelClass}>Platform name</label>
-              <input
+              <label className={labelClass}>Zoom account</label>
+              <select
                 className={inputClass}
-                value={onlineMeetingPlatformLabel}
-                onChange={e => setOnlineMeetingPlatformLabel(e.target.value)}
-                placeholder="e.g. Google Meet"
+                value={onlineMeetingResourceId}
+                onChange={e => setOnlineMeetingResourceId(e.target.value)}
                 required
-              />
+              >
+                <option value="" disabled>Select…</option>
+                {meetingResources.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
             </div>
-            <div className={fieldClass}>
-              <label className={labelClass}>Join link</label>
-              <input
-                className={inputClass}
-                value={onlineMeetingUrl}
-                onChange={e => setOnlineMeetingUrl(e.target.value)}
-                placeholder="https://…"
-                required
-              />
-            </div>
-          </div>
-        )}
-      </div>
+          )}
 
-      <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <GroupMemberChipPicker
-          groups={groups} members={members}
-          groupIds={groupIds} memberIds={memberIds}
-          onToggleGroup={toggleGroup} onToggleMember={toggleMember}
-          label="Target"
-        />
-      </div>
-
-      <div className={fieldClass}>
-        <label className={labelClass}>
-          RSVP closes (days before start) <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — empty uses the community default)</span>
-        </label>
-        <input
-          type="number"
-          min={0}
-          max={90}
-          className={inputClass}
-          value={rsvpClosureDays}
-          onChange={e => setRsvpClosureDays(e.target.value)}
-          placeholder="Community default"
-        />
-      </div>
-
-      <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Tasks <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — each can be assigned to a group, individual members, or a mix)</span>
-        </p>
-
-        {taskCatalog
-          .filter(t => visibleTaskIds.includes(t.id))
-          .map(t => {
-            const isCore = CORE_TASK_NAMES.includes(t.name);
-            const current = taskAssignees[t.id] ?? { group_ids: [], member_ids: [] };
-            return (
-              <div key={t.id} className="flex flex-col gap-2 border-t border-zinc-200 pt-4 first:border-t-0 first:pt-0 dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t.name}</p>
-                  {!isCore && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTask(t.id)}
-                      className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <GroupMemberChipPicker
-                  groups={groups} members={members}
-                  groupIds={current.group_ids ?? []} memberIds={current.member_ids ?? []}
-                  onToggleGroup={id => toggleTaskGroup(t.id, id)} onToggleMember={id => toggleTaskMember(t.id, id)}
-                  label={t.name}
-                  individualOnly={t.individual_only}
+          {onlineMeetingMode === 'OTHER' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className={fieldClass}>
+                <label className={labelClass}>Platform name</label>
+                <input
+                  className={inputClass}
+                  value={onlineMeetingPlatformLabel}
+                  onChange={e => setOnlineMeetingPlatformLabel(e.target.value)}
+                  placeholder="e.g. Google Meet"
+                  required
                 />
               </div>
-            );
-          })}
+              <div className={fieldClass}>
+                <label className={labelClass}>Join link</label>
+                <input
+                  className={inputClass}
+                  value={onlineMeetingUrl}
+                  onChange={e => setOnlineMeetingUrl(e.target.value)}
+                  placeholder="https://…"
+                  required
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-        {taskCatalog.some(t => !visibleTaskIds.includes(t.id)) && (
-          <div className="flex gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-            <select className={`flex-1 ${inputClass}`} value={addTaskId} onChange={e => setAddTaskId(e.target.value)}>
-              <option value="">Add a task…</option>
-              {taskCatalog.filter(t => !visibleTaskIds.includes(t.id)).map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleAddTask}
-              disabled={!addTaskId}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              Add Task
-            </button>
-          </div>
-        )}
-      </div>
+      {isAnnouncement ? (
+        <div className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Target</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Everyone (this community) — announcements always target the whole community.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <GroupMemberChipPicker
+            groups={groups} members={members}
+            groupIds={groupIds} memberIds={memberIds}
+            onToggleGroup={toggleGroup} onToggleMember={toggleMember}
+            label="Target"
+          />
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className={fieldClass}>
+          <label className={labelClass}>
+            RSVP closes (days before start) <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — empty uses the community default)</span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            className={inputClass}
+            value={rsvpClosureDays}
+            onChange={e => setRsvpClosureDays(e.target.value)}
+            placeholder="Community default"
+          />
+        </div>
+      )}
+
+      {!isAnnouncement && (
+        <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Tasks <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — each can be assigned to a group, individual members, or a mix)</span>
+          </p>
+
+          {taskCatalog
+            .filter(t => visibleTaskIds.includes(t.id))
+            .map(t => {
+              const isCore = CORE_TASK_NAMES.includes(t.name);
+              const current = taskAssignees[t.id] ?? { group_ids: [], member_ids: [] };
+              return (
+                <div key={t.id} className="flex flex-col gap-2 border-t border-zinc-200 pt-4 first:border-t-0 first:pt-0 dark:border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t.name}</p>
+                    {!isCore && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTask(t.id)}
+                        className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <GroupMemberChipPicker
+                    groups={groups} members={members}
+                    groupIds={current.group_ids ?? []} memberIds={current.member_ids ?? []}
+                    onToggleGroup={id => toggleTaskGroup(t.id, id)} onToggleMember={id => toggleTaskMember(t.id, id)}
+                    label={t.name}
+                    individualOnly={t.individual_only}
+                  />
+                </div>
+              );
+            })}
+
+          {taskCatalog.some(t => !visibleTaskIds.includes(t.id)) && (
+            <div className="flex gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <select className={`flex-1 ${inputClass}`} value={addTaskId} onChange={e => setAddTaskId(e.target.value)}>
+                <option value="">Add a task…</option>
+                {taskCatalog.filter(t => !visibleTaskIds.includes(t.id)).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddTask}
+                disabled={!addTaskId}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                Add Task
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {isEdit && isAdmin && initialEvent && (
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -691,7 +770,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         </div>
       )}
 
-      {!isEdit && (
+      {!isEdit && !isAnnouncement && (
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
             <input type="checkbox" checked={repeats} onChange={e => setRepeats(e.target.checked)} />

@@ -34,7 +34,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     const {
       name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, eventTypeId, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
-      rsvpClosureDays,
+      rsvpClosureDays, announcementBody,
     } = body;
 
     try {
@@ -52,6 +52,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         onlineMeetingUrl,
         onlineMeetingPlatformLabel,
         rsvpClosureDays,
+        announcementBody,
         actorMemberId: ctx.memberId,
       }, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
       return NextResponse.json({ data: event });
@@ -65,6 +66,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
       if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
       if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
       if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
+      if (code === 'ANNOUNCEMENT_MISSING_EVERYONE_GROUP') return errorResponse('ANNOUNCEMENT_MISSING_EVERYONE_GROUP', (err as Error).message, 422);
       // DIP-FP-120-web: see app/api/events/route.ts's POST handler for the
       // identical rationale — 409 with structured conflict detail when
       // available, generic message-only for the race-condition path.

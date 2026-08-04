@@ -6,6 +6,15 @@ export interface EventTarget {
   member_ids?: string[];
 }
 
+// DIP-FP-191-web: nested on EventListRow/EventDetailRow so mobile can detect
+// an Announcement (system_key === 'ANNOUNCEMENT') without a second round-trip
+// to /api/event-types.
+export interface EventTypeSummary {
+  id: string;
+  name: string;
+  system_key: string | null;
+}
+
 export interface EventListRow {
   id: string;
   name: string;
@@ -32,6 +41,9 @@ export interface EventListRow {
   // persisted column — see rsvp-window.ts's computeRsvpClosureAt().
   rsvp_closure_at: string;
   created_at: string;
+  // DIP-FP-191-web: null for every non-Announcement event.
+  announcement_body: string | null;
+  event_type: EventTypeSummary;
 }
 
 // FP-167-1: the admin Events page's paginated list row shape. Deliberately not
