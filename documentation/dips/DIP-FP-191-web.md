@@ -58,17 +58,3 @@ Stop Point
 Save this DIP verbatim to documentation/dips/DIP-FP-191-web.md. Branch off current dev. Open a PR against dev and stop. Do not merge.
 
 Include full diffs for every file in the completion report, no elisions.
-
----
-
-## Implementation Notes (added post-implementation, not part of the original DIP text above)
-
-The Grounding Check above contains several claims that did not hold up against the live codebase/database and were corrected during implementation rather than followed literally:
-
-- **FP-181 dependency**: at the time this DIP was received, FP-181 (Everyone system group) existed only as a complete, unmerged commit on `feature/FP-181-everyone-system-group` — not in `dev`, and not applied to the live `fpdb-dev` database. This was a hard blocker (the Announcement auto-target RPC needs a real Everyone group to look up) and was resolved before implementation began: PR #143 merged FP-181 into `dev`, and the migration was applied to `fpdb-dev` (verified live: `groups.system_key = 'EVERYONE'` rows exist for all 4 tenants) before this branch was cut.
-- **insert_event_with_audit's signature**: the DIP claims 17 params. The live signature (confirmed by reading the current `CREATE OR REPLACE` directly) is 15 params. The migration uses the real 15-param signature in its `DROP FUNCTION`.
-- **update_event_with_audit's shape**: the DIP implies it shares insert's positional-argument shape ("append p_announcement_body before p_actor_member_id"). It does not — it has been patch-based, `(UUID, UUID, JSONB, UUID)`, since introduction. `announcement_body` is instead handled as a `CASE WHEN p_patch ? 'announcement_body'` branch, matching every other nullable patchable column in that function.
-- **Target shape**: the DIP's literal override, `jsonb_build_object('group_id', ...)` (singular), does not match the real `target` shape read by `handle_event_scheduling()` and the update RPC's own resync block — both read `target->'group_ids'` (plural, JSONB array). Using the DIP's literal key would have silently targeted nobody. Corrected to `jsonb_build_object('group_ids', jsonb_build_array(<id>), 'member_ids', '[]')`.
-- **location_name/location_address NOT NULL**: not addressed anywhere in the DIP's Grounding Check. Both are `TEXT NOT NULL` on `events`. Both RPCs force fixed placeholder values (`'Announcement'` / `'N/A'`) for Announcement rows server-side, same override treatment as `end_datetime`/`target`.
-- **File paths**: the DIP names `src/features/events/event.repository.ts`, which does not exist — the real file is `src/features/events/service.ts` (repository and service logic are combined there). Changes were made to the real file.
-- Beyond the DIP's literal file list, `src/features/event-types/event-type.service.ts` and `app/api/event-types/[id]/route.ts` were also updated to map the new guard trigger's `P0001`/`SYSTEM_MANAGED_GROUP` error to a clean 409 (mirroring FP-181's own equivalent step for `groups.service.ts`) — otherwise the guard trigger would produce an unhandled 500 instead of the intended UX.
