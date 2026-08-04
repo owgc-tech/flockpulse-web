@@ -46,13 +46,15 @@ export async function getEventEffectiveStatus(eventId: string): Promise<string |
 
 // FP-133: fetches the event's start time and per-event RSVP closure override
 // (null = use the tenant default) for the closure-cutoff computation in
-// submitRsvp().
+// submitRsvp(). DIP-FP-189-web: also fetches guests_allowed — same query,
+// no extra round trip — so submitRsvp() can reject a guest_count on an
+// event that doesn't allow guests.
 export async function getEventClosureInfo(
   eventId: string
-): Promise<{ start_datetime: string; rsvp_closure_days: number | null } | null> {
+): Promise<{ start_datetime: string; rsvp_closure_days: number | null; guests_allowed: boolean } | null> {
   const { data } = await serviceClient()
     .from('events')
-    .select('start_datetime, rsvp_closure_days')
+    .select('start_datetime, rsvp_closure_days, guests_allowed')
     .eq('id', eventId)
     .single();
 
@@ -86,7 +88,8 @@ export async function upsertRsvp(
   eventId: string,
   memberId: string,
   rsvpStatus: RsvpStatus,
-  rsvpReason: string | null
+  rsvpReason: string | null,
+  guestCount: number | null
 ): Promise<RsvpRow> {
   const { data, error } = await serviceClient().rpc('upsert_rsvp_with_audit', {
     p_tenant_id: tenantId,
@@ -94,6 +97,7 @@ export async function upsertRsvp(
     p_member_id: memberId,
     p_rsvp_status: rsvpStatus,
     p_rsvp_reason: rsvpReason,
+    p_guest_count: guestCount,
     p_actor_member_id: memberId,
   });
 

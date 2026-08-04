@@ -69,6 +69,9 @@ export interface CreateEventInput {
   // DIP-FP-191-web: only meaningful for the Announcement system type — passed
   // through as-is; insert_event_with_audit ignores it for every other type.
   announcementBody?: string | null;
+  // DIP-FP-189-web: default false at the database layer — omitting this
+  // preserves every existing event's behavior unchanged.
+  guestsAllowed?: boolean;
   actorMemberId?: string | null;
 }
 
@@ -201,6 +204,7 @@ export async function createEvent(input: CreateEventInput) {
     p_online_meeting_platform_label: input.onlineMeetingPlatformLabel ?? null,
     p_rsvp_closure_days: input.rsvpClosureDays ?? null,
     p_announcement_body: input.announcementBody ?? null,
+    p_guests_allowed: input.guestsAllowed ?? false,
     p_actor_member_id: input.actorMemberId ?? null,
   });
 
@@ -235,7 +239,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId, owner_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, created_by_member_id, owner_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, owner_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -320,6 +324,8 @@ export interface UpdateEventInput {
   rsvpClosureDays?: number | null;
   // DIP-FP-191-web: see CreateEventInput.announcementBody.
   announcementBody?: string | null;
+  // DIP-FP-189-web: see CreateEventInput.guestsAllowed.
+  guestsAllowed?: boolean;
   actorMemberId?: string | null;
 }
 
@@ -432,6 +438,7 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.rsvpClosureDays !== undefined) patch.rsvp_closure_days = input.rsvpClosureDays;
   if (input.eventTypeId !== undefined) patch.event_type_id = input.eventTypeId;
   if (input.announcementBody !== undefined) patch.announcement_body = input.announcementBody;
+  if (input.guestsAllowed !== undefined) patch.guests_allowed = input.guestsAllowed;
 
   const { data: updateRows, error: updateError } = await db.rpc('update_event_with_audit', {
     p_event_id: id,
@@ -669,7 +676,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -737,7 +744,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string, callerMemberId?: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();

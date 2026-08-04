@@ -115,6 +115,11 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       : ''
   );
 
+  // DIP-FP-189-web: defaults to false for new events — the toggle itself is
+  // the only UI surface for this; the actual guest_count input lives on
+  // mobile's RSVP screen, gated on this value.
+  const [guestsAllowed, setGuestsAllowed] = useState(initialEvent?.guests_allowed ?? false);
+
   // DIP-FP-120-web: online meeting — additive to the still-required physical
   // location above, never a replacement. Tracked-Zoom and freeform-other are
   // mutually exclusive at the app layer (a single mode toggle), not a DB
@@ -422,6 +427,10 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           rsvpClosureDays: rsvpClosureDays.trim() === '' ? null : Number(rsvpClosureDays),
           // DIP-FP-191-web: null for every non-Announcement type — the RPC ignores it either way.
           announcementBody: isAnnouncement ? announcementBody.trim() : null,
+          // DIP-FP-189-web: same series-scope boundary as rsvpClosureDays/onlineMeeting
+          // above — not templated onto series-generated occurrences. Also meaningless
+          // for Announcements (no RSVP flow), so false whenever isAnnouncement.
+          guestsAllowed: isAnnouncement ? false : guestsAllowed,
         };
 
     try {
@@ -678,6 +687,13 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
             placeholder="Community default"
           />
         </div>
+      )}
+
+      {!isAnnouncement && (
+        <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <input type="checkbox" checked={guestsAllowed} onChange={e => setGuestsAllowed(e.target.checked)} />
+          Guests Allowed <span className="font-normal text-zinc-400 dark:text-zinc-500">(members can RSVP with a guest headcount)</span>
+        </label>
       )}
 
       {!isAnnouncement && (

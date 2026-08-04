@@ -10,12 +10,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { event_id, rsvp_status, rsvp_reason } = body;
+    const { event_id, rsvp_status, rsvp_reason, guest_count } = body;
 
     if (!event_id) return errorResponse('MISSING_FIELD', 'event_id required', 400);
     if (!rsvp_status) return errorResponse('MISSING_FIELD', 'rsvp_status required', 400);
     if (rsvp_status !== 'YES' && rsvp_status !== 'NO' && rsvp_status !== 'TENTATIVE') {
       return errorResponse('INVALID_VALUE', 'rsvp_status must be YES, NO, or TENTATIVE', 400);
+    }
+    if (guest_count !== undefined && guest_count !== null && typeof guest_count !== 'number') {
+      return errorResponse('INVALID_VALUE', 'guest_count must be a number', 400);
     }
 
     try {
@@ -23,6 +26,7 @@ export async function POST(req: NextRequest) {
         eventId: event_id,
         rsvpStatus: rsvp_status,
         rsvpReason: rsvp_reason,
+        guestCount: guest_count === null ? undefined : guest_count,
       });
       return NextResponse.json({ data: rsvp }, { status: 201 });
     } catch (err: unknown) {
@@ -32,6 +36,9 @@ export async function POST(req: NextRequest) {
       if (code === 'INVALID_STATE') return errorResponse('INVALID_STATE', (err as Error).message, 422);
       if (code === 'RSVP_CLOSED') return errorResponse('RSVP_CLOSED', (err as Error).message, 422);
       if (code === 'RSVP_REASON_REQUIRED') return errorResponse('RSVP_REASON_REQUIRED', (err as Error).message, 422);
+      if (code === 'GUEST_COUNT_NOT_ALLOWED') return errorResponse('GUEST_COUNT_NOT_ALLOWED', (err as Error).message, 422);
+      if (code === 'GUEST_COUNT_EXCEEDS_MAX') return errorResponse('GUEST_COUNT_EXCEEDS_MAX', (err as Error).message, 422);
+      if (code === 'VALIDATION_ERROR') return errorResponse('VALIDATION_ERROR', (err as Error).message, 422);
       throw err;
     }
   });

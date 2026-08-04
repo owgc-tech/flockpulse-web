@@ -123,6 +123,10 @@ export interface RsvpReportSummaryRow {
   no_count: number;
   tentative_count: number;
   no_response_count: number;
+  // DIP-FP-189-web: sum of guest_count across this event's Yes/Tentative rows
+  // in the current result set — a clearly separate field, never blended into
+  // the member counts above.
+  total_guests: number;
 }
 
 // Per-event aggregate counts (FP-128) — same event_attendees ⋈ rsvps join as
@@ -157,16 +161,16 @@ export async function getRsvpReportSummary(
 
   const { data: rsvps, error: rsvpError } = await db
     .from('rsvps')
-    .select('event_id, member_id, rsvp_status')
+    .select('event_id, member_id, rsvp_status, guest_count')
     .eq('tenant_id', tenantId)
     .in('event_id', eventIds)
     .in('member_id', memberIds);
 
   if (rsvpError) throw rsvpError;
 
-  const rsvpMap = new Map<string, string>();
-  for (const r of (rsvps ?? []) as { event_id: string; member_id: string; rsvp_status: string }[]) {
-    rsvpMap.set(`${r.event_id}:${r.member_id}`, r.rsvp_status);
+  const rsvpMap = new Map<string, { rsvp_status: string; guest_count: number | null }>();
+  for (const r of (rsvps ?? []) as { event_id: string; member_id: string; rsvp_status: string; guest_count: number | null }[]) {
+    rsvpMap.set(`${r.event_id}:${r.member_id}`, { rsvp_status: r.rsvp_status, guest_count: r.guest_count });
   }
 
   const summaryByEvent = new Map<string, RsvpReportSummaryRow>();
@@ -185,15 +189,21 @@ export async function getRsvpReportSummary(
         no_count: 0,
         tentative_count: 0,
         no_response_count: 0,
+        total_guests: 0,
       };
       summaryByEvent.set(eventId, summary);
     }
 
-    const status = rsvpMap.get(`${eventId}:${memberId}`);
+    const rsvp = rsvpMap.get(`${eventId}:${memberId}`);
+    const status = rsvp?.rsvp_status;
     if (status === 'YES') summary.yes_count += 1;
     else if (status === 'NO') summary.no_count += 1;
     else if (status === 'TENTATIVE') summary.tentative_count += 1;
     else summary.no_response_count += 1;
+
+    if ((status === 'YES' || status === 'TENTATIVE') && rsvp?.guest_count) {
+      summary.total_guests += rsvp.guest_count;
+    }
   }
 
   return [...summaryByEvent.values()];
