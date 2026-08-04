@@ -6,7 +6,7 @@ import { getModule } from '@/src/features/formation/module.repository';
 import { getCourse } from '@/src/features/formation/course.repository';
 import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
 import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
-import { getAcknowledgedAt } from '@/src/features/announcements/announcement.repository';
+import { getAcknowledgedAt, getAcknowledgedAtMap } from '@/src/features/announcements/announcement.repository';
 import type { EventListItemRow } from './event.types';
 
 function serviceClient() {
@@ -699,7 +699,9 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
   );
   if (upcoming.length === 0) return [];
 
-  const [{ data: rsvps, error: rsvpError }, tenantDefaultDays] = await Promise.all([
+  // DIP-FP-191-web-adj-2: one batch acknowledgement lookup for the whole page,
+  // not a query per row — merged into the final map below same as rsvpByEvent.
+  const [{ data: rsvps, error: rsvpError }, tenantDefaultDays, acknowledgedAtMap] = await Promise.all([
     db
       .from('rsvps')
       .select('event_id, rsvp_status, rsvp_reason')
@@ -707,6 +709,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
       .eq('member_id', memberId)
       .in('event_id', upcoming.map((e) => e.id)),
     getTenantRsvpClosureDaysDefault(tenantId),
+    getAcknowledgedAtMap(tenantId, memberId, upcoming.map((e) => e.id)),
   ]);
 
   if (rsvpError) throw rsvpError;
@@ -722,6 +725,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
       rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | undefined) ?? null,
       rsvp_reason: rsvp?.rsvp_reason ?? null,
       rsvp_closure_at: computeRsvpClosureAt(e.start_datetime, e.rsvp_closure_days, tenantDefaultDays),
+      acknowledged_at: acknowledgedAtMap.get(e.id) ?? null,
     };
   });
 }
