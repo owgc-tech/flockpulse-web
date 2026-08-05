@@ -922,6 +922,10 @@ export interface RosterEntry {
   last_name: string;
   response: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE' | 'NOT_RESPONDED';
   rsvp_reason: string | null;
+  // DIP-FP-189-web-adj-1: null for every non-Yes response, and for Yes
+  // responses on events that don't allow guests — same "absence = no value"
+  // contract as everywhere else guest_count appears.
+  guest_count: number | null;
 }
 
 // Strictly RSVP-scoped (FP-67 Design Decision) — does not pull in self-report or
@@ -954,14 +958,14 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
 
   const { data: rsvps, error: rsvpError } = await db
     .from('rsvps')
-    .select('member_id, rsvp_status, rsvp_reason')
+    .select('member_id, rsvp_status, rsvp_reason, guest_count')
     .eq('event_id', eventId)
     .eq('tenant_id', tenantId);
 
   if (rsvpError) throw rsvpError;
 
   const rsvpByMember = new Map(
-    (rsvps ?? []).map(r => [r.member_id as string, r as { rsvp_status: string; rsvp_reason: string | null }])
+    (rsvps ?? []).map(r => [r.member_id as string, r as { rsvp_status: string; rsvp_reason: string | null; guest_count: number | null }])
   );
 
   return scopedAttendees.map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
@@ -982,6 +986,7 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
       last_name: member?.last_name ?? '',
       response,
       rsvp_reason: rsvp?.rsvp_reason ?? null,
+      guest_count: rsvp?.guest_count ?? null,
     };
   });
 }

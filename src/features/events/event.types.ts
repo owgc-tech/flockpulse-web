@@ -168,6 +168,12 @@ export interface RosterEntry {
   last_name: string;
   response: RosterResponse;
   rsvp_reason: string | null;
+  // DIP-FP-189-web-adj-1: this is a genuinely separate RosterEntry from
+  // events/service.ts's own (same name, different file — GET /api/events/:id/roster's
+  // JSON response is untyped at the wire, so nothing enforced these staying in sync).
+  // EventDetail.tsx imports this one, not service.ts's, so the fix belongs here too,
+  // not just in the file the DIP named — same class of gap as FP-191-web-adj-3.
+  guest_count: number | null;
 }
 
 // One-tap navigation link (FP-61): use location_url directly when the admin set an

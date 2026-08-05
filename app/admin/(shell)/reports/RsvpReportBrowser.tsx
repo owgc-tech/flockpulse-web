@@ -40,6 +40,9 @@ interface RsvpReportSummaryRow {
   no_count: number;
   tentative_count: number;
   no_response_count: number;
+  // DIP-FP-189-web-adj-1: already computed and returned by report.repository.ts
+  // since the original FP-189-web DIP — this was purely a UI wiring gap.
+  total_guests: number;
 }
 
 interface Props {
@@ -188,6 +191,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Event</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Date</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Yes</th>
+                <th className="px-4 py-2 text-left font-medium text-zinc-500">Guests</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">No</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">Tentative</th>
                 <th className="px-4 py-2 text-left font-medium text-zinc-500">No response</th>
@@ -199,6 +203,7 @@ export default function RsvpReportBrowser({ events, groups, members, token }: Pr
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{row.event_name}</td>
                   <td className="px-4 py-2 text-zinc-700 dark:text-zinc-300">{new Date(row.event_start_datetime).toLocaleDateString()}</td>
                   <td className="px-4 py-2 font-medium text-green-600 dark:text-green-400">{row.yes_count}</td>
+                  <td className="px-4 py-2 font-medium text-zinc-700 dark:text-zinc-300">{row.total_guests}</td>
                   <td className="px-4 py-2 font-medium text-red-600 dark:text-red-400">{row.no_count}</td>
                   <td className="px-4 py-2 font-medium text-amber-600 dark:text-amber-400">{row.tentative_count}</td>
                   <td className="px-4 py-2 text-zinc-400">{row.no_response_count}</td>
