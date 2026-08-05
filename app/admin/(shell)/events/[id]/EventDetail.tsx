@@ -309,6 +309,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
               <tr className="border-b border-zinc-100 dark:border-zinc-800">
                 <th className="px-2 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Member</th>
                 <th className="px-2 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Response</th>
+                <th className="px-2 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Guests</th>
                 <th className="px-2 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Reason</th>
               </tr>
             </thead>
@@ -317,6 +318,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
                 <tr key={r.member_id}>
                   <td className="px-2 py-2 text-zinc-900 dark:text-zinc-100">{r.first_name} {r.last_name}</td>
                   <td className={`px-2 py-2 ${RESPONSE_CLASS[r.response]}`}>{RESPONSE_LABELS[r.response]}</td>
+                  <td className="px-2 py-2 text-zinc-500 dark:text-zinc-400">{r.guest_count ?? '—'}</td>
                   <td className="px-2 py-2 text-zinc-500 dark:text-zinc-400">{r.rsvp_reason ?? '—'}</td>
                 </tr>
               ))}

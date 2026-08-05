@@ -71,17 +71,20 @@ export async function submitRsvp(
     throw serviceError('RSVP_REASON_REQUIRED', 'A reason is required when declining (rsvp_status = NO)');
   }
 
-  // Step 5: DIP-FP-189-web — guest_count is only meaningful for Yes/Tentative
-  // (the database's rsvps_guest_count_status_check is the real enforcement;
-  // this gives a clean error instead of a raw 23514 for the common client
-  // mistake). Not explicitly asked for by the DIP's Implementation Plan, but
-  // required for the "Guests Allowed toggle ... no effect on any existing
-  // event" story goal to actually hold: without this, guest_count would be
-  // acceptable on any event regardless of whether it allows guests, making
-  // the toggle meaningless. See PR description for this judgment call.
+  // Step 5: DIP-FP-189-web-adj-1 — guest_count is now Yes-only (reversed from
+  // the original FP-189-web DIP's Yes/Tentative allowance; see the tightened
+  // rsvps_guest_count_status_check, migration 20260805000064). This app-layer
+  // check gives a clean error instead of a raw 23514 for the common client
+  // mistake; the database constraint remains the real enforcement. The
+  // guests_allowed gate below is not explicitly asked for by the original
+  // DIP's Implementation Plan, but required for the "Guests Allowed toggle
+  // ... no effect on any existing event" story goal to actually hold —
+  // without it, guest_count would be acceptable on any event regardless of
+  // whether it allows guests, making the toggle meaningless. See PR
+  // description for this judgment call.
   if (guestCount !== undefined) {
-    if (rsvpStatus === 'NO') {
-      throw serviceError('GUEST_COUNT_NOT_ALLOWED', 'guest_count is not allowed when declining (rsvp_status = NO)');
+    if (rsvpStatus !== 'YES') {
+      throw serviceError('GUEST_COUNT_NOT_ALLOWED', 'guest_count is only allowed when accepting (rsvp_status = YES)');
     }
     if (!Number.isInteger(guestCount) || guestCount < 0) {
       throw serviceError('VALIDATION_ERROR', 'guest_count must be a non-negative integer');
