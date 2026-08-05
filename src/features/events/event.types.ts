@@ -103,10 +103,16 @@ export interface EventDetailRow extends EventListRow {
   owner_member_id: string | null;
 }
 
+// DIP-FP-191-web-adj-3: system_key added so EventForm.tsx's Announcement
+// detection can read the field the guard trigger actually protects (code is
+// unprotected — see block_system_event_type_rename_or_delete). No new query:
+// listEventTypes() (event-type.repository.ts) already selects system_key as
+// part of EventTypeRow — this type just hadn't been widened to type it.
 export interface EventTypeOption {
   id: string;
   name: string;
   code: string;
+  system_key: string | null;
 }
 
 // Matches flockpulse-web's GET /api/meeting-resources response exactly.

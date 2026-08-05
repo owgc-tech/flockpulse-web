@@ -159,10 +159,12 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
   const selectedEventType = eventTypes.find(t => t.id === eventTypeId);
   const isFormation = selectedEventType?.code === 'FORMATION';
-  // DIP-FP-191-web: same code-based detection convention as isFormation above.
+  // DIP-FP-191-web-adj-3: system_key, not code — code is editable by any Admin
+  // (the guard trigger only protects name/deleted_at), so this must read the
+  // one field that's actually locked down, same as the RPC and mobile do.
   // Location/online-meeting/target/RSVP/Tasks/Repeats are all server-enforced or
   // meaningless for Announcements — hidden rather than shown-but-ignored.
-  const isAnnouncement = selectedEventType?.code === 'ANNOUNCEMENT';
+  const isAnnouncement = selectedEventType?.system_key === 'ANNOUNCEMENT';
   const announcementEndPreview = isAnnouncement && startDatetime
     ? new Date(new Date(startDatetime).getTime() + 24 * 60 * 60 * 1000)
     : null;
