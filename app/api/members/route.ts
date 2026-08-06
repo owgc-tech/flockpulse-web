@@ -68,11 +68,19 @@ export const PATCH = (req: NextRequest) =>
         lastName: body.lastName,
         email: body.email,
         role: body.role,
+        // DIP-FP-192-web: the new normal path — MemberEditForm.tsx now sends
+        // this instead of a bare role string. updateMember() derives role
+        // server-side from the entry's tier when this is present.
+        roleCatalogEntryId: body.roleCatalogEntryId,
       });
       return NextResponse.json({ data: member });
     } catch (err: unknown) {
-      if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND_IN_TENANT') {
         return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      if (code === 'NOT_FOUND') {
+        return errorResponse('INVALID_ROLE', 'roleCatalogEntryId not found for this tenant', 422);
       }
       throw err;
     }

@@ -46,6 +46,7 @@ function isLabelGroup(item: NavItem): item is NavLabelGroup {
 const NAV: NavItem[] = [
   { href: '/admin/community', label: 'Community', adminOnly: false },
   { href: '/admin/members', label: 'Members', adminOnly: true },
+  { href: '/admin/roles', label: 'Roles', adminOnly: true },
   { href: '/admin/groups', label: 'Groups', adminOnly: true },
   { href: '/admin/events', label: 'Events', adminOnly: false },
   { href: '/admin/event-types', label: 'Event Types', adminOnly: true },

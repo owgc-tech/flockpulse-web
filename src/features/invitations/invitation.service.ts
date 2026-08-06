@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { getInvitationById, insertInvitation, listInvitationsWithNames, pendingInvitationExistsForEmail } from './invitation.repository';
+import { getRoleCatalogEntryById } from '@/src/features/role-catalog/role-catalog.service';
 import type { InvitationDisplayRow } from './invitation.types';
-import type { InvitationRow, MemberRole } from './invitation.types';
+import type { InvitationRow } from './invitation.types';
 
 function serviceClient() {
   return createClient(
@@ -10,9 +11,13 @@ function serviceClient() {
   );
 }
 
+// DIP-FP-192-web: InviteForm.tsx now sends roleCatalogEntryId, not a role
+// string — the server (not the client) derives role from the entry's tier,
+// same "never trust a client-supplied role alongside the FK" principle
+// applied to updateMember() in members/service.ts.
 export interface InviteMemberInput {
   email: string;
-  role: MemberRole;
+  roleCatalogEntryId: string;
   groupId?: string | null;
   redirectTo?: string;
 }
@@ -22,7 +27,12 @@ export async function inviteMember(
   invitedByMemberId: string,
   input: InviteMemberInput
 ): Promise<InvitationRow> {
-  const { email, role, groupId = null, redirectTo } = input;
+  const { email, roleCatalogEntryId, groupId = null, redirectTo } = input;
+
+  // Throws NOT_FOUND if roleCatalogEntryId is missing/cross-tenant — the
+  // route below maps that to a clean 422 rather than a raw FK-violation 500.
+  const roleEntry = await getRoleCatalogEntryById(roleCatalogEntryId, tenantId);
+  const role = roleEntry.tier;
 
   // Guard: no duplicate pending invite for this email in this tenant.
   const alreadyPending = await pendingInvitationExistsForEmail(tenantId, email);
@@ -71,6 +81,7 @@ export async function inviteMember(
     tenantId,
     email,
     role,
+    roleCatalogEntryId,
     groupId,
     invitedBy: invitedByMemberId,
     authUserId,

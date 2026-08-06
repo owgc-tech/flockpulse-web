@@ -48,6 +48,7 @@ export default async function AdminShellLayout({ children }: { children: React.R
             firstName={profile?.first_name ?? null}
             lastName={profile?.last_name ?? null}
             role={role}
+            roleDisplayName={profile?.role_display_name}
             groups={profile?.groups ?? []}
           />
         </div>

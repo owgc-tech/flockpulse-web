@@ -9,10 +9,16 @@ interface Props {
   firstName: string | null;
   lastName: string | null;
   role: Role;
+  // DIP-FP-192-web: the resolved role_catalog name for this specific member
+  // (e.g. "Sr. Coordinator"), not just their generic tier. Optional so this
+  // component still works if the caller can't resolve it for some reason —
+  // falls back to ROLE_LABELS[role], the same defensive-fallback contract
+  // used everywhere else this session's DIP touches role display.
+  roleDisplayName?: string;
   groups: { id: string; name: string }[];
 }
 
-export default function UserAvatarMenu({ firstName, lastName, role, groups }: Props) {
+export default function UserAvatarMenu({ firstName, lastName, role, roleDisplayName, groups }: Props) {
   const [open, setOpen] = useState(false);
 
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Account';
@@ -53,7 +59,7 @@ export default function UserAvatarMenu({ firstName, lastName, role, groups }: Pr
                 {initials}
               </div>
               <p className="mt-3 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">{fullName}</p>
-              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{ROLE_LABELS[role]}</p>
+              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{roleDisplayName ?? ROLE_LABELS[role]}</p>
             </div>
 
             <div className="mt-4">

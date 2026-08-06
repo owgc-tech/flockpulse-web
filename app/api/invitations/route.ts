@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { inviteMember, listInvitations } from '@/src/features/invitations/invitation.service';
+import { listRoleCatalog } from '@/src/features/role-catalog/role-catalog.service';
+import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
 const requireAdmin = requireRole('ADMIN');
 
@@ -41,6 +43,22 @@ export const POST = (req: NextRequest) =>
     }
 
     try {
+      // DIP-FP-192-web: this endpoint's public contract (a bare `role` of
+      // ADMIN/LEADER/MEMBER) predates the catalog and is kept as-is here —
+      // unlike InviteForm.tsx (which now picks a specific catalog entry
+      // directly), this route has no UI of its own and an unknown set of
+      // external callers, so changing what it accepts would be a breaking
+      // change outside this DIP's scope. Resolved internally instead: find
+      // the catalog entry named exactly what ROLE_LABELS[role] used to
+      // display (e.g. 'ADMIN' -> "Admin"), falling back to the first entry
+      // of that tier if the tenant has since renamed it.
+      const catalog = await listRoleCatalog(ctx.tenantId);
+      const roleLabel = ROLE_LABELS[role as keyof typeof ROLE_LABELS];
+      const roleEntry = catalog.find(e => e.name === roleLabel) ?? catalog.find(e => e.tier === role);
+      if (!roleEntry) {
+        return errorResponse('INVALID_VALUE', `No role_catalog entry found for tier ${role}`, 422);
+      }
+
       // Derive the app's own origin from the incoming request so redirectTo works
       // correctly in every environment (local, staging, production) without a
       // separate env var. The invite link lands on /register/set-password where
@@ -48,7 +66,7 @@ export const POST = (req: NextRequest) =>
       const origin = new URL(req.url).origin;
       const invitation = await inviteMember(ctx.tenantId, ctx.memberId, {
         email,
-        role,
+        roleCatalogEntryId: roleEntry.id,
         groupId: groupId ?? null,
         redirectTo: `${origin}/register/set-password`,
       });

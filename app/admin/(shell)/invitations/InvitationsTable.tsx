@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useEffect } from 'react';
 import type { InvitationDisplayRow, InvitationStatus } from '@/src/features/invitations/invitation.types';
-import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
 interface Props {
   initialInvitations: InvitationDisplayRow[];
@@ -119,7 +118,7 @@ export default function InvitationsTable({ initialInvitations, token, tenantName
               {visible.map(inv => (
                 <tr key={inv.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
                   <td className="px-4 py-3 text-zinc-900 dark:text-zinc-100">{inv.email}</td>
-                  <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{ROLE_LABELS[inv.role] ?? inv.role}</td>
+                  <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{inv.role_display_name}</td>
                   <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{inv.group_name ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[inv.status]}`}>

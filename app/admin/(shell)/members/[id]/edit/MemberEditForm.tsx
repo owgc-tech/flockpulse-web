@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { MemberRow, MemberRole } from '@/src/features/members/member.types';
+import type { MemberRow } from '@/src/features/members/member.types';
+import type { RoleCatalogEntryRow } from '@/src/features/role-catalog/role-catalog.types';
 
 interface Props {
   token: string;
@@ -11,15 +12,21 @@ interface Props {
   members: MemberRow[]; // active members only, for the Pastoral Leader dropdown
   currentLeaderMemberId: string | null;
   assignedMemberCount: number; // members currently assigned to this member as Pastoral Leader
+  // DIP-FP-192-web: sourced from the tenant's role_catalog, same order the
+  // 7 hardcoded <option> tags used to have (sort_order preserves it) —
+  // dropdown looks identical for a tenant that hasn't added its own entries.
+  roleCatalog: RoleCatalogEntryRow[];
 }
 
-export default function MemberEditForm({ token, member, members, currentLeaderMemberId, assignedMemberCount }: Props) {
+export default function MemberEditForm({ token, member, members, currentLeaderMemberId, assignedMemberCount, roleCatalog }: Props) {
   const router = useRouter();
 
   const [firstName, setFirstName] = useState(member.first_name);
   const [lastName, setLastName] = useState(member.last_name);
   const [email, setEmail] = useState(member.email);
-  const [role, setRole] = useState<MemberRole>(member.role);
+  const [roleCatalogEntryId, setRoleCatalogEntryId] = useState(
+    member.role_catalog_entry_id ?? roleCatalog[0]?.id ?? ''
+  );
   const [leaderMemberId, setLeaderMemberId] = useState(currentLeaderMemberId ?? '');
 
   const [isPending, setIsPending] = useState(false);
@@ -42,7 +49,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
       const patchRes = await fetch(`/api/members?id=${member.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, email, role }),
+        body: JSON.stringify({ firstName, lastName, email, roleCatalogEntryId }),
       });
       const patchBody = await patchRes.json().catch(() => ({}));
       if (!patchRes.ok) {
@@ -167,14 +174,10 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
 
         <div className={fieldClass}>
           <label className={labelClass}>Role</label>
-          <select className={inputClass} value={role} onChange={e => setRole(e.target.value as MemberRole)}>
-            <option value="MEMBER">Member</option>
-            <option value="PASTORAL_LEADER">Pastoral Leader</option>
-            <option value="LEADER">Leader</option>
-            <option value="COMMUNITY_SERVANT">Community Servant</option>
-            <option value="COORDINATOR">Coordinator</option>
-            <option value="SR_COORDINATOR">Sr. Coordinator</option>
-            <option value="ADMIN">Admin</option>
+          <select className={inputClass} value={roleCatalogEntryId} onChange={e => setRoleCatalogEntryId(e.target.value)}>
+            {roleCatalog.map(entry => (
+              <option key={entry.id} value={entry.id}>{entry.name}</option>
+            ))}
           </select>
         </div>
 

@@ -16,6 +16,11 @@ export interface InvitationRow {
   tenant_id: string;
   email: string;
   role: MemberRole;
+  // DIP-FP-192-web: the tenant-configurable catalog entry this invite's role
+  // is actually drawn from. Null only for invitations that predate the
+  // catalog and were never backfilled-matchable (shouldn't happen in
+  // practice — the migration backfills every PENDING row).
+  role_catalog_entry_id: string | null;
   group_id: string | null;
   invited_by: string;
   auth_user_id: string;
@@ -29,6 +34,10 @@ export interface InvitationDisplayRow {
   id: string;
   email: string;
   role: MemberRole;
+  // DIP-FP-192-web: resolved server-side, same contract as MemberRow's
+  // role_display_name — always populated, falls back to ROLE_LABELS[role]
+  // only when role_catalog_entry_id is null.
+  role_display_name: string;
   status: InvitationStatus;
   group_name: string | null;
   inviter_name: string;
