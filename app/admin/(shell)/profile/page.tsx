@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getMyProfile } from '@/src/features/members/service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import ProfileForm from './ProfileForm';
+import ChangePasswordForm from './ChangePasswordForm';
 
 // FP-135: under app/admin/(shell) — inherits the shell's sidebar/banner chrome
 // and outer auth gate, matching every other admin page (Community, Reports,
@@ -40,6 +41,16 @@ export default async function ProfilePage() {
           initialBirthdate={profile.birthdate}
           groups={profile.groups}
         />
+
+        <div className="mt-10 border-t border-zinc-200 pt-8 dark:border-zinc-800">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Change password</h2>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Update the password you use to log in. No need to enter your current password.
+            </p>
+          </div>
+          <ChangePasswordForm />
+        </div>
       </div>
     </div>
   );
