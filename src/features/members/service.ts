@@ -328,7 +328,10 @@ export async function softDeleteMember(id: string, tenantId: string) {
     // substring match, mapped to the same INVALID_STATE_TRANSITION code. The affected-member
     // count is parsed out of the trigger's own message and attached structurally so the route
     // doesn't need to re-parse free text.
-    if (error.code === 'P0001' && error.message?.includes('still assigned as Pastoral Leader')) {
+    // DIP-FP-193-web: matches the renamed trigger message (migration
+    // 20260806000066) — this substring and that RAISE EXCEPTION text must
+    // always change together, or the delete-block silently stops matching.
+    if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
       const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
       err.code = 'INVALID_STATE_TRANSITION';
       const match = error.message.match(/to (\d+) member/);
