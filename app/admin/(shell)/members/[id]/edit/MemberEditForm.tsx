@@ -69,7 +69,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
         });
         const leaderBody = await leaderRes.json().catch(() => ({}));
         if (!leaderRes.ok) {
-          setError(leaderBody?.error?.message ?? 'Failed to save Pastoral Leader');
+          setError(leaderBody?.error?.message ?? 'Failed to save Assigned Leader');
           setIsPending(false);
           return;
         }
@@ -183,7 +183,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
 
         <div className={fieldClass}>
           <label className={labelClass}>
-            Pastoral Leader <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
+            Assigned Leader <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional)</span>
           </label>
           <select className={inputClass} value={leaderMemberId} onChange={e => setLeaderMemberId(e.target.value)}>
             <option value="">None</option>
@@ -195,7 +195,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
           <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
             <span className="text-sm text-zinc-600 dark:text-zinc-400">
               {assignedMemberCount > 0
-                ? `${assignedMemberCount} member${assignedMemberCount === 1 ? '' : 's'} currently assigned to ${member.first_name} as Pastoral Leader.`
+                ? `${assignedMemberCount} member${assignedMemberCount === 1 ? '' : 's'} currently assigned to ${member.first_name} as Assigned Leader.`
                 : 'No members currently assigned.'}
             </span>
             <a
@@ -228,11 +228,11 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
         <div className="rounded-xl border border-red-200 bg-white p-6 dark:border-red-800 dark:bg-zinc-950">
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
             Deactivating a member removes them from active member lists. Deactivation is blocked
-            while the member is still someone&apos;s assigned Pastoral Leader.
+            while the member is still someone&apos;s Assigned Leader.
           </p>
           {blockedCount !== null && (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {member.first_name} {member.last_name} is still assigned as Pastoral Leader to {blockedCount} member{blockedCount === 1 ? '' : 's'}.
+              {member.first_name} {member.last_name} is still assigned as Assigned Leader to {blockedCount} member{blockedCount === 1 ? '' : 's'}.
               Reassign {blockedCount === 1 ? 'them' : 'them all'} first via{' '}
               <a href={`/admin/members/${member.id}/reassign`} className="font-medium underline hover:no-underline">
                 Bulk Reassign

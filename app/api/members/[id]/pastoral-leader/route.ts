@@ -14,7 +14,7 @@ export const PUT = (req: NextRequest, { params }: { params: Promise<{ id: string
 
     const body = await req.json().catch(() => null);
     if (!body || !('leaderMemberId' in body)) {
-      return errorResponse('MISSING_FIELD', 'leaderMemberId required (null clears the Pastoral Leader)', 400);
+      return errorResponse('MISSING_FIELD', 'leaderMemberId required (null clears the Assigned Leader)', 400);
     }
 
     try {

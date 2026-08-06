@@ -65,7 +65,7 @@ export default function BulkReassignForm({ token, outgoingLeader, members, assig
       <div>
         <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Bulk reassign members</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Move every member currently assigned to {outgoingLeader.first_name} {outgoingLeader.last_name} to a new Pastoral Leader.
+          Move every member currently assigned to {outgoingLeader.first_name} {outgoingLeader.last_name} to a new Assigned Leader.
         </p>
       </div>
 
