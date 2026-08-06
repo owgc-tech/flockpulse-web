@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listGroups } from '@/src/features/groups/service';
+import { listRoleCatalog } from '@/src/features/role-catalog/role-catalog.service';
 import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 import InviteForm from './InviteForm';
 
@@ -23,7 +24,10 @@ export default async function InvitePage() {
   // COMMUNITY_SERVANT would have been incorrectly blocked here too).
   if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
-  const groups = await listGroups(tenantId);
+  const [groups, roleCatalog] = await Promise.all([
+    listGroups(tenantId),
+    listRoleCatalog(tenantId),
+  ]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
@@ -34,7 +38,7 @@ export default async function InvitePage() {
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
           An email will be sent with a link to complete registration. Role and group are set now and cannot be changed by the registrant.
         </p>
-        <InviteForm token={token} groups={groups ?? []} />
+        <InviteForm token={token} groups={groups ?? []} roleCatalog={roleCatalog} />
       </div>
     </main>
   );

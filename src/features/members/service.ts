@@ -1,10 +1,35 @@
 import { createClient } from '@supabase/supabase-js';
+import { listRoleCatalog, getRoleCatalogEntryById } from '@/src/features/role-catalog/role-catalog.service';
+import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+// DIP-FP-192-web: resolves the tenant's role_catalog once (small, bounded
+// list) into a lookup map, rather than a per-row query per member/invitation.
+// Falls back to the existing ROLE_LABELS[role] map only when
+// role_catalog_entry_id is null or doesn't resolve — defensive, not the
+// normal path (every member/invitation gets a role_catalog_entry_id set at
+// write time going forward, and the migration backfilled every existing row).
+async function buildRoleDisplayNameMap(tenantId: string): Promise<Map<string, string>> {
+  const entries = await listRoleCatalog(tenantId);
+  return new Map(entries.map(e => [e.id, e.name]));
+}
+
+function resolveRoleDisplayName(
+  role: string,
+  roleCatalogEntryId: string | null,
+  nameMap: Map<string, string>
+): string {
+  if (roleCatalogEntryId) {
+    const name = nameMap.get(roleCatalogEntryId);
+    if (name) return name;
+  }
+  return ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role;
 }
 
 // DIP-FP-113-web: kept in sync with src/lib/auth/middleware.ts's Role type.
@@ -24,6 +49,10 @@ export interface CreateMemberInput {
   firstName: string;
   lastName: string;
   role: MemberRoleValue;
+  // DIP-FP-192-web: optional — createMember() has no UI caller today (FP-69's
+  // POST /api/members isn't wired to any admin form), so this can't be made
+  // required without a breaking change to a currently-unreachable path.
+  roleCatalogEntryId?: string;
 }
 
 export interface UpdateMemberInput {
@@ -31,6 +60,10 @@ export interface UpdateMemberInput {
   lastName?: string;
   email?: string;
   role?: MemberRoleValue;
+  // DIP-FP-192-web: when provided, the caller (app/api/members/route.ts) has
+  // already resolved `role` from this entry's tier server-side — see
+  // updateMemberRole() below, which is what MemberEditForm.tsx now calls.
+  roleCatalogEntryId?: string;
 }
 
 // includeDeleted defaults to false for existing callers (event target/food-assignment
@@ -39,7 +72,7 @@ export interface UpdateMemberInput {
 export async function listMembers(tenantId: string, includeDeleted = false) {
   let q = serviceClient()
     .from('members')
-    .select('id, user_id, email, first_name, last_name, role, deleted_at, created_at')
+    .select('id, user_id, email, first_name, last_name, role, role_catalog_entry_id, deleted_at, created_at')
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: true });
 
@@ -47,14 +80,19 @@ export async function listMembers(tenantId: string, includeDeleted = false) {
 
   const { data, error } = await q;
   if (error) throw error;
-  return data;
+
+  const nameMap = await buildRoleDisplayNameMap(tenantId);
+  return (data ?? []).map(m => ({
+    ...m,
+    role_display_name: resolveRoleDisplayName(m.role, m.role_catalog_entry_id, nameMap),
+  }));
 }
 
 // FP-69/FP-72: Edit-screen prefill — same tenant-scoping pattern as listMembers, single row.
 export async function getMemberById(id: string, tenantId: string) {
   const { data, error } = await serviceClient()
     .from('members')
-    .select('id, user_id, email, first_name, last_name, role, deleted_at, created_at')
+    .select('id, user_id, email, first_name, last_name, role, role_catalog_entry_id, deleted_at, created_at')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();
@@ -64,7 +102,9 @@ export async function getMemberById(id: string, tenantId: string) {
     err.code = 'NOT_FOUND_IN_TENANT';
     throw err;
   }
-  return data;
+
+  const nameMap = await buildRoleDisplayNameMap(tenantId);
+  return { ...data, role_display_name: resolveRoleDisplayName(data.role, data.role_catalog_entry_id, nameMap) };
 }
 
 export async function createMember(input: CreateMemberInput) {
@@ -77,8 +117,9 @@ export async function createMember(input: CreateMemberInput) {
       first_name: input.firstName,
       last_name: input.lastName,
       role: input.role,
+      role_catalog_entry_id: input.roleCatalogEntryId ?? null,
     })
-    .select('id, email, first_name, last_name, role, created_at')
+    .select('id, email, first_name, last_name, role, role_catalog_entry_id, created_at')
     .single();
 
   if (error) {
@@ -104,7 +145,20 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
   if (input.firstName !== undefined) update.first_name = input.firstName;
   if (input.lastName !== undefined) update.last_name = input.lastName;
   if (input.email !== undefined) update.email = input.email;
-  if (input.role !== undefined) update.role = input.role;
+
+  // DIP-FP-192-web: roleCatalogEntryId is the new normal path — the server
+  // (not the client) derives the generic tier `role` value from the entry's
+  // tier, never trusting a client-supplied role string alongside it. Plain
+  // `role` (no roleCatalogEntryId) stays supported for any other caller.
+  let effectiveRole: string | undefined = input.role;
+  if (input.roleCatalogEntryId !== undefined) {
+    const entry = await getRoleCatalogEntryById(input.roleCatalogEntryId, tenantId);
+    effectiveRole = entry.tier;
+    update.role_catalog_entry_id = input.roleCatalogEntryId;
+    update.role = entry.tier;
+  } else if (input.role !== undefined) {
+    update.role = input.role;
+  }
 
   const db = serviceClient();
 
@@ -114,7 +168,7 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .select('id, user_id, email, first_name, last_name, role')
+    .select('id, user_id, email, first_name, last_name, role, role_catalog_entry_id')
     .single();
 
   // PGRST116 = PostgREST "no rows returned" for .single() — a nonexistent id, a foreign-tenant
@@ -129,7 +183,7 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
     throw error;
   }
 
-  if (input.role !== undefined) {
+  if (effectiveRole !== undefined) {
     const { data: userData, error: getUserError } = await db.auth.admin.getUserById(data.user_id);
     if (getUserError || !userData?.user) {
       const err = new Error('Member updated but role metadata sync failed: could not load auth user') as Error & { code: string };
@@ -138,7 +192,7 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
     }
     const existingMeta = userData.user.app_metadata as Record<string, unknown>;
     const { error: metaError } = await db.auth.admin.updateUserById(data.user_id, {
-      app_metadata: { ...existingMeta, role: input.role },
+      app_metadata: { ...existingMeta, role: effectiveRole },
     });
     if (metaError) {
       const err = new Error(`Member updated but role metadata sync failed: ${metaError.message}`) as Error & { code: string };
@@ -147,8 +201,12 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
     }
   }
 
+  const nameMap = await buildRoleDisplayNameMap(tenantId);
   const { user_id: _userId, ...memberWithoutUserId } = data;
-  return memberWithoutUserId;
+  return {
+    ...memberWithoutUserId,
+    role_display_name: resolveRoleDisplayName(data.role, data.role_catalog_entry_id, nameMap),
+  };
 }
 
 export interface UpdateMyProfileInput {
@@ -167,7 +225,7 @@ export async function getMyProfile(memberId: string, tenantId: string) {
 
   const { data: member, error } = await db
     .from('members')
-    .select('id, first_name, last_name, email, gender, marital_status, birthdate')
+    .select('id, first_name, last_name, email, role, role_catalog_entry_id, gender, marital_status, birthdate')
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
     .single();
@@ -177,6 +235,12 @@ export async function getMyProfile(memberId: string, tenantId: string) {
     err.code = 'NOT_FOUND_IN_TENANT';
     throw err;
   }
+
+  // DIP-FP-192-web: resolved here so UserAvatarMenu.tsx (via the admin shell
+  // layout) shows this member's actual catalog title, not just their
+  // generic tier.
+  const nameMap = await buildRoleDisplayNameMap(tenantId);
+  const roleDisplayName = resolveRoleDisplayName(member.role, member.role_catalog_entry_id, nameMap);
 
   const { data: assignmentRows, error: assignmentsError } = await db
     .from('assignments')
@@ -193,7 +257,7 @@ export async function getMyProfile(memberId: string, tenantId: string) {
     return Array.isArray(group) ? group[0] : group;
   }).filter((g): g is { id: string; name: string } => g != null);
 
-  return { ...member, groups };
+  return { ...member, role_display_name: roleDisplayName, groups };
 }
 
 // FP-112: application-layer enforcement of the members_update_self RLS policy's documented

@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { listRoleCatalog } from '@/src/features/role-catalog/role-catalog.service';
+import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 import type { InvitationDisplayRow, InvitationRow, MemberRole } from './invitation.types';
 
 function serviceClient() {
@@ -8,10 +10,13 @@ function serviceClient() {
   );
 }
 
+const INVITATION_COLS = 'id, tenant_id, email, role, role_catalog_entry_id, group_id, invited_by, auth_user_id, status, invited_at, responded_at';
+
 export async function insertInvitation(params: {
   tenantId: string;
   email: string;
   role: MemberRole;
+  roleCatalogEntryId: string | null;
   groupId: string | null;
   invitedBy: string;
   authUserId: string;
@@ -22,12 +27,13 @@ export async function insertInvitation(params: {
       tenant_id: params.tenantId,
       email: params.email,
       role: params.role,
+      role_catalog_entry_id: params.roleCatalogEntryId,
       group_id: params.groupId,
       invited_by: params.invitedBy,
       auth_user_id: params.authUserId,
       status: 'PENDING',
     })
-    .select('id, tenant_id, email, role, group_id, invited_by, auth_user_id, status, invited_at, responded_at')
+    .select(INVITATION_COLS)
     .single();
 
   if (error) throw error;
@@ -37,7 +43,7 @@ export async function insertInvitation(params: {
 export async function listInvitations(tenantId: string): Promise<InvitationRow[]> {
   const { data, error } = await serviceClient()
     .from('invitations')
-    .select('id, tenant_id, email, role, group_id, invited_by, auth_user_id, status, invited_at, responded_at')
+    .select(INVITATION_COLS)
     .eq('tenant_id', tenantId)
     .order('invited_at', { ascending: false });
 
@@ -70,10 +76,16 @@ export async function listInvitationsWithNames(tenantId: string): Promise<Invita
     (membersResult.data ?? []).map(m => [m.id, `${m.first_name} ${m.last_name}`])
   );
 
+  // DIP-FP-192-web: same resolve-once-fall-back-to-ROLE_LABELS pattern as
+  // members/service.ts's buildRoleDisplayNameMap/resolveRoleDisplayName.
+  const roleCatalogEntries = await listRoleCatalog(tenantId);
+  const roleNameMap = new Map(roleCatalogEntries.map(e => [e.id, e.name]));
+
   return rows.map(r => ({
     id: r.id,
     email: r.email,
     role: r.role,
+    role_display_name: (r.role_catalog_entry_id && roleNameMap.get(r.role_catalog_entry_id)) || ROLE_LABELS[r.role] || r.role,
     status: r.status,
     group_name: r.group_id ? (groupMap.get(r.group_id) ?? null) : null,
     inviter_name: memberMap.get(r.invited_by) ?? r.invited_by,
@@ -88,7 +100,7 @@ export async function getInvitationById(
 ): Promise<InvitationRow | null> {
   const { data, error } = await serviceClient()
     .from('invitations')
-    .select('id, tenant_id, email, role, group_id, invited_by, auth_user_id, status, invited_at, responded_at')
+    .select(INVITATION_COLS)
     .eq('id', invitationId)
     .eq('tenant_id', tenantId)
     .single();

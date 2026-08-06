@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { sendInviteAction, type InviteActionState } from './actions';
+import type { RoleCatalogEntryRow } from '@/src/features/role-catalog/role-catalog.types';
 
 interface Group {
   id: string;
@@ -11,11 +12,14 @@ interface Group {
 interface InviteFormProps {
   token: string;
   groups: Group[];
+  // DIP-FP-192-web: sourced from the tenant's role_catalog, same order the
+  // 7 hardcoded <option> tags used to have.
+  roleCatalog: RoleCatalogEntryRow[];
 }
 
 const initialState: InviteActionState = {};
 
-export default function InviteForm({ token, groups }: InviteFormProps) {
+export default function InviteForm({ token, groups, roleCatalog }: InviteFormProps) {
   const boundAction = sendInviteAction.bind(null, token);
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
 
@@ -51,23 +55,19 @@ export default function InviteForm({ token, groups }: InviteFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="role" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="roleCatalogEntryId" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Role
         </label>
         <select
-          id="role"
-          name="role"
+          id="roleCatalogEntryId"
+          name="roleCatalogEntryId"
           required
-          defaultValue="MEMBER"
+          defaultValue={roleCatalog[0]?.id ?? ''}
           className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         >
-          <option value="MEMBER">Member</option>
-          <option value="PASTORAL_LEADER">Pastoral Leader</option>
-          <option value="LEADER">Leader</option>
-          <option value="COMMUNITY_SERVANT">Community Servant</option>
-          <option value="COORDINATOR">Coordinator</option>
-          <option value="SR_COORDINATOR">Sr. Coordinator</option>
-          <option value="ADMIN">Admin</option>
+          {roleCatalog.map(entry => (
+            <option key={entry.id} value={entry.id}>{entry.name}</option>
+          ))}
         </select>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           Role cannot be changed by the registrant — this is permanent until an Admin updates it.

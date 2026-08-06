@@ -2,7 +2,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { inviteMember } from '@/src/features/invitations/invitation.service';
-import type { MemberRole } from '@/src/features/invitations/invitation.types';
 import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
 // Resolve the calling Admin's tenantId and memberId from their JWT. Sending
@@ -30,10 +29,6 @@ export interface InviteActionState {
   error?: string;
 }
 
-const VALID_INVITE_ROLES: MemberRole[] = [
-  'MEMBER', 'PASTORAL_LEADER', 'LEADER', 'COMMUNITY_SERVANT', 'COORDINATOR', 'SR_COORDINATOR', 'ADMIN',
-];
-
 export async function sendInviteAction(
   token: string,
   _prev: InviteActionState,
@@ -43,20 +38,27 @@ export async function sendInviteAction(
   if (!ctx) return { error: 'Unauthorized' };
 
   const email = formData.get('email') as string;
-  const role = formData.get('role') as MemberRole;
+  // DIP-FP-192-web: the form now submits the picked role_catalog entry's id,
+  // not a role literal — inviteMember() resolves the tier (and rejects a
+  // missing/cross-tenant id) server-side. The old VALID_INVITE_ROLES
+  // hardcoded-7-literal allowlist is gone; validating a UUID format here
+  // would just duplicate what inviteMember()'s own tenant-scoped lookup
+  // already enforces authoritatively.
+  const roleCatalogEntryId = formData.get('roleCatalogEntryId') as string;
   const groupId = (formData.get('groupId') as string) || null;
 
   if (!email || !email.includes('@')) return { error: 'A valid email is required' };
-  if (!VALID_INVITE_ROLES.includes(role)) return { error: 'Invalid role' };
+  if (!roleCatalogEntryId) return { error: 'A role is required' };
 
   try {
     const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/register/set-password`;
-    const invitation = await inviteMember(ctx.tenantId, ctx.memberId, { email, role, groupId, redirectTo });
+    const invitation = await inviteMember(ctx.tenantId, ctx.memberId, { email, roleCatalogEntryId, groupId, redirectTo });
     return { success: true, invitationId: invitation.id };
   } catch (err: unknown) {
     const code = (err as { code?: string }).code;
     if (code === 'DUPLICATE_INVITE') return { error: `A pending invite for ${email} already exists` };
     if (code === 'INVITE_FAILED') return { error: `Could not send invite: ${(err as Error).message}` };
+    if (code === 'NOT_FOUND') return { error: 'Invalid role selected' };
     return { error: 'An unexpected error occurred. Please try again.' };
   }
 }

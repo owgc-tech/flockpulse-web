@@ -1,7 +1,6 @@
 'use client';
 
 import type { MemberRow } from '@/src/features/members/member.types';
-import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
 interface Props {
   members: MemberRow[];
@@ -34,7 +33,7 @@ export default function MembersTable({ members }: Props) {
                 >
                   <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{m.first_name} {m.last_name}</td>
                   <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{m.email}</td>
-                  <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{ROLE_LABELS[m.role]}</td>
+                  <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{m.role_display_name}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       m.deleted_at
