@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getMembersAssignedToLeader } from '@/src/features/assignments/service';
 
 function serviceClient() {
   return createClient(
@@ -115,4 +116,62 @@ export async function getAcknowledgedAtMap(
   if (error) throw error;
 
   return new Map((data ?? []).map((r: { event_id: string; acknowledged_at: string }) => [r.event_id, r.acknowledged_at]));
+}
+
+export interface AnnouncementRosterEntry {
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  acknowledged_at: string | null;
+}
+
+// DIP-FP-191-web-adj-4: Announcement-scoped equivalent of getEventRoster()
+// (events/service.ts) — same event_attendees-is-the-real-roster,
+// getMembersAssignedToLeader()-scoping, left-join-by-member_id shape, just
+// joined against announcement_acknowledgements instead of rsvps. Kept as a
+// sibling function/endpoint rather than extending getEventRoster() itself —
+// that one is deliberately RSVP-only (FP-67 Design Decision).
+export async function getAnnouncementRoster(
+  eventId: string,
+  tenantId: string,
+  scopeToLeaderMemberId?: string
+): Promise<AnnouncementRosterEntry[]> {
+  const db = serviceClient();
+
+  const { data: attendees, error: attendeesError } = await db
+    .from('event_attendees')
+    .select('member_id, members(first_name, last_name)')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+
+  if (attendeesError) throw attendeesError;
+
+  let scopedAttendees = attendees ?? [];
+  if (scopeToLeaderMemberId) {
+    const assignedMembers = await getMembersAssignedToLeader(scopeToLeaderMemberId, tenantId);
+    const assignedIds = new Set(assignedMembers.map((m) => (m as { id: string }).id));
+    scopedAttendees = scopedAttendees.filter((a: { member_id: string }) => assignedIds.has(a.member_id));
+  }
+
+  const { data: acks, error: acksError } = await db
+    .from('announcement_acknowledgements')
+    .select('member_id, acknowledged_at')
+    .eq('event_id', eventId)
+    .eq('tenant_id', tenantId);
+
+  if (acksError) throw acksError;
+
+  const ackByMember = new Map(
+    (acks ?? []).map((a: { member_id: string; acknowledged_at: string }) => [a.member_id, a.acknowledged_at])
+  );
+
+  return scopedAttendees.map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
+    const member = Array.isArray(a.members) ? a.members[0] : a.members;
+    return {
+      member_id: a.member_id,
+      first_name: member?.first_name ?? '',
+      last_name: member?.last_name ?? '',
+      acknowledged_at: ackByMember.get(a.member_id) ?? null,
+    };
+  });
 }
