@@ -368,3 +368,86 @@ export async function softDeleteMember(id: string, tenantId: string) {
     throw err;
   }
 }
+
+// DIP-FP-187-web: self-service account deletion — scrubs the caller's own PII
+// and deactivates their members row in one atomic UPDATE (not two writes),
+// reusing the exact deleted_at transition softDeleteMember() uses so its
+// three existing guard triggers (Assigned Leader, group ownership, event
+// ownership) apply automatically, then deletes the Supabase Auth identity so
+// login is genuinely no longer possible.
+//
+// Grounding correction made while writing this: the DIP's literal plan sets
+// gender/marital_status/birthdate to NULL. All three are NOT NULL
+// (20260629000020_registration_completion.sql) — that UPDATE would fail
+// every single call with a 23502 not-null violation. Reused that same
+// migration's own established backfill placeholder convention instead
+// (gender='MALE', marital_status='SINGLE', birthdate='1990-01-01') — inert
+// placeholder values once combined with the scrubbed name/email, not
+// real data about anyone.
+export async function deleteOwnAccount(userId: string, tenantId: string, memberId: string): Promise<void> {
+  const db = serviceClient();
+
+  const { data, error } = await db
+    .from('members')
+    .update({
+      deleted_at: new Date().toISOString(),
+      email: `deleted-${memberId}@deleted.invalid`, // .invalid is the IANA-reserved TLD (RFC 2606) for exactly this
+      first_name: 'Deleted',
+      last_name: 'Member',
+      gender: 'MALE',
+      marital_status: 'SINGLE',
+      birthdate: '1990-01-01',
+    })
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .select('id')
+    .single();
+
+  // Same three guard branches as softDeleteMember() above — these triggers
+  // fire on the deleted_at transition itself, regardless of which code path
+  // sets it, so the identical error-mapping applies unchanged.
+  if (error) {
+    if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
+      const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
+      err.code = 'INVALID_STATE_TRANSITION';
+      const match = error.message.match(/to (\d+) member/);
+      if (match) err.assignedMemberCount = parseInt(match[1], 10);
+      throw err;
+    }
+    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
+      const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
+      err.code = 'INVALID_STATE_TRANSITION';
+      const match = error.message.match(/owns (\d+) group/);
+      if (match) err.ownedGroupCount = parseInt(match[1], 10);
+      throw err;
+    }
+    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
+      const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
+      err.code = 'INVALID_STATE_TRANSITION';
+      const match = error.message.match(/owns (\d+) event/);
+      if (match) err.ownedEventCount = parseInt(match[1], 10);
+      throw err;
+    }
+    const err = new Error('Member not found for this tenant') as Error & { code: string };
+    err.code = 'NOT_FOUND_IN_TENANT';
+    throw err;
+  }
+  if (!data) {
+    const err = new Error('Member not found for this tenant') as Error & { code: string };
+    err.code = 'NOT_FOUND_IN_TENANT';
+    throw err;
+  }
+
+  // DB half committed successfully — now remove the Auth identity so login is
+  // genuinely no longer possible. Sequenced deliberately after the DB write:
+  // if this fails, the person is already fully locked out (every API call
+  // already checks deleted_at IS NULL) and their PII is already scrubbed — a
+  // stray auth.users row becomes a manual cleanup item, not a live privacy gap.
+  const { error: deleteAuthError } = await db.auth.admin.deleteUser(userId);
+  if (deleteAuthError) {
+    const err = new Error(`Account deactivated but Auth identity deletion failed: ${deleteAuthError.message}`) as Error & { code: string };
+    err.code = 'AUTH_DELETE_FAILED';
+    throw err;
+  }
+}
