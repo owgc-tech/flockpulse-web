@@ -365,26 +365,13 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
     throw err;
   }
 
-  // talk_id is immutable once any notification has been dispatched (status != PENDING).
-  if (input.talkId !== undefined && input.talkId !== event.talk_id) {
-    const { count, error: notifError } = await db
-      .from('event_notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('event_id', id)
-      .neq('status', 'PENDING');
-
-    if (notifError) throw notifError;
-
-    if ((count ?? 0) > 0) {
-      const err = new Error('talk_id is immutable after notifications have been dispatched') as Error & { code: string };
-      err.code = 'IMMUTABLE_FIELD';
-      throw err;
-    }
-
-    // App-layer validation for talk_id — defense-in-depth on top of DB trigger.
-    if (input.talkId) {
-      await validateTalkIdForEvent(input.talkId, tenantId);
-    }
+  // DIP-FP-100-web: talk_id's immutability-after-dispatch check is removed
+  // entirely (not reworked) — event_notifications, the mechanism it was
+  // guarding against, no longer exists. talk_id is unconditionally editable
+  // now; only the tenant-scope validation remains, unconditional, same shape
+  // as validateEventTypeId's own unconditional validation just below.
+  if (input.talkId !== undefined && input.talkId) {
+    await validateTalkIdForEvent(input.talkId, tenantId);
   }
 
   // DIP-FP-131-web: reuses validateEventTypeId() as-is (previously only called
@@ -459,67 +446,11 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
 
   const updated = Array.isArray(updateRows) ? updateRows[0] : updateRows;
 
-  // Recalculate unsent notification scheduled_for values when timing changes.
-  // Each purpose has a fixed offset relative to a reference time; recompute
-  // from the new reference rather than preserving the old absolute timestamp.
-  const timingChanged = input.startDatetime !== undefined || input.endDatetime !== undefined;
-  if (timingChanged) {
-    const start = new Date(newStart);
-    const end = new Date(newEnd);
-
-    const rescheduleMap: Record<string, Date> = {
-      PRE_EVENT_REMINDER:     new Date(start.getTime() - 24 * 60 * 60 * 1000),
-      POST_EVENT_SELF_REPORT: new Date(end.getTime()),
-      LEADER_CONFIRMATION:    new Date(end.getTime() + 2 * 60 * 60 * 1000),
-    };
-
-    const { data: unsent, error: unsentError } = await db
-      .from('event_notifications')
-      .select('id, purpose')
-      .eq('event_id', id)
-      .in('status', ['PENDING', 'RETRYING'])
-      .in('purpose', ['PRE_EVENT_REMINDER', 'POST_EVENT_SELF_REPORT', 'LEADER_CONFIRMATION']);
-
-    if (unsentError) throw unsentError;
-
-    for (const row of unsent ?? []) {
-      const newScheduledFor = rescheduleMap[row.purpose as string];
-      if (!newScheduledFor) continue;
-      const { error: reschedErr } = await db
-        .from('event_notifications')
-        .update({ scheduled_for: newScheduledFor.toISOString() })
-        .eq('id', row.id);
-      if (reschedErr) throw reschedErr;
-    }
-  }
-
-  // Insert EVENT_UPDATE notification for every expected attendee.
-  // scheduled_for = now (immediate; dispatch is handled by a separate worker).
-  const { data: attendees, error: attendeesError } = await db
-    .from('event_attendees')
-    .select('member_id')
-    .eq('event_id', id)
-    .eq('tenant_id', tenantId);
-
-  if (attendeesError) throw attendeesError;
-
-  if ((attendees ?? []).length > 0) {
-    const now = new Date().toISOString();
-    const notifRows = (attendees ?? []).map((a: { member_id: string }) => ({
-      tenant_id: tenantId,
-      event_id: id,
-      purpose: 'EVENT_UPDATE',
-      scheduled_for: now,
-      status: 'PENDING',
-    }));
-
-    const { error: notifInsertError } = await db
-      .from('event_notifications')
-      .insert(notifRows);
-
-    if (notifInsertError) throw notifInsertError;
-  }
-
+  // DIP-FP-100-web: the rescheduling block (recalculating event_notifications
+  // scheduled_for on timing changes) and the EVENT_UPDATE insert-per-attendee
+  // block have both been removed entirely — event_notifications no longer
+  // exists. Mobile's own local reminder reconciliation is the live mechanism;
+  // no server-side dispatch worker for this table was ever built.
   return updated;
 }
 
