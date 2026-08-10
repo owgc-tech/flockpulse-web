@@ -87,6 +87,26 @@ export async function updateCommunityRsvpSettingsAction(
   } catch (e) { return { error: mapError(e) }; }
 }
 
+// DIP-FP-196-web: empty string (subject trimmed, or body Tiptap-empty) is
+// converted to null — same "clear the field to reset to platform default"
+// semantics tagline/description already use via this same file's
+// updateCommunityDetailsAction above, extended here to mean "use the built-in
+// default template" specifically.
+export async function updateCommunityInviteEmailAction(
+  token: string,
+  formData: FormData
+): Promise<CommunityActionResult> {
+  const ctx = await getAdminContext(token);
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const inviteEmailSubject = (formData.get('inviteEmailSubject') as string | null)?.trim() || null;
+  const inviteEmailBody = (formData.get('inviteEmailBody') as string | null)?.trim() || null;
+  try {
+    await updateTenantSettings(ctx.tenantId, { inviteEmailSubject, inviteEmailBody });
+    return {};
+  } catch (e) { return { error: mapError(e) }; }
+}
+
 export async function uploadLogoAction(
   token: string,
   formData: FormData

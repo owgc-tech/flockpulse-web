@@ -24,6 +24,8 @@ export const PATCH = (req: NextRequest) =>
         rsvpNudgeDays1: body.rsvpNudgeDays1,
         rsvpNudgeDays2: body.rsvpNudgeDays2,
         rsvpNudgeDays3: body.rsvpNudgeDays3,
+        inviteEmailSubject: body.inviteEmailSubject,
+        inviteEmailBody: body.inviteEmailBody,
       });
       return NextResponse.json({ data: settings });
     } catch (err: unknown) {

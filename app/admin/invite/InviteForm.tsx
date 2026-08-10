@@ -24,7 +24,15 @@ export default function InviteForm({ token, groups, roleCatalog }: InviteFormPro
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
 
   if (state.success) {
-    return (
+    // DIP-FP-196-web: warning means the invitation itself was created
+    // successfully (Auth identity + DB row both exist) but the email failed
+    // to send — surfaced distinctly rather than as the plain success message,
+    // since the recipient did not actually receive anything.
+    return state.warning ? (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        Invitation created, but the email could not be sent: {state.warning}
+      </div>
+    ) : (
       <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
         Invite sent successfully. The recipient will receive an email to complete registration.
       </div>

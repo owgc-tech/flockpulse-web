@@ -76,6 +76,17 @@ export const POST = (req: NextRequest) =>
       if (code === 'DUPLICATE_INVITE') return errorResponse('DUPLICATE_INVITE', (err as Error).message, 409);
       if (code === 'INVITE_FAILED') return errorResponse('INVITE_FAILED', (err as Error).message, 502);
       if (code === 'METADATA_WRITE_FAILED') return errorResponse('METADATA_WRITE_FAILED', (err as Error).message, 500);
+      // DIP-FP-196-web: the invitation and Auth identity were both already
+      // created successfully at this point (see inviteMember()'s own
+      // comment) — a genuine partial success, returned as 201 with a
+      // warning rather than an error status, same distinction InviteForm.tsx
+      // makes for the web form's own path.
+      if (code === 'EMAIL_SEND_FAILED') {
+        return NextResponse.json(
+          { data: { id: (err as { invitationId?: string }).invitationId }, warning: (err as Error).message },
+          { status: 201 }
+        );
+      }
       throw err;
     }
   }));

@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { getInvitationById, insertInvitation, listInvitationsWithNames, pendingInvitationExistsForEmail } from './invitation.repository';
 import { getRoleCatalogEntryById } from '@/src/features/role-catalog/role-catalog.service';
+import { getTenantSettings } from '@/src/features/tenant/service';
+import { sendEmail } from '@/src/lib/email/mailer';
 import type { InvitationDisplayRow } from './invitation.types';
 import type { InvitationRow } from './invitation.types';
 
@@ -9,6 +11,25 @@ function serviceClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+// DIP-FP-196-web: kept byte-identical to the seed text in migration
+// 20260809000068_tenant_invite_email_template.sql — this is what a tenant
+// whose invite_email_subject/body are still NULL (not yet customized, or a
+// tenant created after that migration ran) actually gets sent. If you change
+// one, change the other.
+const DEFAULT_INVITE_SUBJECT = 'You have been invited to join {{tenant_name}} on FlockPulse';
+const DEFAULT_INVITE_BODY =
+  '<p>You have been invited to join {{tenant_name}} on FlockPulse.</p>' +
+  '<p><a href="{{invite_link}}">Accept your invitation</a></p>' +
+  '<p>If the button above does not work, copy and paste this link into your browser:</p>' +
+  '<p>{{invite_link}}</p>';
+
+function renderInviteTemplate(template: string, vars: { inviteLink: string; tenantName: string; inviteeEmail: string }): string {
+  return template
+    .replaceAll('{{invite_link}}', vars.inviteLink)
+    .replaceAll('{{tenant_name}}', vars.tenantName)
+    .replaceAll('{{invitee_email}}', vars.inviteeEmail);
 }
 
 // DIP-FP-192-web: InviteForm.tsx now sends roleCatalogEntryId, not a role
@@ -42,27 +63,33 @@ export async function inviteMember(
     throw err;
   }
 
-  // Step 1: Create the pending Supabase Auth user via the Admin API.
-  // inviteUserByEmail `data` maps to user_metadata (readable by the client).
-  // app_metadata (JWT claims, not user-editable) requires a separate updateUserById call.
-  // redirectTo points the invite link at the registration-completion route so the
-  // registrant lands on /register/set-password with their access_token in the URL hash.
+  // Step 1: DIP-FP-196-web — generate the invite link via the Admin API's
+  // generateLink() instead of inviteUserByEmail(). This still creates the
+  // pending Supabase Auth user (same as before), but — unlike
+  // inviteUserByEmail(), which bakes user-creation and Supabase's own
+  // auto-send into one inseparable call — does NOT trigger any email send.
+  // redirectTo points the invite link at the registration-completion route so
+  // the registrant lands on /register/set-password with their access_token
+  // in the URL hash, same as before.
   const db = serviceClient();
-  const { data: inviteData, error: inviteError } = await db.auth.admin.inviteUserByEmail(
+  const { data: linkData, error: linkError } = await db.auth.admin.generateLink({
+    type: 'invite',
     email,
-    redirectTo ? { redirectTo } : undefined
-  );
-  if (inviteError) {
-    const err = new Error(inviteError.message) as Error & { code: string };
+    options: redirectTo ? { redirectTo } : undefined,
+  });
+  if (linkError || !linkData?.user) {
+    const err = new Error(linkError?.message ?? 'Failed to generate invite link') as Error & { code: string };
     err.code = 'INVITE_FAILED';
     throw err;
   }
 
-  const authUserId = inviteData.user.id;
+  const authUserId = linkData.user.id;
+  const actionLink = linkData.properties.action_link;
 
   // Step 2: Write tenant_id, role, group_id into app_metadata immediately.
   // app_metadata is server-controlled (not writable by the invited user's JWT),
   // so FP-55's registration completion can trust these values unconditionally.
+  // Unchanged from before this DIP.
   const { error: metaError } = await db.auth.admin.updateUserById(authUserId, {
     app_metadata: { tenant_id: tenantId, role, group_id: groupId },
   });
@@ -76,8 +103,8 @@ export async function inviteMember(
     throw err;
   }
 
-  // Step 3: Record the invitation. Only reached if both Auth steps succeeded.
-  return insertInvitation({
+  // Step 3: Record the invitation. Unchanged from before this DIP.
+  const invitation = await insertInvitation({
     tenantId,
     email,
     role,
@@ -86,6 +113,47 @@ export async function inviteMember(
     invitedBy: invitedByMemberId,
     authUserId,
   });
+
+  // Step 4: DIP-FP-196-web — send the actual email via the tenant's
+  // configured template, using the new Mailtrap-backed sendEmail() utility.
+  // Sequenced last, deliberately not rolled back on failure: both the Auth
+  // identity and the invitation row already exist and are valid by this
+  // point (the registrant could still complete registration if they somehow
+  // obtained the link, and an admin can retry the send without recreating
+  // anything) — same "the DB half is already committed, a delivery failure
+  // here is a distinct, later problem" precedent FP-187's
+  // AUTH_DELETE_FAILED established for self-deletion's own auth-step-after-
+  // DB-commit ordering.
+  const tenantSettings = await getTenantSettings(tenantId);
+  const subject = tenantSettings.invite_email_subject ?? DEFAULT_INVITE_SUBJECT;
+  const bodyTemplate = tenantSettings.invite_email_body ?? DEFAULT_INVITE_BODY;
+  const html = renderInviteTemplate(bodyTemplate, {
+    inviteLink: actionLink,
+    tenantName: tenantSettings.name,
+    inviteeEmail: email,
+  });
+  const renderedSubject = renderInviteTemplate(subject, {
+    inviteLink: actionLink,
+    tenantName: tenantSettings.name,
+    inviteeEmail: email,
+  });
+
+  try {
+    await sendEmail({ to: email, subject: renderedSubject, html });
+  } catch (sendError: unknown) {
+    // The invitation row and Auth identity both already exist and are valid
+    // (see the comment above) — attach the invitation id to the error so
+    // callers can still report a genuine partial success ("invite created,
+    // email didn't send") instead of a plain failure, matching the
+    // assignedMemberCount/ownedGroupCount convention already used elsewhere
+    // in this codebase for attaching structured detail to a thrown error.
+    const err = new Error(`Invitation created but the email failed to send: ${(sendError as Error).message}`) as Error & { code: string; invitationId?: string };
+    err.code = 'EMAIL_SEND_FAILED';
+    err.invitationId = invitation.id;
+    throw err;
+  }
+
+  return invitation;
 }
 
 export async function listInvitations(tenantId: string): Promise<InvitationDisplayRow[]> {
