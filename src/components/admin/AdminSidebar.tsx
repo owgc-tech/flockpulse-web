@@ -48,6 +48,7 @@ const NAV: NavItem[] = [
   { href: '/admin/members', label: 'Members', adminOnly: true },
   { href: '/admin/roles', label: 'Roles', adminOnly: true },
   { href: '/admin/groups', label: 'Groups', adminOnly: true },
+  { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   { href: '/admin/events', label: 'Events', adminOnly: false },
   { href: '/admin/event-types', label: 'Event Types', adminOnly: true },
   {
@@ -57,7 +58,6 @@ const NAV: NavItem[] = [
       { href: '/admin/tasks/auto-assign', label: 'Auto-Assign', adminOnly: false },
     ],
   },
-  { href: '/admin/invitations', label: 'Invitations', adminOnly: false },
   {
     label: 'Formation',
     children: [
