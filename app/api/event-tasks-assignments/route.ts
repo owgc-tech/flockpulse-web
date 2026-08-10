@@ -39,6 +39,15 @@ export async function POST(req: NextRequest) {
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'VALIDATION_ERROR') return errorResponse('VALIDATION_ERROR', (err as Error).message, 422);
+      // DIP-FP-190-web: memberName is attached structurally by
+      // mapUnavailabilityError() — surfaced alongside the message so the
+      // caller doesn't need to re-parse it out of free text.
+      if (code === 'MEMBER_UNAVAILABLE') {
+        return NextResponse.json(
+          { error: { code, message: (err as Error).message, memberName: (err as { memberName?: string }).memberName } },
+          { status: 422 }
+        );
+      }
       throw err;
     }
   }));

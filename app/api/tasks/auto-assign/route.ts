@@ -13,6 +13,12 @@ const requireLeader = requireRole('LEADER');
 // groups is enforced by runTaskAutoAssign reading the selected task's live
 // individual_only flag. Unconditionally overwrites existing assignees — the
 // confirm-before-run warning lives client-side, not here.
+//
+// DIP-FP-190-web: `data` stays exactly the assignments array, unchanged for
+// any existing consumer — `conflicts` is added as a sibling top-level field
+// (same shape as `warning` on POST /api/invitations), carrying any
+// unavailability conflicts the round-robin's own run surfaced. Empty array,
+// not omitted, when there are none.
 export async function POST(req: NextRequest) {
   return withAuth(req, requireLeader(async (_, ctx) => {
     const body = await req.json().catch(() => null);
@@ -24,8 +30,8 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(event_type_ids)) return errorResponse('MISSING_FIELD', 'event_type_ids array required', 400);
 
     try {
-      const assignments = await runTaskAutoAssign(ctx.tenantId, task_id, roster, ctx.memberId, event_type_ids);
-      return NextResponse.json({ data: assignments }, { status: 200 });
+      const { assignments, conflicts } = await runTaskAutoAssign(ctx.tenantId, task_id, roster, ctx.memberId, event_type_ids);
+      return NextResponse.json({ data: assignments, conflicts }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', (err as Error).message, 404);

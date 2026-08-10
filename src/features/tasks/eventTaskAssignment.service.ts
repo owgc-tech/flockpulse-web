@@ -95,6 +95,25 @@ async function validateTaskId(taskId: string, tenantId: string): Promise<void> {
   }
 }
 
+// DIP-FP-190-web: maps block_task_assignment_if_member_unavailable()'s P0001
+// guard to MEMBER_UNAVAILABLE, with the member's name parsed out of the
+// trigger's own message and attached structurally — same
+// assignedMemberCount/ownedGroupCount convention used elsewhere in this
+// codebase for attaching structured detail to a thrown error, applied here
+// to a name instead of a count. This substring and the trigger's own RAISE
+// EXCEPTION text (20260811000070) must always change together.
+function mapUnavailabilityError(error: unknown): never {
+  const e = error as { code?: string; message?: string };
+  if (e.code === 'P0001' && e.message?.includes('marked unavailable on this date')) {
+    const mapped = new Error(e.message) as Error & { code: string; memberName?: string };
+    mapped.code = 'MEMBER_UNAVAILABLE';
+    const match = e.message.match(/^Cannot assign ([^:]+):/);
+    if (match) mapped.memberName = match[1];
+    throw mapped;
+  }
+  throw error;
+}
+
 export async function createTaskAssignment(
   tenantId: string, input: CreateEventTaskAssignmentInput
 ): Promise<EventTaskAssignmentRow> {
@@ -105,7 +124,11 @@ export async function createTaskAssignment(
   await validateTaskId(input.taskId, tenantId);
   await validateAssignee(input.assignee, tenantId);
 
-  return await insertEventTaskAssignment(tenantId, input);
+  try {
+    return await insertEventTaskAssignment(tenantId, input);
+  } catch (error: unknown) {
+    mapUnavailabilityError(error);
+  }
 }
 
 export async function updateTaskAssignment(
@@ -116,7 +139,12 @@ export async function updateTaskAssignment(
 
   await validateAssignee(input.assignee, tenantId);
 
-  const updated = await patchEventTaskAssignment(id, tenantId, input);
+  let updated: EventTaskAssignmentRow | null;
+  try {
+    updated = await patchEventTaskAssignment(id, tenantId, input);
+  } catch (error: unknown) {
+    mapUnavailabilityError(error);
+  }
   if (!updated) throw err('NOT_FOUND', 'Event task assignment not found');
   return updated;
 }
