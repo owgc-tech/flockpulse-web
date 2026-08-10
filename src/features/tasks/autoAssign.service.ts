@@ -24,6 +24,20 @@ export interface RunTaskAutoAssignResult {
   conflicts: AutoAssignConflict[];
 }
 
+// DIP-FP-190-web-adj-1: same UTC/local timezone boundary bug the migration
+// fixes in block_task_assignment_if_member_unavailable() — found here too
+// during this DIP's grounding, not mentioned by the DIP itself. A
+// late-evening tenant-local event's UTC timestamp can land on the next UTC
+// calendar day, so slicing the raw ISO string (this function's original
+// approach, pre-adj-1) silently misclassified conflicts around that
+// boundary. Intl.DateTimeFormat's en-CA locale formats as YYYY-MM-DD in the
+// given IANA zone — no new date library needed for a single conversion.
+function toTenantDateString(isoDatetime: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(isoDatetime));
+}
+
 function serviceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -141,15 +155,18 @@ async function computeUnavailabilityConflicts(
   const client = serviceClient();
   const eventIds = [...new Set(assignments.map((a) => a.event_id))];
 
-  const [{ data: eventRows, error: eventError }, { data: rangeRows, error: rangeError }, { data: memberRows, error: memberError }] =
+  const [{ data: eventRows, error: eventError }, { data: rangeRows, error: rangeError }, { data: memberRows, error: memberError }, { data: tenantRow, error: tenantError }] =
     await Promise.all([
       client.from('events').select('id, name, start_datetime, end_datetime').eq('tenant_id', tenantId).in('id', eventIds),
       client.from('member_unavailability_ranges').select('member_id, start_date, end_date').eq('tenant_id', tenantId).in('member_id', memberIds),
       client.from('members').select('id, first_name, last_name').eq('tenant_id', tenantId).in('id', memberIds),
+      client.from('tenants').select('timezone').eq('id', tenantId).single(),
     ]);
   if (eventError) throw eventError;
   if (rangeError) throw rangeError;
   if (memberError) throw memberError;
+  if (tenantError) throw tenantError;
+  const timezone = (tenantRow as { timezone: string }).timezone;
 
   const eventById = new Map(
     (eventRows ?? []).map((e: { id: string; name: string; start_datetime: string; end_datetime: string }) => [e.id, e])
@@ -166,8 +183,8 @@ async function computeUnavailabilityConflicts(
   for (const a of assignments) {
     const event = eventById.get(a.event_id);
     if (!event) continue;
-    const eventStartDate = event.start_datetime.slice(0, 10);
-    const eventEndDate = event.end_datetime.slice(0, 10);
+    const eventStartDate = toTenantDateString(event.start_datetime, timezone);
+    const eventEndDate = toTenantDateString(event.end_datetime, timezone);
 
     for (const memberId of a.assignee?.member_ids ?? []) {
       const ranges = rangesByMember.get(memberId) ?? [];
