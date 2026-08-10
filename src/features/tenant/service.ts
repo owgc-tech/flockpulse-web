@@ -9,6 +9,11 @@ const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
 // HTML from the Tiptap editor, generous enough for real formatted content.
 const INVITE_EMAIL_SUBJECT_MAX = 200;
 const INVITE_EMAIL_BODY_MAX = 20000;
+// DIP-FP-198-web: never trust the Community settings dropdown's own
+// constraint alone — a direct API call could send anything, so the same
+// Intl.supportedValuesOf('timeZone') list (native ES2022+, no new package)
+// backing the UI is re-validated against here, server-side.
+const VALID_TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
 
 function serviceClient() {
   return createClient(
@@ -26,7 +31,7 @@ function err(code: string, message: string): Error & { code: string } {
 export async function getTenantSettings(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('tenants')
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, created_at')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone, created_at')
     .eq('id', tenantId)
     .single();
 
@@ -46,6 +51,9 @@ export async function getTenantSettings(tenantId: string) {
     // DEFAULT_INVITE_SUBJECT/DEFAULT_INVITE_BODY, not a broken/missing template.
     invite_email_subject: string | null;
     invite_email_body: string | null;
+    // DIP-FP-190-web-adj-1: NOT NULL DEFAULT 'America/Toronto' — never null,
+    // unlike tagline/description/invite_email_*.
+    timezone: string;
     created_at: string;
   };
 }
@@ -63,6 +71,7 @@ export async function updateTenantSettings(
     description?: string | null;
     inviteEmailSubject?: string | null;
     inviteEmailBody?: string | null;
+    timezone?: string;
   }
 ) {
   const patch: Record<string, unknown> = {};
@@ -158,6 +167,13 @@ export async function updateTenantSettings(
     patch.invite_email_body = input.inviteEmailBody;
   }
 
+  if (input.timezone !== undefined) {
+    if (!VALID_TIMEZONES.has(input.timezone)) {
+      throw err('VALIDATION_ERROR', 'timezone must be a valid IANA timezone name');
+    }
+    patch.timezone = input.timezone;
+  }
+
   if (Object.keys(patch).length === 0) {
     throw err('NO_FIELDS', 'No updatable fields provided');
   }
@@ -166,7 +182,7 @@ export async function updateTenantSettings(
     .from('tenants')
     .update(patch)
     .eq('id', tenantId)
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone')
     .single();
 
   if (error) throw error;

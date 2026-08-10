@@ -26,6 +26,7 @@ export const PATCH = (req: NextRequest) =>
         rsvpNudgeDays3: body.rsvpNudgeDays3,
         inviteEmailSubject: body.inviteEmailSubject,
         inviteEmailBody: body.inviteEmailBody,
+        timezone: body.timezone,
       });
       return NextResponse.json({ data: settings });
     } catch (err: unknown) {

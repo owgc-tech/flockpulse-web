@@ -55,6 +55,7 @@ const NAV: NavItem[] = [
     label: 'Task Management',
     children: [
       { href: '/admin/tasks', label: 'Task', adminOnly: true, exact: true },
+      { href: '/admin/tasks/unavailability', label: 'Unavailability', adminOnly: false },
       { href: '/admin/tasks/auto-assign', label: 'Auto-Assign', adminOnly: false },
     ],
   },

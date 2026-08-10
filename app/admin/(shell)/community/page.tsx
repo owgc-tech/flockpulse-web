@@ -42,6 +42,7 @@ export default async function CommunityPage() {
           initialRsvpNudgeDays3={settings.rsvp_nudge_days_3}
           initialInviteEmailSubject={settings.invite_email_subject}
           initialInviteEmailBody={settings.invite_email_body}
+          initialTimezone={settings.timezone}
           canEdit={isAdminTier(role)}
         />
       </div>
