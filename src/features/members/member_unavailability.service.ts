@@ -1,6 +1,7 @@
 import {
   listMemberUnavailabilityRanges,
   insertMemberUnavailabilityRange,
+  updateMemberUnavailabilityRange,
   deleteMemberUnavailabilityRange,
 } from './member_unavailability.repository';
 import type { MemberUnavailabilityRangeRow } from './member_unavailability.repository';
@@ -36,6 +37,23 @@ export async function createMyUnavailability(
     throw err('VALIDATION_ERROR', 'endDate must be on or after startDate');
   }
   return insertMemberUnavailabilityRange(memberId, tenantId, start, end);
+}
+
+// DIP-FP-190-web-adj-2: real atomic update, closing the edit gap flagged
+// during FP-190's own testing — a genuine UPDATE, not a delete-then-recreate.
+// Same validateDate/end-after-start validation as createMyUnavailability,
+// reused directly, not reimplemented.
+export async function updateMyUnavailability(
+  id: string, memberId: string, tenantId: string, startDate: unknown, endDate: unknown
+): Promise<MemberUnavailabilityRangeRow> {
+  const start = validateDate('startDate', startDate);
+  const end = validateDate('endDate', endDate);
+  if (end < start) {
+    throw err('VALIDATION_ERROR', 'endDate must be on or after startDate');
+  }
+  const updated = await updateMemberUnavailabilityRange(id, memberId, tenantId, start, end);
+  if (!updated) throw err('NOT_FOUND', 'Unavailability range not found');
+  return updated;
 }
 
 export async function deleteMyUnavailability(id: string, memberId: string, tenantId: string): Promise<void> {
