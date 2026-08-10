@@ -44,6 +44,26 @@ export async function insertMemberUnavailabilityRange(
   return data as MemberUnavailabilityRangeRow;
 }
 
+// DIP-FP-190-web-adj-2: same defensive triple-scoping as
+// deleteMemberUnavailabilityRange below — id + member_id + tenant_id
+// together, so an id from another member's range simply matches zero rows
+// rather than updating someone else's data.
+export async function updateMemberUnavailabilityRange(
+  id: string, memberId: string, tenantId: string, startDate: string, endDate: string
+): Promise<MemberUnavailabilityRangeRow | null> {
+  const { data, error } = await serviceClient()
+    .from('member_unavailability_ranges')
+    .update({ start_date: startDate, end_date: endDate })
+    .eq('id', id)
+    .eq('member_id', memberId)
+    .eq('tenant_id', tenantId)
+    .select(COLS)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as MemberUnavailabilityRangeRow | null;
+}
+
 // Scoped by member_id in addition to id/tenant_id — mirrors FP-187's
 // "structurally impossible to act on anyone but yourself" pattern: even if
 // an id from another member's range somehow reached this call, the delete
