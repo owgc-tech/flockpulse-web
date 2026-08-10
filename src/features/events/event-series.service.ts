@@ -19,7 +19,6 @@ export interface CreateEventSeriesInput {
   eventTypeId: string;
   locationName: string;
   locationAddress: string;
-  locationUrl?: string | null;
   target: EventTarget;
   talkId?: string | null;
   actorMemberId?: string | null;
@@ -51,7 +50,6 @@ export async function createEventSeries(input: CreateEventSeriesInput) {
     p_event_type_id: input.eventTypeId,
     p_location_name: input.locationName,
     p_location_address: input.locationAddress,
-    p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
     p_actor_member_id: input.actorMemberId ?? null,

@@ -208,7 +208,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
             <dt className="text-zinc-500 dark:text-zinc-400">Location</dt>
             <dd className="text-zinc-900 dark:text-zinc-100">
               {event.location_name} —{' '}
-              <a href={getMapsUrl(event.location_address, event.location_url)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
+              <a href={getMapsUrl(event.location_address)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
                 {event.location_address}
               </a>
             </dd>

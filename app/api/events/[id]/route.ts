@@ -34,7 +34,7 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
     const {
-      name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, eventTypeId, talkId,
+      name, startDatetime, endDatetime, locationName, locationAddress, target, eventTypeId, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
       rsvpClosureDays, announcementBody, guestsAllowed,
     } = body;
@@ -46,7 +46,6 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
         endDatetime,
         locationName,
         locationAddress,
-        locationUrl,
         target,
         eventTypeId,
         talkId,

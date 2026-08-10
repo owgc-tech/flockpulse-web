@@ -34,7 +34,6 @@ export interface EventListRow {
   end_datetime: string;
   location_name: string;
   location_address: string;
-  location_url: string | null;
   target: EventTarget;
   event_type_id: string;
   // DIP-FP-120-web: online_meeting_resource_id (tracked Zoom account) and
@@ -78,7 +77,6 @@ export interface EventListItemRow {
   end_datetime: string;
   location_name: string;
   location_address: string;
-  location_url: string | null;
   target: EventTarget;
   event_type_id: string;
   online_meeting_resource_id: string | null;
@@ -176,14 +174,12 @@ export interface RosterEntry {
   guest_count: number | null;
 }
 
-// One-tap navigation link (FP-61): use location_url directly when the admin set an
-// explicit override; otherwise fall back to a universal Google Maps query link built
-// from location_address — opens the native app on mobile and Google Maps on the web.
-// FP-183: location_url is admin-supplied and unvalidated at write time, so only accept
-// it here if it's http(s) — otherwise fall through to the Maps link, same as if no
-// override were set (interim fix for CodeQL js/xss-through-dom; FP-184 removes the field).
-export function getMapsUrl(locationAddress: string, locationUrl: string | null): string {
-  if (locationUrl && /^https?:\/\//i.test(locationUrl)) return locationUrl;
+// One-tap navigation link (FP-61): a universal Google Maps query link built from
+// location_address — opens the native app on mobile and Google Maps on the web.
+// FP-184 removed the location_url override field entirely (and the FP-183 interim
+// http(s) validation branch that protected it), closing the CodeQL js/xss-through-dom
+// finding structurally rather than leaving the patched-but-still-present field behind.
+export function getMapsUrl(locationAddress: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
 }
 
@@ -275,7 +271,6 @@ export interface EventSeriesRow {
   event_type_id: string;
   location_name: string;
   location_address: string;
-  location_url: string | null;
   target: EventTarget;
   talk_id: string | null;
   created_at: string;

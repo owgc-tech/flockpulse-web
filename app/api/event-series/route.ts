@@ -13,7 +13,7 @@ export const POST = (req: NextRequest) =>
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
     const {
-      eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl,
+      eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress,
       target, talkId, frequency, mode, count, untilDate,
     } = body;
 
@@ -57,7 +57,6 @@ export const POST = (req: NextRequest) =>
         eventTypeId,
         locationName,
         locationAddress,
-        locationUrl,
         target,
         talkId,
         actorMemberId: ctx.memberId,
