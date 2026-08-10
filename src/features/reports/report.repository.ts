@@ -840,20 +840,31 @@ export async function getDefaultDashboardEvent(
 }
 
 export interface DashboardStatsResult {
-  attendance: {
+  attendance?: {
     expected_count: number;
     attended_count: number;
     did_not_attend_count: number;
     did_not_self_report_count: number;
     percent: number | null;
   };
-  rsvp: { yes_count: number; no_count: number; tentative_count: number; no_response_count: number };
-  rating: {
+  rsvp?: { yes_count: number; no_count: number; tentative_count: number; no_response_count: number };
+  rating?: {
     average: number | null;
     rounded: number | null;
     rating_count: number;
     breakdown: { star: number; count: number }[];
     feedback: { star_rating: number | null; feedback: string }[];
+  };
+  // DIP-FP-197-web: Announcement-type events have no attendance/rsvp/rating
+  // data (FP-191's design routes them through announcement_acknowledgements
+  // instead) — present only for Announcement events, mirroring
+  // getAnnouncementRoster()'s event_attendees + announcement_acknowledgements
+  // join, aggregated to counts instead of a per-member roster.
+  announcement?: {
+    acknowledged_count: number;
+    not_acknowledged_count: number;
+    total_count: number;
+    percent: number | null;
   };
 }
 
@@ -874,7 +885,7 @@ export async function getDashboardStats(
 
   const { data: eventRow, error: eventError } = await db
     .from('events')
-    .select('id')
+    .select('id, event_types(system_key)')
     .eq('id', eventId)
     .eq('tenant_id', tenantId)
     .maybeSingle();
@@ -884,6 +895,13 @@ export async function getDashboardStats(
     err.code = 'NOT_FOUND_IN_TENANT';
     throw err;
   }
+
+  // DIP-FP-197-web: same event_types.system_key === 'ANNOUNCEMENT' check
+  // insert_event_with_audit()'s v_is_announcement uses server-side — reused
+  // here for the branch decision below.
+  const eventTypeRow = eventRow as { id: string; event_types: { system_key: string | null } | { system_key: string | null }[] | null };
+  const eventTypeJoin = Array.isArray(eventTypeRow.event_types) ? eventTypeRow.event_types[0] : eventTypeRow.event_types;
+  const isAnnouncement = eventTypeJoin?.system_key === 'ANNOUNCEMENT';
 
   if (!isAdminTier(role)) {
     const { data: attendeeRow, error: attendeeError } = await db
@@ -899,6 +917,45 @@ export async function getDashboardStats(
       err.code = 'FORBIDDEN_SCOPE';
       throw err;
     }
+  }
+
+  // DIP-FP-197-web: Announcement events skip the attendance/rsvp/rating
+  // queries entirely (both are always empty for them, per FP-191's design —
+  // acknowledgement is a genuinely separate mechanism, never a write to
+  // attendance/rsvps) and return early with the acknowledgement summary
+  // instead, mirroring getAnnouncementRoster()'s exact event_attendees +
+  // announcement_acknowledgements join, aggregated to counts.
+  if (isAnnouncement) {
+    const { data: announcementAttendeeRows, error: announcementAttendeeError } = await db
+      .from('event_attendees')
+      .select('member_id')
+      .eq('event_id', eventId)
+      .eq('tenant_id', tenantId);
+    if (announcementAttendeeError) throw announcementAttendeeError;
+    const targetedMemberIds = (announcementAttendeeRows ?? []).map((r: { member_id: string }) => r.member_id);
+
+    const { data: ackRows, error: ackError } = await db
+      .from('announcement_acknowledgements')
+      .select('member_id, acknowledged_at')
+      .eq('event_id', eventId)
+      .eq('tenant_id', tenantId);
+    if (ackError) throw ackError;
+    const ackByMember = new Map(
+      (ackRows ?? []).map((a: { member_id: string; acknowledged_at: string }) => [a.member_id, a.acknowledged_at])
+    );
+
+    const acknowledgedCount = targetedMemberIds.filter((id) => ackByMember.has(id)).length;
+    const totalCount = targetedMemberIds.length;
+    const notAcknowledgedCount = totalCount - acknowledgedCount;
+
+    return {
+      announcement: {
+        acknowledged_count: acknowledgedCount,
+        not_acknowledged_count: notAcknowledgedCount,
+        total_count: totalCount,
+        percent: roundToOneDecimal(acknowledgedCount, notAcknowledgedCount),
+      },
+    };
   }
 
   // Card 1: attendance — expected_count from the roster; attended_count/

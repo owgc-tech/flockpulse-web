@@ -7,6 +7,12 @@ import { getDashboardStats } from '@/src/features/reports/report.service';
 // for a single event. Open to every authenticated role — getDashboardStats()
 // itself validates the event is tenant-scoped and, for non-Admin-tier
 // callers, that the caller is actually invited to it (event_attendees).
+//
+// DIP-FP-197-web: for Announcement-type events, the response carries an
+// `announcement` acknowledgement summary instead — `attendance`/`rsvp`/
+// `rating` are omitted entirely rather than returned as meaningless zeros.
+// No branching needed here; getDashboardStats() decides which shape to
+// return and this route passes either through unchanged.
 export async function GET(req: NextRequest) {
   return withAuth(req, async (_, ctx) => {
     const eventId = req.nextUrl.searchParams.get('event_id');
