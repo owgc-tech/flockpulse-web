@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from 'react';
 import {
   updateCommunityDetailsAction, updateCommunityNameAction, updateCommunityRsvpSettingsAction,
-  updateCommunityInviteEmailAction, uploadLogoAction,
+  updateCommunityInviteEmailAction, updateCommunityTimezoneAction, uploadLogoAction,
 } from './actions';
 import RichTextEditor from './RichTextEditor';
 
@@ -23,12 +23,18 @@ interface Props {
   // this DIP, so in practice these are rarely actually null in the UI.
   initialInviteEmailSubject: string | null;
   initialInviteEmailBody: string | null;
+  // DIP-FP-198-web: NOT NULL DEFAULT 'America/Toronto' — never null.
+  initialTimezone: string;
   // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
   canEdit: boolean;
 }
 
 const DEFAULT_INVITE_SUBJECT_PLACEHOLDER = 'You have been invited to join {{tenant_name}} on FlockPulse';
 const DEFAULT_INVITE_BODY_PLACEHOLDER = '<p>You have been invited to join {{tenant_name}} on FlockPulse.</p>';
+// DIP-FP-198-web: native ES2022+ API, already usable given this app's
+// Next.js/Node runtime — no new package needed for a full valid-IANA-name
+// list. Sorted for a predictable dropdown order.
+const TIMEZONE_OPTIONS = Intl.supportedValuesOf('timeZone').sort();
 
 const TAGLINE_MAX = 150;
 const DESCRIPTION_MAX = 500;
@@ -39,7 +45,7 @@ export default function CommunitySettingsForm({
   token, communityName, initialLogoUrl, initialTagline, initialDescription,
   initialAttendanceWindowHours, initialRsvpClosureDaysDefault,
   initialRsvpNudgeDays1, initialRsvpNudgeDays2, initialRsvpNudgeDays3,
-  initialInviteEmailSubject, initialInviteEmailBody, canEdit,
+  initialInviteEmailSubject, initialInviteEmailBody, initialTimezone, canEdit,
 }: Props) {
   const [name, setName] = useState(communityName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
@@ -63,6 +69,9 @@ export default function CommunitySettingsForm({
   const [inviteEmailBodyIsEmpty, setInviteEmailBodyIsEmpty] = useState(!initialInviteEmailBody);
   const [inviteEmailError, setInviteEmailError] = useState<string | null>(null);
   const [inviteEmailSaved, setInviteEmailSaved] = useState(false);
+  const [timezone, setTimezone] = useState(initialTimezone);
+  const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [timezoneSaved, setTimezoneSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialLogoUrl);
@@ -144,6 +153,18 @@ export default function CommunitySettingsForm({
       const res = await updateCommunityInviteEmailAction(token, fd);
       if (res.error) { setInviteEmailError(res.error); return; }
       setInviteEmailSaved(true);
+    });
+  }
+
+  function handleTimezoneSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setTimezoneError(null);
+    setTimezoneSaved(false);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await updateCommunityTimezoneAction(token, fd);
+      if (res.error) { setTimezoneError(res.error); return; }
+      setTimezoneSaved(true);
     });
   }
 
@@ -403,6 +424,45 @@ export default function CommunitySettingsForm({
               <p>{attendanceWindowHours}</p>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Timezone — DIP-FP-198-web */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Timezone</h2>
+        <p className="mb-4 text-xs text-zinc-500 dark:text-zinc-400">
+          Used to determine the correct calendar day for date-based rules, such as member unavailability.
+        </p>
+        {canEdit ? (
+          <form onSubmit={handleTimezoneSave} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Timezone</label>
+              <select
+                name="timezone"
+                value={timezone}
+                onChange={e => { setTimezone(e.target.value); setTimezoneSaved(false); }}
+                className={inputClass}
+              >
+                {TIMEZONE_OPTIONS.map(tz => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+            </div>
+
+            {timezoneError && <p className="text-sm text-red-600 dark:text-red-400">{timezoneError}</p>}
+            {timezoneSaved && <p className="text-sm text-green-600 dark:text-green-400">Timezone saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save timezone'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">{timezone}</p>
         )}
       </div>
 

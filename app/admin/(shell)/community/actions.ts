@@ -107,6 +107,24 @@ export async function updateCommunityInviteEmailAction(
   } catch (e) { return { error: mapError(e) }; }
 }
 
+// DIP-FP-198-web: own independent save, same as every other section on this
+// page — timezone doesn't naturally belong inside Community Details or
+// RSVP & Attendance, so it gets its own small section rather than being
+// folded into either.
+export async function updateCommunityTimezoneAction(
+  token: string,
+  formData: FormData
+): Promise<CommunityActionResult> {
+  const ctx = await getAdminContext(token);
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const timezone = (formData.get('timezone') as string | null) ?? '';
+  try {
+    await updateTenantSettings(ctx.tenantId, { timezone });
+    return {};
+  } catch (e) { return { error: mapError(e) }; }
+}
+
 export async function uploadLogoAction(
   token: string,
   formData: FormData

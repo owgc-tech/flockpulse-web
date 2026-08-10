@@ -81,3 +81,55 @@ export async function deleteMemberUnavailabilityRange(
   if (error) throw error;
   return (count ?? 0) > 0;
 }
+
+export interface AdminUnavailabilityRow {
+  id: string;
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  start_date: string;
+  end_date: string;
+}
+
+// DIP-FP-199-web: tenant-wide, admin-facing — genuinely different from
+// listMemberUnavailabilityRanges above (single-member self-service), not a
+// reuse of it, though both live in this same file/feature area. Overlap
+// condition (start_date <= [end] AND end_date >= [start]) is the identical
+// interval-overlap check already used in FP-190's hard-block trigger and
+// mobile's current-year filter — applied here only when both startDate and
+// endDate are present (both-or-neither is validated in the service layer,
+// not here — same repository/service split every other function in this
+// file already follows).
+export async function listUnavailabilityForTenant(
+  tenantId: string,
+  filters: { memberId?: string; startDate?: string; endDate?: string }
+): Promise<AdminUnavailabilityRow[]> {
+  let q = serviceClient()
+    .from('member_unavailability_ranges')
+    .select('id, member_id, start_date, end_date, members(first_name, last_name)')
+    .eq('tenant_id', tenantId)
+    .order('start_date', { ascending: true });
+
+  if (filters.memberId) q = q.eq('member_id', filters.memberId);
+  if (filters.startDate && filters.endDate) {
+    q = q.lte('start_date', filters.endDate).gte('end_date', filters.startDate);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  return (data ?? []).map((r: {
+    id: string; member_id: string; start_date: string; end_date: string;
+    members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
+  }) => {
+    const member = Array.isArray(r.members) ? r.members[0] : r.members;
+    return {
+      id: r.id,
+      member_id: r.member_id,
+      first_name: member?.first_name ?? '',
+      last_name: member?.last_name ?? '',
+      start_date: r.start_date,
+      end_date: r.end_date,
+    };
+  });
+}
