@@ -59,7 +59,6 @@ export interface CreateEventInput {
   endDatetime: string;
   locationName: string;
   locationAddress: string;
-  locationUrl?: string | null;
   target: { group_ids?: string[]; member_ids?: string[] };
   talkId?: string | null;
   onlineMeetingResourceId?: string | null;
@@ -196,7 +195,6 @@ export async function createEvent(input: CreateEventInput) {
     p_end_datetime: input.endDatetime,
     p_location_name: input.locationName,
     p_location_address: input.locationAddress,
-    p_location_url: input.locationUrl ?? null,
     p_target: input.target,
     p_talk_id: input.talkId ?? null,
     p_online_meeting_resource_id: input.onlineMeetingResourceId ?? null,
@@ -239,7 +237,7 @@ export async function createEvent(input: CreateEventInput) {
       .update({ created_by_member_id: input.actorMemberId, owner_member_id: input.actorMemberId })
       .eq('id', row.id)
       .eq('tenant_id', input.tenantId)
-      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, owner_member_id')
+      .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, talk_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, owner_member_id')
       .single();
     if (creatorError) throw creatorError;
     return withCreator;
@@ -314,7 +312,6 @@ export interface UpdateEventInput {
   endDatetime?: string;
   locationName?: string;
   locationAddress?: string;
-  locationUrl?: string | null;
   target?: { group_ids?: string[]; member_ids?: string[] };
   eventTypeId?: string;
   talkId?: string | null;
@@ -416,7 +413,6 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   if (input.endDatetime !== undefined) patch.end_datetime = input.endDatetime;
   if (input.locationName !== undefined) patch.location_name = input.locationName;
   if (input.locationAddress !== undefined) patch.location_address = input.locationAddress;
-  if (input.locationUrl !== undefined) patch.location_url = input.locationUrl;
   if (input.target !== undefined) patch.target = input.target;
   if (input.talkId !== undefined) patch.talk_id = input.talkId;
   if (input.onlineMeetingResourceId !== undefined) patch.online_meeting_resource_id = input.onlineMeetingResourceId;
@@ -471,7 +467,7 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
   );
 }
 
-const LIST_EVENTS_COLS = 'id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
+const LIST_EVENTS_COLS = 'id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
 
 export interface ListEventsOptions {
   limit?: number;
@@ -607,7 +603,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 
   const { data: events, error: eventsError } = await db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('tenant_id', tenantId)
     .in('id', eventIds)
     .order('start_datetime', { ascending: true });
@@ -675,7 +671,7 @@ export async function listEventsForMember(tenantId: string, memberId: string) {
 export async function getEventById(id: string, tenantId: string, callerMemberId?: string) {
   const { data: event, error } = await serviceClient()
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, location_url, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
+    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .single();

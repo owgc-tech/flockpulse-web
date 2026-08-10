@@ -87,7 +87,6 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   );
   const [locationName, setLocationName] = useState(initialEvent?.location_name ?? '');
   const [locationAddress, setLocationAddress] = useState(initialEvent?.location_address ?? '');
-  const [locationUrl, setLocationUrl] = useState(initialEvent?.location_url ?? '');
   const [startDatetime, setStartDatetime] = useState(initialEvent ? toLocalInputValue(initialEvent.start_datetime) : '');
   const [endDatetime, setEndDatetime] = useState(initialEvent ? toLocalInputValue(initialEvent.end_datetime) : '');
   const [groupIds, setGroupIds] = useState<string[]>(initialEvent?.target.group_ids ?? []);
@@ -399,7 +398,6 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           endDatetime: effectiveEndDatetime,
           locationName: effectiveLocationName,
           locationAddress: effectiveLocationAddress,
-          locationUrl: locationUrl || null,
           target: effectiveTarget,
           talkId: isFormation && talkId ? talkId : null,
           frequency,
@@ -414,7 +412,6 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           endDatetime: effectiveEndDatetime,
           locationName: effectiveLocationName,
           locationAddress: effectiveLocationAddress,
-          locationUrl: locationUrl || null,
           target: effectiveTarget,
           talkId: isFormation && talkId ? talkId : null,
           // DIP-FP-120-web: same series-scope boundary FP-107 established for the fields
@@ -575,18 +572,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         <div className={fieldClass}>
           <label className={labelClass}>Location address</label>
           <input className={inputClass} value={locationAddress} onChange={e => setLocationAddress(e.target.value)} required />
-        </div>
-      )}
-
-      {!isAnnouncement && (
-        <div className={fieldClass}>
-          <label className={labelClass}>
-            Location URL <span className="font-normal text-zinc-400 dark:text-zinc-500">(optional — overrides the default maps link)</span>
-          </label>
-          <input className={inputClass} value={locationUrl} onChange={e => setLocationUrl(e.target.value)} placeholder="https://…" />
           {locationAddress && (
             <a
-              href={getMapsUrl(locationAddress, locationUrl || null)}
+              href={getMapsUrl(locationAddress)}
               target="_blank"
               rel="noreferrer"
               className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"

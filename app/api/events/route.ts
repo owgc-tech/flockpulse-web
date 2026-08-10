@@ -36,7 +36,7 @@ export const POST = (req: NextRequest) =>
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
     const {
-      eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, locationUrl, target, talkId,
+      eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target, talkId,
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
       rsvpClosureDays, announcementBody, guestsAllowed,
     } = body;
@@ -53,7 +53,6 @@ export const POST = (req: NextRequest) =>
         endDatetime,
         locationName,
         locationAddress,
-        locationUrl,
         target,
         talkId,
         onlineMeetingResourceId,
