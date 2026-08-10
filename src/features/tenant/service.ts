@@ -5,6 +5,10 @@ const DESCRIPTION_MAX = 500;
 const NAME_MAX = 150;
 const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
+// DIP-FP-196-web: subject is a plain email subject line; body is rich-text
+// HTML from the Tiptap editor, generous enough for real formatted content.
+const INVITE_EMAIL_SUBJECT_MAX = 200;
+const INVITE_EMAIL_BODY_MAX = 20000;
 
 function serviceClient() {
   return createClient(
@@ -22,7 +26,7 @@ function err(code: string, message: string): Error & { code: string } {
 export async function getTenantSettings(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('tenants')
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, created_at')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, created_at')
     .eq('id', tenantId)
     .single();
 
@@ -38,6 +42,10 @@ export async function getTenantSettings(tenantId: string) {
     logo_url: string | null;
     tagline: string | null;
     description: string | null;
+    // DIP-FP-196-web: null means "use the platform default" — invitation.service.ts's
+    // DEFAULT_INVITE_SUBJECT/DEFAULT_INVITE_BODY, not a broken/missing template.
+    invite_email_subject: string | null;
+    invite_email_body: string | null;
     created_at: string;
   };
 }
@@ -53,6 +61,8 @@ export async function updateTenantSettings(
     rsvpNudgeDays3?: number;
     tagline?: string | null;
     description?: string | null;
+    inviteEmailSubject?: string | null;
+    inviteEmailBody?: string | null;
   }
 ) {
   const patch: Record<string, unknown> = {};
@@ -134,6 +144,20 @@ export async function updateTenantSettings(
     patch.description = input.description;
   }
 
+  if (input.inviteEmailSubject !== undefined) {
+    if (input.inviteEmailSubject !== null && input.inviteEmailSubject.length > INVITE_EMAIL_SUBJECT_MAX) {
+      throw err('VALIDATION_ERROR', `Invitation email subject must be ${INVITE_EMAIL_SUBJECT_MAX} characters or fewer`);
+    }
+    patch.invite_email_subject = input.inviteEmailSubject;
+  }
+
+  if (input.inviteEmailBody !== undefined) {
+    if (input.inviteEmailBody !== null && input.inviteEmailBody.length > INVITE_EMAIL_BODY_MAX) {
+      throw err('VALIDATION_ERROR', `Invitation email body must be ${INVITE_EMAIL_BODY_MAX} characters or fewer`);
+    }
+    patch.invite_email_body = input.inviteEmailBody;
+  }
+
   if (Object.keys(patch).length === 0) {
     throw err('NO_FIELDS', 'No updatable fields provided');
   }
@@ -142,7 +166,7 @@ export async function updateTenantSettings(
     .from('tenants')
     .update(patch)
     .eq('id', tenantId)
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body')
     .single();
 
   if (error) throw error;

@@ -2,8 +2,10 @@
 
 import { useRef, useState, useTransition } from 'react';
 import {
-  updateCommunityDetailsAction, updateCommunityNameAction, updateCommunityRsvpSettingsAction, uploadLogoAction,
+  updateCommunityDetailsAction, updateCommunityNameAction, updateCommunityRsvpSettingsAction,
+  updateCommunityInviteEmailAction, uploadLogoAction,
 } from './actions';
+import RichTextEditor from './RichTextEditor';
 
 interface Props {
   token: string;
@@ -16,18 +18,28 @@ interface Props {
   initialRsvpNudgeDays1: number;
   initialRsvpNudgeDays2: number;
   initialRsvpNudgeDays3: number;
+  // DIP-FP-196-web: null means "using the platform default" — pre-filled
+  // with real wording by the seed migration for tenants that existed before
+  // this DIP, so in practice these are rarely actually null in the UI.
+  initialInviteEmailSubject: string | null;
+  initialInviteEmailBody: string | null;
   // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
   canEdit: boolean;
 }
 
+const DEFAULT_INVITE_SUBJECT_PLACEHOLDER = 'You have been invited to join {{tenant_name}} on FlockPulse';
+const DEFAULT_INVITE_BODY_PLACEHOLDER = '<p>You have been invited to join {{tenant_name}} on FlockPulse.</p>';
+
 const TAGLINE_MAX = 150;
 const DESCRIPTION_MAX = 500;
 const NAME_MAX = 150;
+const INVITE_EMAIL_SUBJECT_MAX = 200;
 
 export default function CommunitySettingsForm({
   token, communityName, initialLogoUrl, initialTagline, initialDescription,
   initialAttendanceWindowHours, initialRsvpClosureDaysDefault,
-  initialRsvpNudgeDays1, initialRsvpNudgeDays2, initialRsvpNudgeDays3, canEdit,
+  initialRsvpNudgeDays1, initialRsvpNudgeDays2, initialRsvpNudgeDays3,
+  initialInviteEmailSubject, initialInviteEmailBody, canEdit,
 }: Props) {
   const [name, setName] = useState(communityName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
@@ -46,6 +58,11 @@ export default function CommunitySettingsForm({
   const [logoSaved, setLogoSaved] = useState(false);
   const [rsvpSettingsError, setRsvpSettingsError] = useState<string | null>(null);
   const [rsvpSettingsSaved, setRsvpSettingsSaved] = useState(false);
+  const [inviteEmailSubject, setInviteEmailSubject] = useState(initialInviteEmailSubject ?? '');
+  const [inviteEmailBody, setInviteEmailBody] = useState(initialInviteEmailBody ?? '');
+  const [inviteEmailBodyIsEmpty, setInviteEmailBodyIsEmpty] = useState(!initialInviteEmailBody);
+  const [inviteEmailError, setInviteEmailError] = useState<string | null>(null);
+  const [inviteEmailSaved, setInviteEmailSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialLogoUrl);
@@ -107,6 +124,26 @@ export default function CommunitySettingsForm({
       const res = await updateCommunityRsvpSettingsAction(token, fd);
       if (res.error) { setRsvpSettingsError(res.error); return; }
       setRsvpSettingsSaved(true);
+    });
+  }
+
+  function handleInviteEmailSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setInviteEmailError(null);
+    setInviteEmailSaved(false);
+    const fd = new FormData(e.currentTarget);
+    // DIP-FP-196-web: Tiptap's "empty" editor still outputs markup like
+    // <p></p>, not an empty string — sending that through would defeat the
+    // "clear the field to reset to the platform default" semantics the
+    // server action relies on (a plain .trim() on <p></p> is still truthy).
+    // inviteEmailBodyIsEmpty is Tiptap's own isEmpty check, tracked via
+    // RichTextEditor's onChange, so this overrides the hidden field's raw
+    // value with a real empty string when the admin has genuinely cleared it.
+    if (inviteEmailBodyIsEmpty) fd.set('inviteEmailBody', '');
+    startTransition(async () => {
+      const res = await updateCommunityInviteEmailAction(token, fd);
+      if (res.error) { setInviteEmailError(res.error); return; }
+      setInviteEmailSaved(true);
     });
   }
 
@@ -364,6 +401,78 @@ export default function CommunitySettingsForm({
             <div>
               <p className="text-zinc-500 dark:text-zinc-400">Attendance Reporting and Confirmation Window (hours)</p>
               <p>{attendanceWindowHours}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Invitation Email — DIP-FP-196-web */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Invitation Email</h2>
+        <p className="mb-4 text-xs text-zinc-500 dark:text-zinc-400">
+          Customize the subject and message new members receive when invited. Available placeholders:{' '}
+          <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">{'{{invite_link}}'}</code>,{' '}
+          <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">{'{{tenant_name}}'}</code>,{' '}
+          <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">{'{{invitee_email}}'}</code>.
+          Clear a field to reset it to the default.
+        </p>
+        {canEdit ? (
+          <form onSubmit={handleInviteEmailSave} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Subject</label>
+              <input
+                name="inviteEmailSubject"
+                type="text"
+                maxLength={INVITE_EMAIL_SUBJECT_MAX}
+                value={inviteEmailSubject}
+                onChange={e => { setInviteEmailSubject(e.target.value); setInviteEmailSaved(false); }}
+                placeholder={DEFAULT_INVITE_SUBJECT_PLACEHOLDER}
+                className={inputClass}
+              />
+              <p className="text-right text-xs text-zinc-400">{inviteEmailSubject.length}/{INVITE_EMAIL_SUBJECT_MAX}</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Body</label>
+              <RichTextEditor
+                content={inviteEmailBody || DEFAULT_INVITE_BODY_PLACEHOLDER}
+                onChange={(html, isEmpty) => {
+                  setInviteEmailBody(html);
+                  setInviteEmailBodyIsEmpty(isEmpty);
+                  setInviteEmailSaved(false);
+                }}
+              />
+              {/* RichTextEditor isn't a native form input — its current HTML
+                  is mirrored here so handleInviteEmailSave's FormData read
+                  picks it up, same pattern the file input above uses via its
+                  own ref/onChange, just via a hidden field instead. */}
+              <input type="hidden" name="inviteEmailBody" value={inviteEmailBody} readOnly />
+            </div>
+
+            {inviteEmailError && <p className="text-sm text-red-600 dark:text-red-400">{inviteEmailError}</p>}
+            {inviteEmailSaved && <p className="text-sm text-green-600 dark:text-green-400">Invitation email saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save invitation email'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col gap-4 text-sm text-zinc-700 dark:text-zinc-300">
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Subject</p>
+              <p>{inviteEmailSubject || DEFAULT_INVITE_SUBJECT_PLACEHOLDER}</p>
+            </div>
+            <div>
+              <p className="text-zinc-500 dark:text-zinc-400">Body</p>
+              <div
+                className="[&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                dangerouslySetInnerHTML={{ __html: inviteEmailBody || DEFAULT_INVITE_BODY_PLACEHOLDER }}
+              />
             </div>
           </div>
         )}

@@ -40,6 +40,8 @@ export default async function CommunityPage() {
           initialRsvpNudgeDays1={settings.rsvp_nudge_days_1}
           initialRsvpNudgeDays2={settings.rsvp_nudge_days_2}
           initialRsvpNudgeDays3={settings.rsvp_nudge_days_3}
+          initialInviteEmailSubject={settings.invite_email_subject}
+          initialInviteEmailBody={settings.invite_email_body}
           canEdit={isAdminTier(role)}
         />
       </div>

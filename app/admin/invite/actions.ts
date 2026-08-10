@@ -27,6 +27,11 @@ export interface InviteActionState {
   success?: boolean;
   invitationId?: string;
   error?: string;
+  // DIP-FP-196-web: set when the invitation and Auth identity were created
+  // successfully but the email itself failed to send (e.g. Mailtrap
+  // credentials not configured) — a genuine partial success, not a failure
+  // to retry from scratch.
+  warning?: string;
 }
 
 export async function sendInviteAction(
@@ -59,6 +64,13 @@ export async function sendInviteAction(
     if (code === 'DUPLICATE_INVITE') return { error: `A pending invite for ${email} already exists` };
     if (code === 'INVITE_FAILED') return { error: `Could not send invite: ${(err as Error).message}` };
     if (code === 'NOT_FOUND') return { error: 'Invalid role selected' };
+    if (code === 'EMAIL_SEND_FAILED') {
+      return {
+        success: true,
+        invitationId: (err as { invitationId?: string }).invitationId,
+        warning: (err as Error).message,
+      };
+    }
     return { error: 'An unexpected error occurred. Please try again.' };
   }
 }
