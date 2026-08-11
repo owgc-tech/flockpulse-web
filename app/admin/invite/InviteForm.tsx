@@ -31,10 +31,10 @@ export default function InviteForm({ token, groups, roleCatalog }: InviteFormPro
     return (
       <div className="flex flex-col gap-6">
         <a
-          href="/admin/members"
+          href="/admin/invitations"
           className="self-start text-sm font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
-          ← Back to Members
+          ← Back to Invitations
         </a>
         {state.warning ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -52,10 +52,10 @@ export default function InviteForm({ token, groups, roleCatalog }: InviteFormPro
   return (
     <div className="flex flex-col gap-6">
       <a
-        href="/admin/members"
+        href="/admin/invitations"
         className="self-start text-sm font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
       >
-        ← Back to Members
+        ← Back to Invitations
       </a>
       <form action={formAction} className="flex flex-col gap-5">
         {state.error && (
