@@ -14,11 +14,25 @@ function supabaseBrowserClient() {
   );
 }
 
+// DIP-FP-201-web: role_catalog's RLS policy only checks tenant_id, so a
+// client authenticated as this pre-registration user (bearer = their invite
+// access token, whose app_metadata already carries tenant_id) already
+// satisfies it — no service-role endpoint needed to read the tenant's
+// configured role title.
+function supabaseAuthedClient(accessToken: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+  );
+}
+
 export default function CompleteProfileForm() {
   const router = useRouter();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [roleTitle, setRoleTitle] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,8 +55,24 @@ export default function CompleteProfileForm() {
         setLoadError('Session invalid. Please click your invitation link again.');
         return;
       }
-      setRole((user.app_metadata as Record<string, string>)?.role ?? null);
-      setGroupId((user.app_metadata as Record<string, string>)?.group_id ?? null);
+      const metadata = user.app_metadata as Record<string, string>;
+      setRole(metadata?.role ?? null);
+      setGroupId(metadata?.group_id ?? null);
+
+      // DIP-FP-201-web: resolve the tenant's actual configured role-catalog
+      // title. Best-effort — role_catalog_entry_id is absent on invitations
+      // sent before this DIP, and the entry could since have been renamed
+      // away or soft-deleted; either case just falls back to the generic
+      // Admin/Leader/Member label already used below.
+      if (metadata?.role_catalog_entry_id) {
+        const authedDb = supabaseAuthedClient(token);
+        const { data: entry } = await authedDb
+          .from('role_catalog')
+          .select('name')
+          .eq('id', metadata.role_catalog_entry_id)
+          .single();
+        if (entry?.name) setRoleTitle(entry.name);
+      }
     })();
   }, []);
 
@@ -65,16 +95,26 @@ export default function CompleteProfileForm() {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 p-6 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
         <p className="font-medium">Registration complete.</p>
-        {role === 'ADMIN' && (
-          <button
-            type="button"
-            onClick={() => router.push('/login')}
-            className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-          >
-            Continue to Login
-          </button>
+        {role === 'ADMIN' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              Continue to Login
+            </button>
+            <p className="text-sm">Download the FlockPulse app to get started. Your login email is the address your invitation was sent to.</p>
+          </>
+        ) : (
+          // DIP-FP-201-web: no stable public app-store link exists yet for
+          // either platform (iOS is TestFlight-only, added per-tester
+          // manually; Android's link changes per build) — this states the
+          // real next step instead of a fake/broken download button.
+          <p className="text-sm">
+            You&apos;re all set. Your admin will follow up separately with an invitation to install the FlockPulse mobile app — watch for that message at the email address your invitation was sent to.
+          </p>
         )}
-        <p className="text-sm">Download the FlockPulse app to get started. Your login email is the address your invitation was sent to.</p>
       </div>
     );
   }
@@ -92,7 +132,7 @@ export default function CompleteProfileForm() {
       {/* Read-only role/group — sourced from app_metadata set at invite time */}
       <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
         <span className="font-medium text-zinc-800 dark:text-zinc-200">Role: </span>
-        {role ? roleLabel[role] ?? role : '—'}
+        {roleTitle ?? (role ? roleLabel[role] ?? role : '—')}
         {groupId && (
           <span className="ml-4">
             <span className="font-medium text-zinc-800 dark:text-zinc-200">Group assigned</span>

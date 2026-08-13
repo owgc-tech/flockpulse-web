@@ -18,10 +18,15 @@ function serviceClient() {
 // whose invite_email_subject/body are still NULL (not yet customized, or a
 // tenant created after that migration ran) actually gets sent. If you change
 // one, change the other.
+//
+// DIP-FP-201-web: the link is now a "bulletproof button" — inline style
+// attribute, not a <style> block, since many email clients (Gmail, Outlook)
+// strip <style> blocks entirely. Plain-text fallback link paragraph below is
+// unchanged, for clients that strip inline styling too.
 const DEFAULT_INVITE_SUBJECT = 'You have been invited to join {{tenant_name}} on FlockPulse';
 const DEFAULT_INVITE_BODY =
   '<p>You have been invited to join {{tenant_name}} on FlockPulse.</p>' +
-  '<p><a href="{{invite_link}}">Accept your invitation</a></p>' +
+  '<p><a href="{{invite_link}}" style="background-color:#18181b;border-radius:9999px;color:#ffffff;display:inline-block;font-family:Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;line-height:1.2;padding:12px 28px;text-align:center;text-decoration:none;">Accept your invitation</a></p>' +
   '<p>If the button above does not work, copy and paste this link into your browser:</p>' +
   '<p>{{invite_link}}</p>';
 
@@ -89,9 +94,15 @@ export async function inviteMember(
   // Step 2: Write tenant_id, role, group_id into app_metadata immediately.
   // app_metadata is server-controlled (not writable by the invited user's JWT),
   // so FP-55's registration completion can trust these values unconditionally.
-  // Unchanged from before this DIP.
+  //
+  // DIP-FP-201-web: also writes role_catalog_entry_id, so CompleteProfileForm
+  // can resolve the tenant's actual configured role title client-side —
+  // role_catalog's RLS policy (tenant_id = get_tenant_id()) already reads
+  // app_metadata.tenant_id out of the JWT, so this alone is enough to permit
+  // that read once the registrant's access token is used as the bearer, no
+  // new endpoint required.
   const { error: metaError } = await db.auth.admin.updateUserById(authUserId, {
-    app_metadata: { tenant_id: tenantId, role, group_id: groupId },
+    app_metadata: { tenant_id: tenantId, role, group_id: groupId, role_catalog_entry_id: roleCatalogEntryId },
   });
 
   if (metaError) {
