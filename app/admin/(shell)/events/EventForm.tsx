@@ -148,6 +148,12 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // FP-214: keyed by field name — true means "required, and left blank at the
+  // last Save attempt". Drives a red border on that one field. Each entry is
+  // cleared in its own field's onChange the instant it becomes non-empty, so the
+  // highlight goes away as the user fixes it without re-clicking Save.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
+
   // FP-63: Repeats — Create mode only, never Edit (individual occurrences are edited
   // normally afterward, not as a series).
   const [repeats, setRepeats] = useState(false);
@@ -361,6 +367,30 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
     e.preventDefault();
     setError(null);
 
+    // FP-214: flag every currently-applicable required field that's blank, using
+    // the same conditional visibility that already governs which fields render
+    // (e.g. Location fields don't exist while isAnnouncement, so never flag them
+    // then). If anything's missing, paint the red borders and stop here without
+    // calling the save API — same early-return shape as the occurrence-cap and
+    // announcement-body checks just below.
+    const blanks: Record<string, boolean> = {
+      name: !name.trim(),
+      eventType: !eventTypeId,
+      start: !startDatetime,
+      end: !isAnnouncement && !endDatetime,
+      announcementBody: isAnnouncement && !announcementBody.trim(),
+      locationName: !isAnnouncement && !locationName.trim(),
+      locationAddress: !isAnnouncement && !locationAddress.trim(),
+      zoomAccount: !isAnnouncement && onlineMeetingMode === 'ZOOM' && !onlineMeetingResourceId,
+      platformName: !isAnnouncement && onlineMeetingMode === 'OTHER' && !onlineMeetingPlatformLabel.trim(),
+      joinLink: !isAnnouncement && onlineMeetingMode === 'OTHER' && !onlineMeetingUrl.trim(),
+    };
+    if (Object.values(blanks).some(Boolean)) {
+      setFieldErrors(blanks);
+      return;
+    }
+    setFieldErrors({});
+
     if (repeats && overCap) {
       setError(`Occurrence count exceeds the cap of ${cap} for ${frequency.toLowerCase()} events`);
       return;
@@ -488,8 +518,24 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
   const labelClass = 'text-sm font-medium text-zinc-700 dark:text-zinc-300';
   const fieldClass = 'flex flex-col gap-1.5';
 
+  // FP-214: base inputClass, plus a red border when this field was flagged blank
+  // at Save time. `border-red-500!` (important) is needed to beat inputClass's
+  // own border-zinc-300 / dark:border-zinc-700.
+  const requiredClass = (key: string) =>
+    fieldErrors[key] ? `${inputClass} border-red-500!` : inputClass;
+
+  // FP-214: drop a field's blank flag the moment it has a value again — called
+  // from each required field's own onChange so the highlight clears as the user
+  // types, no second Save needed.
+  const clearFieldError = (key: string) =>
+    setFieldErrors(prev => (prev[key] ? { ...prev, [key]: false } : prev));
+
+  // FP-214: noValidate hands required-field enforcement to handleSubmit's pass
+  // above so every blank field lights up at once, instead of the browser halting
+  // on the first one with a single tooltip. The `required` attributes stay for
+  // semantics / assistive tech.
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           {error}
@@ -498,12 +544,22 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
       <div className={fieldClass}>
         <label className={labelClass}>Name</label>
-        <input className={inputClass} value={name} onChange={e => setName(e.target.value)} required />
+        <input
+          className={requiredClass('name')}
+          value={name}
+          onChange={e => { setName(e.target.value); if (e.target.value.trim()) clearFieldError('name'); }}
+          required
+        />
       </div>
 
       <div className={fieldClass}>
         <label className={labelClass}>Event type</label>
-        <select className={inputClass} value={eventTypeId} onChange={e => setEventTypeId(e.target.value)} required>
+        <select
+          className={requiredClass('eventType')}
+          value={eventTypeId}
+          onChange={e => { setEventTypeId(e.target.value); if (e.target.value) clearFieldError('eventType'); }}
+          required
+        >
           <option value="" disabled>Select…</option>
           {eventTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
@@ -532,7 +588,13 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       <div className="grid grid-cols-2 gap-4">
         <div className={fieldClass}>
           <label className={labelClass}>Start</label>
-          <input type="datetime-local" className={inputClass} value={startDatetime} onChange={e => setStartDatetime(e.target.value)} required />
+          <input
+            type="datetime-local"
+            className={requiredClass('start')}
+            value={startDatetime}
+            onChange={e => { setStartDatetime(e.target.value); if (e.target.value) clearFieldError('start'); }}
+            required
+          />
         </div>
         {isAnnouncement ? (
           <div className={fieldClass}>
@@ -544,7 +606,13 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         ) : (
           <div className={fieldClass}>
             <label className={labelClass}>End</label>
-            <input type="datetime-local" className={inputClass} value={endDatetime} onChange={e => setEndDatetime(e.target.value)} required />
+            <input
+              type="datetime-local"
+              className={requiredClass('end')}
+              value={endDatetime}
+              onChange={e => { setEndDatetime(e.target.value); if (e.target.value) clearFieldError('end'); }}
+              required
+            />
           </div>
         )}
       </div>
@@ -553,9 +621,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
         <div className={fieldClass}>
           <label className={labelClass}>Announcement body</label>
           <textarea
-            className={`${inputClass} min-h-32`}
+            className={`${requiredClass('announcementBody')} min-h-32`}
             value={announcementBody}
-            onChange={e => setAnnouncementBody(e.target.value)}
+            onChange={e => { setAnnouncementBody(e.target.value); if (e.target.value.trim()) clearFieldError('announcementBody'); }}
             required
           />
         </div>
@@ -564,14 +632,24 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       {!isAnnouncement && (
         <div className={fieldClass}>
           <label className={labelClass}>Location name</label>
-          <input className={inputClass} value={locationName} onChange={e => setLocationName(e.target.value)} required />
+          <input
+            className={requiredClass('locationName')}
+            value={locationName}
+            onChange={e => { setLocationName(e.target.value); if (e.target.value.trim()) clearFieldError('locationName'); }}
+            required
+          />
         </div>
       )}
 
       {!isAnnouncement && (
         <div className={fieldClass}>
           <label className={labelClass}>Location address</label>
-          <input className={inputClass} value={locationAddress} onChange={e => setLocationAddress(e.target.value)} required />
+          <input
+            className={requiredClass('locationAddress')}
+            value={locationAddress}
+            onChange={e => { setLocationAddress(e.target.value); if (e.target.value.trim()) clearFieldError('locationAddress'); }}
+            required
+          />
           {locationAddress && (
             <a
               href={getMapsUrl(locationAddress)}
@@ -608,9 +686,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
             <div className={fieldClass}>
               <label className={labelClass}>Zoom account</label>
               <select
-                className={inputClass}
+                className={requiredClass('zoomAccount')}
                 value={onlineMeetingResourceId}
-                onChange={e => setOnlineMeetingResourceId(e.target.value)}
+                onChange={e => { setOnlineMeetingResourceId(e.target.value); if (e.target.value) clearFieldError('zoomAccount'); }}
                 required
               >
                 <option value="" disabled>Select…</option>
@@ -624,9 +702,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
               <div className={fieldClass}>
                 <label className={labelClass}>Platform name</label>
                 <input
-                  className={inputClass}
+                  className={requiredClass('platformName')}
                   value={onlineMeetingPlatformLabel}
-                  onChange={e => setOnlineMeetingPlatformLabel(e.target.value)}
+                  onChange={e => { setOnlineMeetingPlatformLabel(e.target.value); if (e.target.value.trim()) clearFieldError('platformName'); }}
                   placeholder="e.g. Google Meet"
                   required
                 />
@@ -634,9 +712,9 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
               <div className={fieldClass}>
                 <label className={labelClass}>Join link</label>
                 <input
-                  className={inputClass}
+                  className={requiredClass('joinLink')}
                   value={onlineMeetingUrl}
-                  onChange={e => setOnlineMeetingUrl(e.target.value)}
+                  onChange={e => { setOnlineMeetingUrl(e.target.value); if (e.target.value.trim()) clearFieldError('joinLink'); }}
                   placeholder="https://…"
                   required
                 />
