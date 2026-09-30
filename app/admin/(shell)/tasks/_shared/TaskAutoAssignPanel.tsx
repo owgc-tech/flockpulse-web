@@ -12,7 +12,7 @@ interface Props {
   members: MemberOption[];
   eventTypes: EventTypeOption[];
   token: string;
-  // FP-220: tenants.task_assignment_limit — applies to non-individualOnly tasks only.
+  // FP-220: tenants.task_assignment_limit — applies to every task.
   taskAssignmentLimit: number;
 }
 
@@ -71,8 +71,9 @@ export default function TaskAutoAssignPanel({
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null;
   const individualOnly = selectedTask?.individual_only ?? false;
   const taskLabel = selectedTask?.name ?? 'Task';
-  // FP-220: individualOnly tasks aren't subject to this cap.
-  const maxSelections = individualOnly ? undefined : taskAssignmentLimit;
+  // FP-220-adj-1: the cap applies to every task; individualOnly only controls
+  // whether groups are offered, so the two props compose in the picker.
+  const maxSelections = taskAssignmentLimit;
 
   // A roster built for one task's individual_only constraint isn't
   // necessarily valid for another, so switching tasks clears it. The

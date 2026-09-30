@@ -73,10 +73,12 @@ async function validateAssignee(assignee: AssigneeSelector | null | undefined, t
   }
 }
 
-// FP-220: server-side enforcement of tenants.task_assignment_limit — the
-// picker's maxSelections is convenience only. Combined group + member count,
-// non-individual_only tasks only (individual_only tasks are restricted to
-// individuals by their own rules and aren't subject to this cap).
+// FP-220 / FP-220-adj-1: server-side enforcement of the assignee rules — the
+// pickers are convenience only. Two independent checks:
+//   1. tenants.task_assignment_limit caps the combined group + member count for
+//      EVERY task (individual_only included — it changes what can be assigned,
+//      not whether the count limit applies).
+//   2. individual_only tasks can never have groups, whatever the client sent.
 async function validateAssigneeLimit(
   assignee: AssigneeSelector | null | undefined, taskId: string, tenantId: string
 ): Promise<void> {
@@ -85,8 +87,11 @@ async function validateAssigneeLimit(
   if (count === 0) return;
 
   const [task, limit] = await Promise.all([getTaskById(tenantId, taskId), getTaskAssignmentLimit(tenantId)]);
-  if (!task.individual_only && count > limit) {
+  if (count > limit) {
     throw err('VALIDATION_ERROR', `A task can be assigned to at most ${limit} groups/individuals combined`);
+  }
+  if (task.individual_only && (assignee.group_ids?.length ?? 0) > 0) {
+    throw err('VALIDATION_ERROR', 'This task can only be assigned to individuals, not groups');
   }
 }
 

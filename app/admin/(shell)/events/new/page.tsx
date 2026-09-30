@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
+import { getTenantSettings } from '@/src/features/tenant/service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventForm from '../EventForm';
 
@@ -19,10 +20,11 @@ export default async function CreateEventPage() {
   // their subsequent edit/publish/cancel rights to what they create here.
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
-  const [eventTypes, groups, members] = await Promise.all([
+  const [eventTypes, groups, members, tenantSettings] = await Promise.all([
     listEventTypes(tenantId),
     listGroups(tenantId),
     listMembers(tenantId),
+    getTenantSettings(tenantId),
   ]);
 
   return (
@@ -34,7 +36,7 @@ export default async function CreateEventPage() {
             New events are created as drafts and don&apos;t target anyone until published.
           </p>
         </div>
-        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} />
+        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} taskAssignmentLimit={tenantSettings.task_assignment_limit} />
       </div>
     </div>
   );

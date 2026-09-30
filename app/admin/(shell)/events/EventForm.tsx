@@ -39,6 +39,9 @@ interface Props {
   // so its Owner section needs no separate role prop), this form is also reachable by
   // Leader-tier for events they own — the Owner section itself must stay Admin-only.
   isAdmin?: boolean;
+  // FP-220-adj-1: tenants.task_assignment_limit — caps the task assignment pickers
+  // below (not Target audience, which is intentionally uncapped).
+  taskAssignmentLimit: number;
 }
 
 function toLocalInputValue(iso: string): string {
@@ -47,7 +50,7 @@ function toLocalInputValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function EventForm({ token, eventTypes, groups, members, initialEvent, isAdmin }: Props) {
+export default function EventForm({ token, eventTypes, groups, members, initialEvent, isAdmin, taskAssignmentLimit }: Props) {
   const router = useRouter();
   const isEdit = !!initialEvent;
 
@@ -806,6 +809,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
                     onToggleGroup={id => toggleTaskGroup(t.id, id)} onToggleMember={id => toggleTaskMember(t.id, id)}
                     label={t.name}
                     individualOnly={t.individual_only}
+                    maxSelections={taskAssignmentLimit}
                   />
                 </div>
               );
