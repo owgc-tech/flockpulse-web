@@ -218,13 +218,13 @@ export async function runTaskAutoAssign(
 ): Promise<RunTaskAutoAssignResult> {
   const task = await getTaskById(tenantId, taskId);
   await validateRoster(roster, tenantId, { individualOnly: task.individual_only });
-  // FP-220: the roster picker is capped client-side by the same tenant limit
-  // (non-individual_only tasks only) — enforced here too, never client alone.
-  if (!task.individual_only) {
-    const limit = await getTaskAssignmentLimit(tenantId);
-    if (roster.length > limit) {
-      throw err('VALIDATION_ERROR', `A roster can contain at most ${limit} groups/individuals combined`);
-    }
+  // FP-220 / FP-220-adj-1: the roster picker is capped client-side by the same
+  // tenant limit (every task, individual_only included) — enforced here too,
+  // never client alone. (validateRoster above already rejects groups for
+  // individual_only tasks.)
+  const limit = await getTaskAssignmentLimit(tenantId);
+  if (roster.length > limit) {
+    throw err('VALIDATION_ERROR', `A roster can contain at most ${limit} groups/individuals combined`);
   }
   await validateEventTypeIds(eventTypeIds, tenantId);
   const assignments = await runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);

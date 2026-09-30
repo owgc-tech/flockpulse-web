@@ -4,6 +4,7 @@ import { getEventById } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
+import { getTenantSettings } from '@/src/features/tenant/service';
 import type { EventDetailRow } from '@/src/features/events/event.types';
 import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventForm from '../../EventForm';
@@ -37,10 +38,11 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
     redirect(`/admin/events/${id}`);
   }
 
-  const [eventTypes, groups, members] = await Promise.all([
+  const [eventTypes, groups, members, tenantSettings] = await Promise.all([
     listEventTypes(tenantId),
     listGroups(tenantId),
     listMembers(tenantId),
+    getTenantSettings(tenantId),
   ]);
 
   return (
@@ -49,7 +51,7 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Edit event</h1>
         </div>
-        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} initialEvent={event} isAdmin={isAdminTier(role)} />
+        <EventForm token={token} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} initialEvent={event} isAdmin={isAdminTier(role)} taskAssignmentLimit={tenantSettings.task_assignment_limit} />
       </div>
     </div>
   );
