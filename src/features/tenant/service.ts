@@ -31,7 +31,7 @@ function err(code: string, message: string): Error & { code: string } {
 export async function getTenantSettings(tenantId: string) {
   const { data, error } = await serviceClient()
     .from('tenants')
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone, created_at')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, task_assignment_limit, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone, created_at')
     .eq('id', tenantId)
     .single();
 
@@ -41,6 +41,7 @@ export async function getTenantSettings(tenantId: string) {
     name: string;
     attendance_window_hours: number;
     rsvp_closure_days_default: number;
+    task_assignment_limit: number;
     rsvp_nudge_days_1: number;
     rsvp_nudge_days_2: number;
     rsvp_nudge_days_3: number;
@@ -64,6 +65,7 @@ export async function updateTenantSettings(
     name?: string;
     attendanceWindowHours?: number;
     rsvpClosureDaysDefault?: number;
+    taskAssignmentLimit?: number;
     rsvpNudgeDays1?: number;
     rsvpNudgeDays2?: number;
     rsvpNudgeDays3?: number;
@@ -104,6 +106,18 @@ export async function updateTenantSettings(
       throw err('INVALID_VALUE', 'rsvp_closure_days_default must be an integer between 0 and 90');
     }
     patch.rsvp_closure_days_default = input.rsvpClosureDaysDefault;
+  }
+
+  // FP-220: matches the tenants_task_assignment_limit_check constraint.
+  if (input.taskAssignmentLimit !== undefined) {
+    if (
+      !Number.isInteger(input.taskAssignmentLimit) ||
+      input.taskAssignmentLimit < 1 ||
+      input.taskAssignmentLimit > 50
+    ) {
+      throw err('INVALID_VALUE', 'task_assignment_limit must be an integer between 1 and 50');
+    }
+    patch.task_assignment_limit = input.taskAssignmentLimit;
   }
 
   if (input.rsvpNudgeDays1 !== undefined) {
@@ -182,7 +196,7 @@ export async function updateTenantSettings(
     .from('tenants')
     .update(patch)
     .eq('id', tenantId)
-    .select('id, name, attendance_window_hours, rsvp_closure_days_default, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone')
+    .select('id, name, attendance_window_hours, rsvp_closure_days_default, task_assignment_limit, rsvp_nudge_days_1, rsvp_nudge_days_2, rsvp_nudge_days_3, logo_url, tagline, description, invite_email_subject, invite_email_body, timezone')
     .single();
 
   if (error) throw error;

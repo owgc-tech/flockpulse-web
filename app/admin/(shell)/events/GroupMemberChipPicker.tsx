@@ -17,6 +17,11 @@ interface Props {
   // FP-162: groundwork for FP-163, unused by any call site yet — when true,
   // groups are excluded from results entirely (search/select individuals only).
   individualOnly?: boolean;
+  // FP-220: opt-in cap on groupIds.length + memberIds.length combined. When
+  // reached, the search results are replaced by a message (removing a chip
+  // frees a slot again). Unset = uncapped, which is what event Target audience
+  // relies on — only the task-assignment call sites pass this.
+  maxSelections?: number;
 }
 
 // DIP-FP-162: replaces GroupMemberMultiSelect's two-checkbox-list layout with a single
@@ -27,7 +32,7 @@ interface Props {
 // replaces, so call sites only need the component swapped, not their surrounding state.
 export default function GroupMemberChipPicker({
   groups, members, groupIds, memberIds, onToggleGroup, onToggleMember,
-  label = 'Select', individualOnly = false,
+  label = 'Select', individualOnly = false, maxSelections,
 }: Props) {
   const [search, setSearch] = useState('');
 
@@ -39,6 +44,7 @@ export default function GroupMemberChipPicker({
     .sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`));
 
   const query = search.trim().toLowerCase();
+  const limitReached = maxSelections !== undefined && groupIds.length + memberIds.length >= maxSelections;
 
   const matchingGroups = individualOnly ? [] : groups
     .filter(g => !groupIds.includes(g.id))
@@ -104,12 +110,17 @@ export default function GroupMemberChipPicker({
         type="text"
         value={search}
         onChange={e => setSearch(e.target.value)}
+        disabled={limitReached}
         placeholder={individualOnly ? 'Search individual members…' : 'Search groups or individual members…'}
-        className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
       />
 
       <div className="max-h-48 overflow-y-auto rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        {matchingGroups.length === 0 && matchingMembers.length === 0 ? (
+        {limitReached ? (
+          <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+            Limit of {maxSelections} reached — remove one to add another.
+          </p>
+        ) : matchingGroups.length === 0 && matchingMembers.length === 0 ? (
           <p className="px-3 py-2 text-xs text-zinc-400 dark:text-zinc-500">No matches</p>
         ) : (
           <>

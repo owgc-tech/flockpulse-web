@@ -4,6 +4,7 @@ import { listMembers } from '@/src/features/members/service';
 import { listGroups } from '@/src/features/groups/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listTasks } from '@/src/features/tasks/task.service';
+import { getTenantSettings } from '@/src/features/tenant/service';
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import TaskAutoAssignPanel from '../_shared/TaskAutoAssignPanel';
 
@@ -26,11 +27,12 @@ export default async function TaskAutoAssignPage() {
 
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
 
-  const [members, groups, eventTypes, tasks] = await Promise.all([
+  const [members, groups, eventTypes, tasks, tenantSettings] = await Promise.all([
     listMembers(tenantId),
     listGroups(tenantId),
     listEventTypes(tenantId),
     listTasks(tenantId),
+    getTenantSettings(tenantId),
   ]);
 
   return (
@@ -48,6 +50,7 @@ export default async function TaskAutoAssignPage() {
           members={members ?? []}
           eventTypes={eventTypes ?? []}
           token={token}
+          taskAssignmentLimit={tenantSettings.task_assignment_limit}
         />
       </div>
     </div>
