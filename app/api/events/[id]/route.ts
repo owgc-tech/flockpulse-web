@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getEventById, updateEvent } from '@/src/features/events/service';
+import { validateLocationAddress } from '@/src/features/events/event.types';
 
 // DIP-FP-114-web: rank-based, not a literal `role === 'LEADER'` — see
 // isExactlyLeaderTier's own doc comment for why this must be rank-based
@@ -38,6 +39,13 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
       onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
       rsvpClosureDays, announcementBody, guestsAllowed,
     } = body;
+
+    // FP-219: server-side enforcement of the address length/junk check — only
+    // when the field is actually being updated (PATCH may omit it).
+    if (locationAddress !== undefined) {
+      const addressError = validateLocationAddress(locationAddress);
+      if (addressError) return errorResponse('INVALID_VALUE', addressError, 422);
+    }
 
     try {
       const event = await updateEvent(id, ctx.tenantId, {

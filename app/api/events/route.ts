@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { createEvent, listEvents } from '@/src/features/events/service';
+import { validateLocationAddress } from '@/src/features/events/event.types';
 
 // DIP-FP-114-web: Leader-tier can create events (scoped to their own via
 // created_by_member_id, set server-side from ctx.memberId — never client-supplied).
@@ -43,6 +44,11 @@ export const POST = (req: NextRequest) =>
     if (!eventTypeId || !name || !startDatetime || !endDatetime || !locationName || !locationAddress || !target) {
       return errorResponse('MISSING_FIELD', 'eventTypeId, name, startDatetime, endDatetime, locationName, locationAddress, target required', 400);
     }
+
+    // FP-219: server-side enforcement of the address length/junk check — the
+    // client-side check in EventForm is convenience only.
+    const addressError = validateLocationAddress(locationAddress);
+    if (addressError) return errorResponse('INVALID_VALUE', addressError, 422);
 
     try {
       const event = await createEvent({

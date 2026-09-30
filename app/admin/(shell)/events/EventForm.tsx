@@ -6,7 +6,7 @@ import type {
   EventDetailRow, EventTypeOption, GroupOption, MemberOption,
   CourseOption, ModuleOption, TalkOption, SeriesFrequency, MeetingResourceOption,
 } from '@/src/features/events/event.types';
-import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS } from '@/src/features/events/event.types';
+import { getMapsUrl, computeOccurrenceDates, SERIES_FREQUENCY_CAPS, LOCATION_ADDRESS_MAX_LENGTH, validateLocationAddress } from '@/src/features/events/event.types';
 import type { TaskRow } from '@/src/features/tasks/task.types';
 import type { AssigneeSelector, EventTaskAssignmentRow } from '@/src/features/tasks/eventTaskAssignment.types';
 import RepeatsFields from './RepeatsFields';
@@ -391,6 +391,16 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
     }
     setFieldErrors({});
 
+    // FP-219: format/length check on the address (blank already handled above).
+    if (!isAnnouncement) {
+      const addressError = validateLocationAddress(locationAddress);
+      if (addressError) {
+        setFieldErrors({ locationAddress: true });
+        setError(addressError);
+        return;
+      }
+    }
+
     if (repeats && overCap) {
       setError(`Occurrence count exceeds the cap of ${cap} for ${frequency.toLowerCase()} events`);
       return;
@@ -647,6 +657,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           <input
             className={requiredClass('locationAddress')}
             value={locationAddress}
+            maxLength={LOCATION_ADDRESS_MAX_LENGTH}
             onChange={e => { setLocationAddress(e.target.value); if (e.target.value.trim()) clearFieldError('locationAddress'); }}
             required
           />
