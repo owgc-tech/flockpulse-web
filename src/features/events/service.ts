@@ -717,6 +717,20 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
   });
 }
 
+// FP-223-adj-3: single-event form of the event_attendees lookup
+// listEventsForMember() uses — whether this caller is genuinely invited.
+async function isEventAttendee(tenantId: string, eventId: string, memberId: string): Promise<boolean> {
+  const { data, error } = await serviceClient()
+    .from('event_attendees')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('event_id', eventId)
+    .eq('member_id', memberId)
+    .limit(1);
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
 // DIP-FP-191-web-adj-1: callerMemberId is optional and additive — existing
 // callers (getEventRoster, cancelEvent, getEventReminderContext) pass only
 // (id, tenantId) and get acknowledged_at: null with no extra query, since
@@ -735,10 +749,11 @@ export async function getEventById(id: string, tenantId: string, callerMemberId?
     throw err;
   }
 
-  const [{ data: effectiveStatus, error: statusError }, tenantDefaultDays, acknowledgedAt] = await Promise.all([
+  const [{ data: effectiveStatus, error: statusError }, tenantDefaultDays, acknowledgedAt, isAttendee] = await Promise.all([
     serviceClient().rpc('get_event_effective_status', { p_event_id: id }),
     getTenantRsvpClosureDaysDefault(tenantId),
     callerMemberId ? getAcknowledgedAt(tenantId, id, callerMemberId) : Promise.resolve(null),
+    callerMemberId ? isEventAttendee(tenantId, id, callerMemberId) : Promise.resolve(false),
   ]);
   if (statusError) throw statusError;
 
@@ -751,6 +766,10 @@ export async function getEventById(id: string, tenantId: string, callerMemberId?
     event_type: eventType,
     created_by_member: createdByMember,
     acknowledged_at: acknowledgedAt,
+    // FP-223-adj-3: same meaning as on the list endpoint — true only with a real
+    // event_attendees row. Always false when no callerMemberId is passed (the
+    // internal callers that don't need per-caller state).
+    is_attendee: isAttendee,
     effective_status: effectiveStatus as string,
     rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
   };
