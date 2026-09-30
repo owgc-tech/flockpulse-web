@@ -183,6 +183,23 @@ export function getMapsUrl(locationAddress: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
 }
 
+// FP-219: lightweight sanity check for the Location Address field — a length
+// cap plus a rejection of obviously-junk input (blank, or one character
+// repeated throughout, e.g. "aaaaaaaa"). Not real address verification. Shared
+// by EventForm and both event API routes so client and server can't drift.
+export const LOCATION_ADDRESS_MAX_LENGTH = 200;
+
+export function validateLocationAddress(value: unknown): string | null {
+  if (typeof value !== 'string') return 'Location address must be text';
+  const trimmed = value.trim();
+  if (!trimmed) return 'Location address is required';
+  if (value.length > LOCATION_ADDRESS_MAX_LENGTH) {
+    return `Location address must be ${LOCATION_ADDRESS_MAX_LENGTH} characters or fewer`;
+  }
+  if (/^([\s\S])\1*$/u.test(trimmed)) return 'Enter a valid location address';
+  return null;
+}
+
 // ── FP-63: recurring series ──────────────────────────────────────────────────
 
 export type SeriesFrequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
