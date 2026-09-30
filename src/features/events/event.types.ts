@@ -62,6 +62,10 @@ export interface EventListRow {
   // announcement_acknowledgements. Null for any event the caller hasn't
   // acknowledged, including every non-Announcement event.
   acknowledged_at: string | null;
+  // FP-223-adj-2: true only when the caller has an event_attendees row (genuinely
+  // invited). Admins/Leader-owners also see events they were never invited to —
+  // those come back false and must not trigger RSVP prompts or badge counts.
+  is_attendee: boolean;
 }
 
 // FP-167-1: the admin Events page's paginated list row shape. Deliberately not
