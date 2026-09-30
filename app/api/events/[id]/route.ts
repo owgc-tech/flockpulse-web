@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getEventById, updateEvent } from '@/src/features/events/service';
+import { isResolvableAddress } from '@/src/lib/geocodio';
 import { validateLocationAddress } from '@/src/features/events/event.types';
 
 // DIP-FP-114-web: rank-based, not a literal `role === 'LEADER'` — see
@@ -45,6 +46,16 @@ export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: stri
     if (locationAddress !== undefined) {
       const addressError = validateLocationAddress(locationAddress);
       if (addressError) return errorResponse('INVALID_VALUE', addressError, 422);
+
+      // FP-219-adj-1: real-address verification (Geocodio), only when the
+      // address actually changed — re-saving other fields on an event whose
+      // stored address predates this check (or is a named venue Geocodio can't
+      // resolve) must not start failing, and unchanged addresses shouldn't burn
+      // the daily lookup quota. Fails open on any Geocodio-side error.
+      const existing = await getEventById(id, ctx.tenantId).catch(() => null);
+      if (existing?.location_address !== locationAddress && !(await isResolvableAddress(locationAddress))) {
+        return errorResponse('INVALID_VALUE', "We couldn't recognize this as a real address — please check it and try again", 422);
+      }
     }
 
     try {
