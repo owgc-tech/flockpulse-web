@@ -599,18 +599,24 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
   const seesAll = isAdminTier(role);
   const seesOwned = !seesAll && isLeaderTierOrAbove(role);
 
+  // FP-223-adj-2: the events this member is genuinely invited to (an
+  // event_attendees row), tracked separately from everything else they can now
+  // see (Admin: all events; Leader: owned events). Only used to mark each
+  // result with is_attendee — never to restrict the Admin list.
+  const { data: attendeeRows, error: attendeeError } = await db
+    .from('event_attendees')
+    .select('event_id')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId);
+
+  if (attendeeError) throw attendeeError;
+
+  const attendeeEventIds = new Set((attendeeRows ?? []).map((r: { event_id: string }) => r.event_id));
+
   // null means "no id restriction" (Admin-tier: every event in the tenant).
   let eventIds: string[] | null = null;
   if (!seesAll) {
-    const { data: attendeeRows, error: attendeeError } = await db
-      .from('event_attendees')
-      .select('event_id')
-      .eq('tenant_id', tenantId)
-      .eq('member_id', memberId);
-
-    if (attendeeError) throw attendeeError;
-
-    const ids = new Set((attendeeRows ?? []).map((r: { event_id: string }) => r.event_id));
+    const ids = new Set(attendeeEventIds);
 
     if (seesOwned) {
       const { data: ownedRows, error: ownedError } = await db
@@ -704,6 +710,9 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
       rsvp_reason: rsvp?.rsvp_reason ?? null,
       rsvp_closure_at: computeRsvpClosureAt(e.start_datetime, e.rsvp_closure_days, tenantDefaultDays),
       acknowledged_at: acknowledgedAtMap.get(e.id) ?? null,
+      // FP-223-adj-2: false for events visible only via Admin/owner widening —
+      // the caller was never invited, so mobile must not prompt/badge/allow RSVP.
+      is_attendee: attendeeEventIds.has(e.id),
     };
   });
 }
