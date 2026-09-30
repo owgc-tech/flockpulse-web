@@ -21,6 +21,7 @@ export const PATCH = (req: NextRequest) =>
         name: body.name,
         attendanceWindowHours: body.attendanceWindowHours,
         rsvpClosureDaysDefault: body.rsvpClosureDaysDefault,
+        taskAssignmentLimit: body.taskAssignmentLimit,
         rsvpNudgeDays1: body.rsvpNudgeDays1,
         rsvpNudgeDays2: body.rsvpNudgeDays2,
         rsvpNudgeDays3: body.rsvpNudgeDays3,

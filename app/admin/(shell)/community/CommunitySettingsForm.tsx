@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from 'react';
 import {
   updateCommunityDetailsAction, updateCommunityNameAction, updateCommunityRsvpSettingsAction,
-  updateCommunityInviteEmailAction, updateCommunityTimezoneAction, uploadLogoAction,
+  updateCommunityInviteEmailAction, updateCommunityTimezoneAction, updateCommunityTaskAssignmentLimitAction, uploadLogoAction,
 } from './actions';
 import RichTextEditor from './RichTextEditor';
 
@@ -25,6 +25,8 @@ interface Props {
   initialInviteEmailBody: string | null;
   // DIP-FP-198-web: NOT NULL DEFAULT 'America/Toronto' — never null.
   initialTimezone: string;
+  // FP-220: 1–50, default 5 (tenants.task_assignment_limit).
+  initialTaskAssignmentLimit: number;
   // DIP-FP-114-web: Admin-tier only — Leader-tier gets a read-only view.
   canEdit: boolean;
 }
@@ -45,7 +47,7 @@ export default function CommunitySettingsForm({
   token, communityName, initialLogoUrl, initialTagline, initialDescription,
   initialAttendanceWindowHours, initialRsvpClosureDaysDefault,
   initialRsvpNudgeDays1, initialRsvpNudgeDays2, initialRsvpNudgeDays3,
-  initialInviteEmailSubject, initialInviteEmailBody, initialTimezone, canEdit,
+  initialInviteEmailSubject, initialInviteEmailBody, initialTimezone, initialTaskAssignmentLimit, canEdit,
 }: Props) {
   const [name, setName] = useState(communityName);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
@@ -72,6 +74,9 @@ export default function CommunitySettingsForm({
   const [timezone, setTimezone] = useState(initialTimezone);
   const [timezoneError, setTimezoneError] = useState<string | null>(null);
   const [timezoneSaved, setTimezoneSaved] = useState(false);
+  const [taskAssignmentLimit, setTaskAssignmentLimit] = useState(String(initialTaskAssignmentLimit));
+  const [taskAssignmentLimitError, setTaskAssignmentLimitError] = useState<string | null>(null);
+  const [taskAssignmentLimitSaved, setTaskAssignmentLimitSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialLogoUrl);
@@ -153,6 +158,18 @@ export default function CommunitySettingsForm({
       const res = await updateCommunityInviteEmailAction(token, fd);
       if (res.error) { setInviteEmailError(res.error); return; }
       setInviteEmailSaved(true);
+    });
+  }
+
+  function handleTaskAssignmentLimitSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setTaskAssignmentLimitError(null);
+    setTaskAssignmentLimitSaved(false);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const res = await updateCommunityTaskAssignmentLimitAction(token, fd);
+      if (res.error) { setTaskAssignmentLimitError(res.error); return; }
+      setTaskAssignmentLimitSaved(true);
     });
   }
 
@@ -423,6 +440,46 @@ export default function CommunitySettingsForm({
               <p className="text-zinc-500 dark:text-zinc-400">Attendance Reporting and Confirmation Window (hours)</p>
               <p>{attendanceWindowHours}</p>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Task assignment limit — FP-220 */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Task Assignment</h2>
+        {canEdit ? (
+          <form onSubmit={handleTaskAssignmentLimitSave} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass}>Limit to Number of Assigned Individual/Groups</label>
+              <input
+                name="taskAssignmentLimit"
+                type="number"
+                min={1}
+                max={50}
+                value={taskAssignmentLimit}
+                onChange={e => { setTaskAssignmentLimit(e.target.value); setTaskAssignmentLimitSaved(false); }}
+                className={inputClass}
+                required
+              />
+              <p className="text-xs text-zinc-400">Most groups and individuals combined that can be assigned to a single task (1–50)</p>
+            </div>
+
+            {taskAssignmentLimitError && <p className="text-sm text-red-600 dark:text-red-400">{taskAssignmentLimitError}</p>}
+            {taskAssignmentLimitSaved && <p className="text-sm text-green-600 dark:text-green-400">Task assignment limit saved.</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {isPending ? 'Saving…' : 'Save limit'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="text-sm text-zinc-700 dark:text-zinc-300">
+            <p className="text-zinc-500 dark:text-zinc-400">Limit to Number of Assigned Individual/Groups</p>
+            <p>{taskAssignmentLimit}</p>
           </div>
         )}
       </div>

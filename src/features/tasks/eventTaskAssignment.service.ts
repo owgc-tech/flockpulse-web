@@ -12,6 +12,8 @@ import {
   getEventTaskAssignment,
   listEventTaskAssignmentsForEvent,
   deleteEventTaskAssignment,
+  getTaskById,
+  getTaskAssignmentLimit,
 } from './eventTaskAssignment.repository';
 import { attachEffectiveStatus } from '@/src/features/events/service';
 
@@ -71,6 +73,23 @@ async function validateAssignee(assignee: AssigneeSelector | null | undefined, t
   }
 }
 
+// FP-220: server-side enforcement of tenants.task_assignment_limit — the
+// picker's maxSelections is convenience only. Combined group + member count,
+// non-individual_only tasks only (individual_only tasks are restricted to
+// individuals by their own rules and aren't subject to this cap).
+async function validateAssigneeLimit(
+  assignee: AssigneeSelector | null | undefined, taskId: string, tenantId: string
+): Promise<void> {
+  if (!assignee) return;
+  const count = (assignee.group_ids?.length ?? 0) + (assignee.member_ids?.length ?? 0);
+  if (count === 0) return;
+
+  const [task, limit] = await Promise.all([getTaskById(tenantId, taskId), getTaskAssignmentLimit(tenantId)]);
+  if (!task.individual_only && count > limit) {
+    throw err('VALIDATION_ERROR', `A task can be assigned to at most ${limit} groups/individuals combined`);
+  }
+}
+
 async function validateEventId(eventId: string, tenantId: string): Promise<void> {
   const { data } = await serviceClient()
     .from('events')
@@ -123,6 +142,7 @@ export async function createTaskAssignment(
   await validateEventId(input.eventId, tenantId);
   await validateTaskId(input.taskId, tenantId);
   await validateAssignee(input.assignee, tenantId);
+  await validateAssigneeLimit(input.assignee, input.taskId, tenantId);
 
   try {
     return await insertEventTaskAssignment(tenantId, input);
@@ -138,6 +158,7 @@ export async function updateTaskAssignment(
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
 
   await validateAssignee(input.assignee, tenantId);
+  await validateAssigneeLimit(input.assignee, existing.task_id, tenantId);
 
   let updated: EventTaskAssignmentRow | null;
   try {

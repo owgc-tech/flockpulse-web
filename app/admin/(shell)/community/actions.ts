@@ -125,6 +125,22 @@ export async function updateCommunityTimezoneAction(
   } catch (e) { return { error: mapError(e) }; }
 }
 
+// FP-220: own independent save, same as timezone above — the task assignment
+// limit doesn't belong in either Community Details or RSVP & Attendance.
+export async function updateCommunityTaskAssignmentLimitAction(
+  token: string,
+  formData: FormData
+): Promise<CommunityActionResult> {
+  const ctx = await getAdminContext(token);
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const taskAssignmentLimit = Number(formData.get('taskAssignmentLimit'));
+  try {
+    await updateTenantSettings(ctx.tenantId, { taskAssignmentLimit });
+    return {};
+  } catch (e) { return { error: mapError(e) }; }
+}
+
 export async function uploadLogoAction(
   token: string,
   formData: FormData

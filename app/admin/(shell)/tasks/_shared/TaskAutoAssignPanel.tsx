@@ -12,6 +12,8 @@ interface Props {
   members: MemberOption[];
   eventTypes: EventTypeOption[];
   token: string;
+  // FP-220: tenants.task_assignment_limit — applies to non-individualOnly tasks only.
+  taskAssignmentLimit: number;
 }
 
 function rosterEntryName(entry: RosterEntry, groupById: Map<string, GroupOption>, memberById: Map<string, MemberOption>): string {
@@ -37,7 +39,7 @@ function slotAssigneeNames(
 // task is currently selected (tasks.individual_only), since there's no
 // per-route contract left to drift from once the screen works for any task.
 export default function TaskAutoAssignPanel({
-  tasks, groups, members, eventTypes, token,
+  tasks, groups, members, eventTypes, token, taskAssignmentLimit,
 }: Props) {
   // Starts unselected — nothing (roster, event types, slot list) is
   // meaningfully interactive until a task is picked, same "nothing shown
@@ -69,6 +71,8 @@ export default function TaskAutoAssignPanel({
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null;
   const individualOnly = selectedTask?.individual_only ?? false;
   const taskLabel = selectedTask?.name ?? 'Task';
+  // FP-220: individualOnly tasks aren't subject to this cap.
+  const maxSelections = individualOnly ? undefined : taskAssignmentLimit;
 
   // A roster built for one task's individual_only constraint isn't
   // necessarily valid for another, so switching tasks clears it. The
@@ -245,6 +249,7 @@ export default function TaskAutoAssignPanel({
           onToggleGroup={toggleRosterGroup}
           onToggleMember={toggleRosterMember}
           individualOnly={individualOnly}
+          maxSelections={maxSelections}
           label={`Add to the ${taskLabel} roster`}
         />
 
@@ -373,6 +378,7 @@ export default function TaskAutoAssignPanel({
                             onToggleGroup={id => setEditGroupIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
                             onToggleMember={id => setEditMemberIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
                             individualOnly={individualOnly}
+                            maxSelections={maxSelections}
                             label="Assignee"
                           />
                         ) : (

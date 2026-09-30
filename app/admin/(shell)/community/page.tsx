@@ -43,6 +43,7 @@ export default async function CommunityPage() {
           initialInviteEmailSubject={settings.invite_email_subject}
           initialInviteEmailBody={settings.invite_email_body}
           initialTimezone={settings.timezone}
+          initialTaskAssignmentLimit={settings.task_assignment_limit}
           canEdit={isAdminTier(role)}
         />
       </div>

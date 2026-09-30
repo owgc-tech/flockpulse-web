@@ -112,6 +112,18 @@ export async function getTaskById(tenantId: string, taskId: string): Promise<{ i
   return data as { id: string; name: string; individual_only: boolean };
 }
 
+// FP-220: tenants.task_assignment_limit — the cap on combined groups +
+// individuals assigned to a non-individual_only task.
+export async function getTaskAssignmentLimit(tenantId: string): Promise<number> {
+  const { data, error } = await serviceClient()
+    .from('tenants')
+    .select('task_assignment_limit')
+    .eq('id', tenantId)
+    .single();
+  if (error) throw error;
+  return data.task_assignment_limit as number;
+}
+
 // DIP-FP-180-adj-5: every upcoming (DRAFT/SCHEDULED/ACTIVE) event whose
 // event_type_id is in eventTypeIds AND whose end_datetime hasn't passed yet
 // is an open slot for this task, whether or not event_tasks_assignments has
