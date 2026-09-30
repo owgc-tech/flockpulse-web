@@ -642,8 +642,11 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
     // 720h (30 days). So nothing older than that, or cancelled, could survive
     // that filter anyway, and this keeps an Admin's "every event" query from
     // fetching the tenant's entire history.
+    // FP-223-adj-1: DRAFT is excluded too — drafts are web-admin-only. The
+    // Member path never sees them (no event_attendees row before publish), but
+    // these two branches query events directly and would otherwise leak them.
     const cutoff = new Date(Date.now() - 720 * 60 * 60 * 1000).toISOString();
-    eventsQuery = eventsQuery.neq('status', 'CANCELLED').gte('end_datetime', cutoff);
+    eventsQuery = eventsQuery.neq('status', 'CANCELLED').neq('status', 'DRAFT').gte('end_datetime', cutoff);
   }
 
   const { data: events, error: eventsError } = await eventsQuery
