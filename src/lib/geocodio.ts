@@ -23,11 +23,15 @@ const MIN_ACCURACY = 0.5;
 export async function isResolvableAddress(address: string): Promise<boolean> {
   // EventForm sends 'N/A' as the placeholder address for Announcements, which
   // have no physical location — nothing to verify.
-  if (address.trim() === 'N/A') return true;
+  if (address.trim() === 'N/A') {
+    console.log(`[FP-219-investigate] N/A placeholder — skipped, returning true`);
+    return true;
+  }
 
   const apiKey = process.env.GEOCODIO_API_KEY;
   if (!apiKey) {
     console.warn('[geocodio] GEOCODIO_API_KEY not set — skipping address verification');
+    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} no API key — returning true (fail open)`);
     return true;
   }
 
@@ -40,18 +44,26 @@ export async function isResolvableAddress(address: string): Promise<boolean> {
     });
     if (!res.ok) {
       console.warn(`[geocodio] HTTP ${res.status} — skipping address verification`);
+      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} HTTP ${res.status} — returning true (fail open)`);
       return true;
     }
     const data = (await res.json()) as { results?: { accuracy?: number }[] };
     if (!Array.isArray(data.results)) {
       console.warn('[geocodio] unexpected response shape — skipping address verification');
+      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} unexpected response shape — returning true (fail open)`);
       return true;
     }
-    if (data.results.length === 0) return false;
+    if (data.results.length === 0) {
+      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} rejected as unresolvable (no results) — returning false`);
+      return false;
+    }
     const best = data.results[0]?.accuracy;
-    return typeof best !== 'number' || best >= MIN_ACCURACY;
+    const resolvable = typeof best !== 'number' || best >= MIN_ACCURACY;
+    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} bestAccuracy=${best} threshold=${MIN_ACCURACY} decision=${resolvable}`);
+    return resolvable;
   } catch (err) {
     console.warn('[geocodio] lookup failed — skipping address verification', err);
+    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} lookup threw — returning true (fail open)`);
     return true;
   }
 }
