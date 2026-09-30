@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { createEvent, listEvents } from '@/src/features/events/service';
 import { validateLocationAddress } from '@/src/features/events/event.types';
+import { isResolvableAddress } from '@/src/lib/geocodio';
 
 // DIP-FP-114-web: Leader-tier can create events (scoped to their own via
 // created_by_member_id, set server-side from ctx.memberId — never client-supplied).
@@ -49,6 +50,12 @@ export const POST = (req: NextRequest) =>
     // client-side check in EventForm is convenience only.
     const addressError = validateLocationAddress(locationAddress);
     if (addressError) return errorResponse('INVALID_VALUE', addressError, 422);
+
+    // FP-219-adj-1: real-address verification (Geocodio). Fails open on any
+    // Geocodio-side error — see isResolvableAddress.
+    if (!(await isResolvableAddress(locationAddress))) {
+      return errorResponse('INVALID_VALUE', "We couldn't recognize this as a real address — please check it and try again", 422);
+    }
 
     try {
       const event = await createEvent({
