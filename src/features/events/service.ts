@@ -7,6 +7,7 @@ import { getCourse } from '@/src/features/formation/course.repository';
 import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
 import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
 import { getAcknowledgedAt, getAcknowledgedAtMap } from '@/src/features/announcements/announcement.repository';
+import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import type { EventListItemRow } from './event.types';
 
 function serviceClient() {
@@ -587,25 +588,65 @@ export async function listEventOptions(tenantId: string): Promise<{ id: string; 
 // the source of truth for "what's this member invited to" with zero manual
 // target-matching. DRAFT events never get an event_attendees row, so they're
 // excluded automatically. CANCELLED is deliberately not filtered out (FP-66 AC).
-export async function listEventsForMember(tenantId: string, memberId: string) {
+//
+// FP-223: role-tiered visibility layered on top — Members see only what they're
+// targeted on (unchanged); Leader-tier also sees events they own
+// (owner_member_id); Admin-tier sees every event in the tenant. This only
+// changes which events appear in the caller's own list — event_attendees itself
+// (notifications, badge counts, rosters) is untouched.
+export async function listEventsForMember(tenantId: string, memberId: string, role: Role) {
   const db = serviceClient();
+  const seesAll = isAdminTier(role);
+  const seesOwned = !seesAll && isLeaderTierOrAbove(role);
 
-  const { data: attendeeRows, error: attendeeError } = await db
-    .from('event_attendees')
-    .select('event_id')
-    .eq('tenant_id', tenantId)
-    .eq('member_id', memberId);
+  // null means "no id restriction" (Admin-tier: every event in the tenant).
+  let eventIds: string[] | null = null;
+  if (!seesAll) {
+    const { data: attendeeRows, error: attendeeError } = await db
+      .from('event_attendees')
+      .select('event_id')
+      .eq('tenant_id', tenantId)
+      .eq('member_id', memberId);
 
-  if (attendeeError) throw attendeeError;
+    if (attendeeError) throw attendeeError;
 
-  const eventIds = (attendeeRows ?? []).map((r: { event_id: string }) => r.event_id);
-  if (eventIds.length === 0) return [];
+    const ids = new Set((attendeeRows ?? []).map((r: { event_id: string }) => r.event_id));
 
-  const { data: events, error: eventsError } = await db
+    if (seesOwned) {
+      const { data: ownedRows, error: ownedError } = await db
+        .from('events')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('owner_member_id', memberId);
+
+      if (ownedError) throw ownedError;
+      for (const r of (ownedRows ?? []) as { id: string }[]) ids.add(r.id);
+    }
+
+    eventIds = [...ids];
+    if (eventIds.length === 0) return [];
+  }
+
+  let eventsQuery = db
     .from('events')
     .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
-    .eq('tenant_id', tenantId)
-    .in('id', eventIds)
+    .eq('tenant_id', tenantId);
+
+  if (eventIds) eventsQuery = eventsQuery.in('id', eventIds);
+
+  if (seesAll || seesOwned) {
+    // Bound the widened queries before the per-row effective-status lookup
+    // below (one RPC per event): the exclusion filter further down drops
+    // CANCELLED, and COMPLETED/LOCKED — an event is LOCKED once it has been over
+    // for longer than tenants.attendance_window_hours, which is CHECK-capped at
+    // 720h (30 days). So nothing older than that, or cancelled, could survive
+    // that filter anyway, and this keeps an Admin's "every event" query from
+    // fetching the tenant's entire history.
+    const cutoff = new Date(Date.now() - 720 * 60 * 60 * 1000).toISOString();
+    eventsQuery = eventsQuery.neq('status', 'CANCELLED').gte('end_datetime', cutoff);
+  }
+
+  const { data: events, error: eventsError } = await eventsQuery
     .order('start_datetime', { ascending: true });
 
   if (eventsError) throw eventsError;
