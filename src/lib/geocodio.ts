@@ -32,22 +32,18 @@ const MIN_ACCURACY = 0.5;
 
 /**
  * Returns false only on a clear non-resolution (Geocodio answered and found
- * nothing usable). Fails OPEN — returns true — on a missing key, network error,
+ * nothing usable, or rejected the input outright with a 422). Fails OPEN — returns true — on a missing key, network error,
  * timeout, non-2xx, or unexpected payload, so a Geocodio outage can never block
  * saving a real event.
  */
 export async function isResolvableAddress(address: string): Promise<boolean> {
   // EventForm sends 'N/A' as the placeholder address for Announcements, which
   // have no physical location — nothing to verify.
-  if (address.trim() === 'N/A') {
-    console.log(`[FP-219-investigate] N/A placeholder — skipped, returning true`);
-    return true;
-  }
+  if (address.trim() === 'N/A') return true;
 
   const apiKey = process.env.GEOCODIO_API_KEY;
   if (!apiKey) {
     console.warn('[geocodio] GEOCODIO_API_KEY not set — skipping address verification');
-    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} no API key — returning true (fail open)`);
     return true;
   }
 
@@ -58,31 +54,31 @@ export async function isResolvableAddress(address: string): Promise<boolean> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: 'no-store',
     });
+    // 422 = Geocodio says this input is definitively unprocessable (e.g. bare
+    // text with no city/state/zip context). That's a deterministic rejection,
+    // not an outage, so treat it like "no results" instead of failing open.
+    if (res.status === 422) {
+      console.warn('[geocodio] HTTP 422 — address unprocessable, rejecting');
+      return false;
+    }
     if (!res.ok) {
       console.warn(`[geocodio] HTTP ${res.status} — skipping address verification`);
-      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} HTTP ${res.status} — returning true (fail open)`);
       return true;
     }
     const data = (await res.json()) as { results?: { accuracy?: number; accuracy_type?: string }[] };
     if (!Array.isArray(data.results)) {
       console.warn('[geocodio] unexpected response shape — skipping address verification');
-      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} unexpected response shape — returning true (fail open)`);
       return true;
     }
-    if (data.results.length === 0) {
-      console.log(`[FP-219-investigate] address=${JSON.stringify(address)} rejected as unresolvable (no results) — returning false`);
-      return false;
-    }
+    if (data.results.length === 0) return false;
     const best = data.results[0]?.accuracy;
     const bestType = data.results[0]?.accuracy_type;
-    const resolvable =
+    return (
       (typeof best !== 'number' || best >= MIN_ACCURACY) &&
-      typeof bestType === 'string' && REAL_ADDRESS_TYPES.has(bestType);
-    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} bestAccuracy=${best} accuracy_type=${bestType} threshold=${MIN_ACCURACY} decision=${resolvable}`);
-    return resolvable;
+      typeof bestType === 'string' && REAL_ADDRESS_TYPES.has(bestType)
+    );
   } catch (err) {
     console.warn('[geocodio] lookup failed — skipping address verification', err);
-    console.log(`[FP-219-investigate] address=${JSON.stringify(address)} lookup threw — returning true (fail open)`);
     return true;
   }
 }
