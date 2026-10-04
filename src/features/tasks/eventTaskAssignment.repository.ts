@@ -5,6 +5,8 @@ import type {
   UpdateEventTaskAssignmentInput,
   RosterEntry,
   TaskAutoAssignSlotRow,
+  TaskAssignmentResponseRow,
+  TaskResponseStatus,
 } from './eventTaskAssignment.types';
 
 const COLS = 'id, tenant_id, event_id, task_id, assignee, created_at, updated_at';
@@ -16,19 +18,18 @@ function serviceClient() {
   );
 }
 
+// FP-221: create/update/delete go through atomic SECURITY DEFINER functions
+// (20261003000074) that do the original write plus the events.version bump and
+// response clearing in one transaction — never a separate client call after.
 export async function insertEventTaskAssignment(
   tenantId: string, input: CreateEventTaskAssignmentInput
 ): Promise<EventTaskAssignmentRow> {
-  const { data, error } = await serviceClient()
-    .from('event_tasks_assignments')
-    .insert({
-      tenant_id: tenantId,
-      event_id: input.eventId,
-      task_id: input.taskId,
-      assignee: input.assignee ?? null,
-    })
-    .select(COLS)
-    .single();
+  const { data, error } = await serviceClient().rpc('create_task_assignment', {
+    p_tenant_id: tenantId,
+    p_event_id: input.eventId,
+    p_task_id: input.taskId,
+    p_assignee: input.assignee ?? null,
+  });
 
   if (error) throw error;
   return data as EventTaskAssignmentRow;
@@ -37,18 +38,17 @@ export async function insertEventTaskAssignment(
 export async function patchEventTaskAssignment(
   id: string, tenantId: string, input: UpdateEventTaskAssignmentInput
 ): Promise<EventTaskAssignmentRow | null> {
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (input.assignee !== undefined) patch.assignee = input.assignee;
+  const { data, error } = await serviceClient().rpc('update_task_assignment', {
+    p_tenant_id: tenantId,
+    p_id: id,
+    p_assignee: input.assignee ?? null,
+    p_assignee_provided: input.assignee !== undefined,
+  });
 
-  const { data, error } = await serviceClient()
-    .from('event_tasks_assignments')
-    .update(patch)
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .select(COLS)
-    .single();
-
-  if (error) throw error;
+  if (error) {
+    if (error.code === 'FP404') return null;
+    throw error;
+  }
   return data as EventTaskAssignmentRow;
 }
 
@@ -78,14 +78,89 @@ export async function listEventTaskAssignmentsForEvent(
 }
 
 export async function deleteEventTaskAssignment(id: string, tenantId: string): Promise<boolean> {
-  const { error, count } = await serviceClient()
-    .from('event_tasks_assignments')
-    .delete({ count: 'exact' })
-    .eq('id', id)
-    .eq('tenant_id', tenantId);
+  const { data, error } = await serviceClient().rpc('delete_task_assignment', {
+    p_tenant_id: tenantId,
+    p_id: id,
+  });
 
   if (error) throw error;
-  return (count ?? 0) > 0;
+  return data === true;
+}
+
+// FP-221: submits (or changes) a member's Commit/Refuse. The function enforces
+// event-open, active member and assignee membership itself; its custom SQLSTATEs
+// (FP404/FP403/FP409/FP422) surface as error.code for the service to map.
+export async function submitTaskAssignmentResponseRpc(
+  tenantId: string, assignmentId: string, memberId: string, status: TaskResponseStatus
+): Promise<TaskAssignmentResponseRow> {
+  const { data, error } = await serviceClient().rpc('submit_task_assignment_response', {
+    p_tenant_id: tenantId,
+    p_assignment_id: assignmentId,
+    p_member_id: memberId,
+    p_status: status,
+  });
+  if (error) throw error;
+  return data as TaskAssignmentResponseRow;
+}
+
+// FP-221: ONE query for every current response a member has — listMyTaskAssignments
+// joins these to its rows in JS rather than querying per row.
+export async function listCurrentResponsesForMember(
+  tenantId: string, memberId: string, assignmentIds: string[]
+): Promise<{ assignment_id: string; status: TaskResponseStatus }[]> {
+  if (assignmentIds.length === 0) return [];
+  const { data, error } = await serviceClient()
+    .from('event_task_assignment_responses')
+    .select('assignment_id, status')
+    .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
+    .eq('is_current', true)
+    .in('assignment_id', assignmentIds);
+  if (error) throw error;
+  return (data ?? []) as { assignment_id: string; status: TaskResponseStatus }[];
+}
+
+// FP-221: current REFUSED rows for an event, with the member's name. Whether the
+// member still resolves as an assignee is filtered by the service.
+export async function listCurrentRefusedResponsesForEvent(
+  tenantId: string, eventId: string
+): Promise<{ assignment_id: string; task_id: string; member_id: string; responded_at: string; first_name: string; last_name: string }[]> {
+  const { data, error } = await serviceClient()
+    .from('event_task_assignment_responses')
+    .select('assignment_id, task_id, member_id, responded_at, members(first_name, last_name)')
+    .eq('tenant_id', tenantId)
+    .eq('event_id', eventId)
+    .eq('is_current', true)
+    .eq('status', 'REFUSED')
+    .not('assignment_id', 'is', null);
+  if (error) throw error;
+  return ((data ?? []) as unknown as {
+    assignment_id: string; task_id: string; member_id: string; responded_at: string;
+    members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
+  }[]).map((r) => {
+    const m = Array.isArray(r.members) ? r.members[0] : r.members;
+    return {
+      assignment_id: r.assignment_id,
+      task_id: r.task_id,
+      member_id: r.member_id,
+      responded_at: r.responded_at,
+      first_name: m?.first_name ?? '',
+      last_name: m?.last_name ?? '',
+    };
+  });
+}
+
+// FP-221: resolves an assignee JSONB to member ids via resolve_assignee_member_ids
+// (same rule as listMyTaskAssignments — see the comment there).
+export async function resolveAssigneeMemberIds(
+  tenantId: string, assignee: unknown
+): Promise<string[]> {
+  const { data, error } = await serviceClient().rpc('resolve_assignee_member_ids', {
+    p_tenant_id: tenantId,
+    p_assignee: assignee ?? null,
+  });
+  if (error) throw error;
+  return ((data ?? []) as { member_id: string }[]).map((r) => r.member_id);
 }
 
 // DIP-FP-180-adj-6: tenant-scoped-and-active task lookup backing the generic

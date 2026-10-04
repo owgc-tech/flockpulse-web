@@ -13,6 +13,34 @@ export interface EventTaskAssignmentRow {
   updated_at: string;
 }
 
+// FP-221: per-person response to a task assignment. Stored as permanent
+// append-only history in event_task_assignment_responses.
+export type TaskResponseStatus = 'COMMITTED' | 'REFUSED';
+
+export interface TaskAssignmentResponseRow {
+  id: string;
+  tenant_id: string;
+  assignment_id: string | null;
+  event_id: string | null;
+  task_id: string;
+  member_id: string;
+  status: TaskResponseStatus;
+  responded_at: string;
+  is_current: boolean;
+  cleared_at: string | null;
+  cleared_reason: 'SUPERSEDED' | 'REMOVED_FROM_ASSIGNMENT' | 'ASSIGNMENT_DELETED' | null;
+  created_at: string;
+}
+
+// FP-221: one outstanding refusal shown to the event owner / Admins.
+export interface OutstandingRefusal {
+  assignment_id: string;
+  task_id: string;
+  member_id: string;
+  member_name: string;
+  responded_at: string;
+}
+
 export interface CreateEventTaskAssignmentInput {
   eventId: string;
   taskId: string;
@@ -36,6 +64,8 @@ export interface MyTaskAssignmentRow {
   end_datetime: string;
   location_name: string;
   effective_status: string;
+  // FP-221: the caller's own current response (current row only, never history).
+  my_response: TaskResponseStatus | null;
 }
 
 // DIP-FP-180: roster entry for the Prayer Leader / Food Assignment round-robin
