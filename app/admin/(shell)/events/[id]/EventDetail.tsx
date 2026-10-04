@@ -278,7 +278,7 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
                   <dt className="text-zinc-500 dark:text-zinc-400">{task?.name ?? 'Unknown task'}</dt>
                   <dd className="text-zinc-900 dark:text-zinc-100">{names.length > 0 ? names.join(', ') : '—'}</dd>
                   {refusedNames.length > 0 && (
-                    <dd className="text-zinc-500 dark:text-zinc-400">Refused: {refusedNames.join(', ')}</dd>
+                    <dd className="font-bold text-red-600 dark:text-red-400">Refused: {refusedNames.join(', ')}</dd>
                   )}
                 </div>
               );
