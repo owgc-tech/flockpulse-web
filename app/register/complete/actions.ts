@@ -1,12 +1,38 @@
 'use server';
 
+import { createClient } from '@supabase/supabase-js';
 import { completeRegistration } from '@/src/features/registration/registration.service';
+import { getRoleCatalogEntry } from '@/src/features/role-catalog/role-catalog.repository';
 import type { Gender, MaritalStatus } from '@/src/features/registration/registration.types';
 
 export interface CompleteRegistrationState {
   success?: boolean;
   memberId?: string;
   error?: string;
+}
+
+// FP-228: resolves the invited role's configured title for the pre-registration
+// screen. The caller has no members row yet, so withAuth does not apply; instead
+// the token is verified with auth.getUser and tenant_id / role_catalog_entry_id are
+// taken from the VERIFIED user's app_metadata, never from the client. The lookup
+// itself uses the service role, so the user's token needs no table access.
+// Best-effort: any failure just means the form falls back to the generic label.
+export async function getInviteRoleTitleAction(accessToken: string): Promise<string | null> {
+  if (!accessToken) return null;
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) return null;
+
+  const tenantId = user.app_metadata?.tenant_id as string | undefined;
+  const entryId = user.app_metadata?.role_catalog_entry_id as string | undefined;
+  if (!tenantId || !entryId) return null;
+
+  const entry = await getRoleCatalogEntry(entryId, tenantId);
+  return entry?.name ?? null;
 }
 
 export async function completeRegistrationAction(

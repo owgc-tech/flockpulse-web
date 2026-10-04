@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { completeRegistrationAction, type CompleteRegistrationState } from './actions';
+import { completeRegistrationAction, getInviteRoleTitleAction, type CompleteRegistrationState } from './actions';
 
 const initialState: CompleteRegistrationState = {};
 
@@ -11,19 +11,6 @@ function supabaseBrowserClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-}
-
-// DIP-FP-201-web: role_catalog's RLS policy only checks tenant_id, so a
-// client authenticated as this pre-registration user (bearer = their invite
-// access token, whose app_metadata already carries tenant_id) already
-// satisfies it — no service-role endpoint needed to read the tenant's
-// configured role title.
-function supabaseAuthedClient(accessToken: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
   );
 }
 
@@ -64,14 +51,12 @@ export default function CompleteProfileForm() {
       // sent before this DIP, and the entry could since have been renamed
       // away or soft-deleted; either case just falls back to the generic
       // Admin/Leader/Member label already used below.
+      //
+      // FP-228: the lookup is a server action (service role) — the user's token
+      // no longer has any direct table access.
       if (metadata?.role_catalog_entry_id) {
-        const authedDb = supabaseAuthedClient(token);
-        const { data: entry } = await authedDb
-          .from('role_catalog')
-          .select('name')
-          .eq('id', metadata.role_catalog_entry_id)
-          .single();
-        if (entry?.name) setRoleTitle(entry.name);
+        const title = await getInviteRoleTitleAction(token).catch(() => null);
+        if (title) setRoleTitle(title);
       }
     })();
   }, []);

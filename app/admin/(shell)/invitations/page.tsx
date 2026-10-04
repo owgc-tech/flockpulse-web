@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { listInvitations } from '@/src/features/invitations/invitation.service';
+import { getTenantSettings } from '@/src/features/tenant/service';
 import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import InvitationsTable from './InvitationsTable';
 
@@ -24,8 +25,9 @@ export default async function InvitationsPage() {
 
   const invitations = await listInvitations(tenantId);
 
-  const { data: tenantData } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
-  const tenantName = tenantData?.name ?? undefined;
+  // FP-228: tenant name via the service-role path — the user-scoped client no
+  // longer has any table access.
+  const tenantName = (await getTenantSettings(tenantId)).name ?? undefined;
   const canManage = isAdminTier(role);
 
   return (
