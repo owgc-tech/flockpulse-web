@@ -36,6 +36,17 @@ function err(code: string, message: string): Error & { code: string } {
   return e;
 }
 
+// FP-234: de-duplicates group_ids and member_ids (first occurrence wins, order
+// kept) so a repeated id can neither be stored nor trip the row-count comparison.
+// null/undefined pass through untouched; keys that were absent stay absent.
+function normalizeAssignee(assignee: AssigneeSelector | null | undefined): AssigneeSelector | null | undefined {
+  if (!assignee) return assignee;
+  const out: AssigneeSelector = { ...assignee };
+  if (assignee.group_ids) out.group_ids = [...new Set(assignee.group_ids)];
+  if (assignee.member_ids) out.member_ids = [...new Set(assignee.member_ids)];
+  return out;
+}
+
 // Mirrors validateEventTypeId()/validatePrayerLeaderMemberId() in
 // src/features/events/service.ts — same pattern, applied to the assignee
 // JSONB's group_ids/member_ids arrays instead of a single FK column.
@@ -44,13 +55,25 @@ function err(code: string, message: string): Error & { code: string } {
 // and missed that later ALTER TABLE, wrongly assuming no soft-delete
 // column. Corrected: group_ids are checked tenant-scoped AND
 // not-soft-deleted, same as member_ids below.
-async function validateAssignee(assignee: AssigneeSelector | null | undefined, tenantId: string): Promise<void> {
-  if (!assignee) return;
+//
+// FP-234: takes an already de-duplicated assignee and returns the assignee to
+// save. A stale id (deleted/deactivated member, soft-deleted group) that is
+// ALREADY STORED on the assignment is silently dropped instead of rejecting the
+// whole save — it has no chip in the pickers, so the user could never remove it.
+// A NEWLY ADDED invalid id is still rejected with the original error. On create
+// there are no stored ids, so it stays fully strict.
+async function validateAssignee(
+  assignee: AssigneeSelector | null | undefined,
+  tenantId: string,
+  stored?: AssigneeSelector | null
+): Promise<AssigneeSelector | null | undefined> {
+  if (!assignee) return assignee;
   const groupIds = assignee.group_ids ?? [];
   const memberIds = assignee.member_ids ?? [];
-  if (groupIds.length === 0 && memberIds.length === 0) return;
+  if (groupIds.length === 0 && memberIds.length === 0) return assignee;
 
   const client = serviceClient();
+  const result: AssigneeSelector = { ...assignee };
 
   if (groupIds.length > 0) {
     const { data, error } = await client
@@ -60,9 +83,13 @@ async function validateAssignee(assignee: AssigneeSelector | null | undefined, t
       .is('deleted_at', null)
       .in('id', groupIds);
     if (error) throw error;
-    if ((data ?? []).length !== groupIds.length) {
+    const active = new Set((data ?? []).map((g: { id: string }) => g.id));
+    const storedGroups = new Set(stored?.group_ids ?? []);
+    const invalid = groupIds.filter((id) => !active.has(id));
+    if (invalid.some((id) => !storedGroups.has(id))) {
       throw err('VALIDATION_ERROR', 'assignee.group_ids contains a group that is invalid, soft-deleted, or belongs to a different tenant');
     }
+    if (invalid.length > 0) result.group_ids = groupIds.filter((id) => active.has(id));
   }
 
   if (memberIds.length > 0) {
@@ -73,10 +100,16 @@ async function validateAssignee(assignee: AssigneeSelector | null | undefined, t
       .is('deleted_at', null)
       .in('id', memberIds);
     if (error) throw error;
-    if ((data ?? []).length !== memberIds.length) {
+    const active = new Set((data ?? []).map((m: { id: string }) => m.id));
+    const storedMembers = new Set(stored?.member_ids ?? []);
+    const invalid = memberIds.filter((id) => !active.has(id));
+    if (invalid.some((id) => !storedMembers.has(id))) {
       throw err('VALIDATION_ERROR', 'assignee.member_ids contains a member that is invalid, soft-deleted, or belongs to a different tenant');
     }
+    if (invalid.length > 0) result.member_ids = memberIds.filter((id) => active.has(id));
   }
+
+  return result;
 }
 
 // FP-220 / FP-220-adj-1: server-side enforcement of the assignee rules — the
@@ -152,11 +185,12 @@ export async function createTaskAssignment(
 
   await validateEventId(input.eventId, tenantId);
   await validateTaskId(input.taskId, tenantId);
-  await validateAssignee(input.assignee, tenantId);
-  await validateAssigneeLimit(input.assignee, input.taskId, tenantId);
+  // FP-234: de-duplicated, then strictly validated (create has no stored ids).
+  const assignee = await validateAssignee(normalizeAssignee(input.assignee), tenantId);
+  await validateAssigneeLimit(assignee, input.taskId, tenantId);
 
   try {
-    return await insertEventTaskAssignment(tenantId, input);
+    return await insertEventTaskAssignment(tenantId, { ...input, assignee });
   } catch (error: unknown) {
     mapUnavailabilityError(error);
   }
@@ -168,12 +202,14 @@ export async function updateTaskAssignment(
   const existing = await getEventTaskAssignment(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
 
-  await validateAssignee(input.assignee, tenantId);
-  await validateAssigneeLimit(input.assignee, existing.task_id, tenantId);
+  // FP-234: de-duplicate, then drop ids that are stored-but-no-longer-active; the
+  // FP-220 limit / individual_only checks run on this final, normalized list.
+  const assignee = await validateAssignee(normalizeAssignee(input.assignee), tenantId, existing.assignee);
+  await validateAssigneeLimit(assignee, existing.task_id, tenantId);
 
   let updated: EventTaskAssignmentRow | null;
   try {
-    updated = await patchEventTaskAssignment(id, tenantId, input);
+    updated = await patchEventTaskAssignment(id, tenantId, assignee === undefined ? {} : { assignee });
   } catch (error: unknown) {
     mapUnavailabilityError(error);
   }
