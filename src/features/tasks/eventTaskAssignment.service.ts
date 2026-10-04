@@ -5,6 +5,8 @@ import type {
   CreateEventTaskAssignmentInput,
   UpdateEventTaskAssignmentInput,
   MyTaskAssignmentRow,
+  TaskResponseStatus,
+  OutstandingRefusal,
 } from './eventTaskAssignment.types';
 import {
   insertEventTaskAssignment,
@@ -14,6 +16,10 @@ import {
   deleteEventTaskAssignment,
   getTaskById,
   getTaskAssignmentLimit,
+  submitTaskAssignmentResponseRpc,
+  listCurrentResponsesForMember,
+  listCurrentRefusedResponsesForEvent,
+  resolveAssigneeMemberIds,
 } from './eventTaskAssignment.repository';
 import { attachEffectiveStatus } from '@/src/features/events/service';
 
@@ -181,6 +187,66 @@ export async function deleteTaskAssignment(id: string, tenantId: string): Promis
   await deleteEventTaskAssignment(id, tenantId);
 }
 
+// FP-221: a member commits to or refuses a task assignment. tenantId and
+// memberId come from the JWT context only. The SQL function does the checks in
+// one transaction; its custom SQLSTATEs map to canonical codes here.
+//
+// Error-code note: Engineering Spec section 6 has no code purpose-built for
+// "event not open for task responses" (ATTENDANCE_NOT_OPEN is attendance-specific
+// and misleading here, INVALID_STATE is documented as non-canonical), so this
+// uses the generic canonical VALIDATION_ERROR rather than inventing a new code.
+export async function submitTaskAssignmentResponse(
+  tenantId: string, memberId: string, assignmentId: string, status: TaskResponseStatus
+): Promise<{ assignment_id: string; status: TaskResponseStatus; responded_at: string }> {
+  if (status !== 'COMMITTED' && status !== 'REFUSED') {
+    throw err('VALIDATION_ERROR', "status must be 'COMMITTED' or 'REFUSED'");
+  }
+
+  try {
+    const row = await submitTaskAssignmentResponseRpc(tenantId, assignmentId, memberId, status);
+    return { assignment_id: assignmentId, status: row.status, responded_at: row.responded_at };
+  } catch (error: unknown) {
+    const e = error as { code?: string; message?: string };
+    if (e.code === 'FP404') throw err('NOT_FOUND', 'Event task assignment not found');
+    if (e.code === 'FP403') throw err('FORBIDDEN_SCOPE', 'You are not assigned to this task');
+    if (e.code === 'FP409') throw err('VALIDATION_ERROR', 'Responses are only accepted while the event is scheduled or active');
+    if (e.code === 'FP422') throw err('VALIDATION_ERROR', "status must be 'COMMITTED' or 'REFUSED'");
+    throw error;
+  }
+}
+
+// FP-221: current REFUSED responses on an event whose member still resolves as an
+// assignee (a refusal by someone since removed from a group, say, is hidden even
+// before anything clears it), with member names. Resolution goes through
+// resolve_assignee_member_ids — one call per assignment that actually has a
+// refusal, not per assignment on the event.
+export async function listOutstandingRefusalsForEvent(
+  tenantId: string, eventId: string
+): Promise<OutstandingRefusal[]> {
+  const refused = await listCurrentRefusedResponsesForEvent(tenantId, eventId);
+  if (refused.length === 0) return [];
+
+  const assignments = await listEventTaskAssignmentsForEvent(eventId, tenantId);
+  const assigneeById = new Map(assignments.map((a) => [a.id, a.assignee]));
+
+  const assignmentIds = [...new Set(refused.map((r) => r.assignment_id))];
+  const resolvedByAssignment = new Map<string, Set<string>>();
+  await Promise.all(assignmentIds.map(async (id) => {
+    const memberIds = await resolveAssigneeMemberIds(tenantId, assigneeById.get(id) ?? null);
+    resolvedByAssignment.set(id, new Set(memberIds));
+  }));
+
+  return refused
+    .filter((r) => resolvedByAssignment.get(r.assignment_id)?.has(r.member_id))
+    .map((r) => ({
+      assignment_id: r.assignment_id,
+      task_id: r.task_id,
+      member_id: r.member_id,
+      member_name: `${r.first_name} ${r.last_name}`.trim(),
+      responded_at: r.responded_at,
+    }));
+}
+
 export async function listTaskAssignmentsForEvent(
   eventId: string, tenantId: string
 ): Promise<EventTaskAssignmentRow[]> {
@@ -256,6 +322,10 @@ export async function listMyTaskAssignments(tenantId: string, memberId: string):
   const eventById = new Map(eventsWithStatus.map((e) => [e.id, e]));
   const taskById = new Map((tasks ?? []).map((t: { id: string; name: string }) => [t.id, t]));
 
+  // FP-221: the caller's current response per assignment — one query for all rows.
+  const responses = await listCurrentResponsesForMember(tenantId, memberId, mine.map((a) => a.id));
+  const responseByAssignment = new Map(responses.map((r) => [r.assignment_id, r.status]));
+
   return mine
     .map((a) => {
       const event = eventById.get(a.event_id);
@@ -271,6 +341,7 @@ export async function listMyTaskAssignments(tenantId: string, memberId: string):
         end_datetime: event.end_datetime,
         location_name: event.location_name,
         effective_status: event.effective_status,
+        my_response: responseByAssignment.get(a.id) ?? null,
       };
     })
     .filter((row): row is MyTaskAssignmentRow => row !== null)

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { EventDetailRow, EventTypeOption, GroupOption, MemberOption, MeetingResourceOption, RosterEntry, EffectiveStatus } from '@/src/features/events/event.types';
 import { getMapsUrl } from '@/src/features/events/event.types';
 import type { TaskRow } from '@/src/features/tasks/task.types';
-import type { EventTaskAssignmentRow } from '@/src/features/tasks/eventTaskAssignment.types';
+import type { EventTaskAssignmentRow, OutstandingRefusal } from '@/src/features/tasks/eventTaskAssignment.types';
 
 interface Props {
   event: EventDetailRow;
@@ -18,6 +18,8 @@ interface Props {
   // DIP-FP-114-web: Admin-tier OR the event's own creator. Leader-tier viewing
   // an event they didn't create gets the roster/details read-only, no mutation controls.
   canManage: boolean;
+  // FP-221: current task refusals — only ever populated when canManage is true.
+  outstandingRefusals: OutstandingRefusal[];
 }
 
 const STATUS_LABELS: Record<EffectiveStatus, string> = {
@@ -46,7 +48,7 @@ const RESPONSE_CLASS = {
   NOT_RESPONDED: 'text-zinc-400',
 } as const;
 
-export default function EventDetail({ event, eventTypes, groups, members, meetingResources, token, canManage }: Props) {
+export default function EventDetail({ event, eventTypes, groups, members, meetingResources, token, canManage, outstandingRefusals }: Props) {
   const router = useRouter();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterFilter, setRosterFilter] = useState<'ALL' | keyof typeof RESPONSE_LABELS>('ALL');
@@ -270,10 +272,14 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
                 .filter((m): m is NonNullable<typeof m> => !!m)
                 .map(m => `${m.first_name} ${m.last_name}`);
               const names = [...assignedGroupNames, ...assignedMemberNames];
+              const refusedNames = outstandingRefusals.filter(r => r.assignment_id === a.id).map(r => r.member_name);
               return (
                 <div key={a.id}>
                   <dt className="text-zinc-500 dark:text-zinc-400">{task?.name ?? 'Unknown task'}</dt>
                   <dd className="text-zinc-900 dark:text-zinc-100">{names.length > 0 ? names.join(', ') : '—'}</dd>
+                  {refusedNames.length > 0 && (
+                    <dd className="text-zinc-500 dark:text-zinc-400">Refused: {refusedNames.join(', ')}</dd>
+                  )}
                 </div>
               );
             })}
