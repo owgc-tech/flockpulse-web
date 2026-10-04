@@ -218,7 +218,7 @@ export async function submitTaskAssignmentResponse(
 // FP-221: current REFUSED responses on an event whose member still resolves as an
 // assignee (a refusal by someone since removed from a group, say, is hidden even
 // before anything clears it), with member names. Resolution goes through
-// resolve_assignee_member_ids — one call per assignment that actually has a
+// resolve_assignee_member_ids â€” one call per assignment that actually has a
 // refusal, not per assignment on the event.
 export async function listOutstandingRefusalsForEvent(
   tenantId: string, eventId: string
@@ -322,7 +322,7 @@ export async function listMyTaskAssignments(tenantId: string, memberId: string):
   const eventById = new Map(eventsWithStatus.map((e) => [e.id, e]));
   const taskById = new Map((tasks ?? []).map((t: { id: string; name: string }) => [t.id, t]));
 
-  // FP-221: the caller's current response per assignment — one query for all rows.
+  // FP-221: the caller's current response per assignment â€” one query for all rows.
   const responses = await listCurrentResponsesForMember(tenantId, memberId, mine.map((a) => a.id));
   const responseByAssignment = new Map(responses.map((r) => [r.assignment_id, r.status]));
 

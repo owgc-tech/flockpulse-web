@@ -20,7 +20,7 @@ function serviceClient() {
 
 // FP-221: create/update/delete go through atomic SECURITY DEFINER functions
 // (20261003000074) that do the original write plus the events.version bump and
-// response clearing in one transaction — never a separate client call after.
+// response clearing in one transaction â€” never a separate client call after.
 export async function insertEventTaskAssignment(
   tenantId: string, input: CreateEventTaskAssignmentInput
 ): Promise<EventTaskAssignmentRow> {
@@ -103,7 +103,7 @@ export async function submitTaskAssignmentResponseRpc(
   return data as TaskAssignmentResponseRow;
 }
 
-// FP-221: ONE query for every current response a member has — listMyTaskAssignments
+// FP-221: ONE query for every current response a member has â€” listMyTaskAssignments
 // joins these to its rows in JS rather than querying per row.
 export async function listCurrentResponsesForMember(
   tenantId: string, memberId: string, assignmentIds: string[]
@@ -151,7 +151,7 @@ export async function listCurrentRefusedResponsesForEvent(
 }
 
 // FP-221: resolves an assignee JSONB to member ids via resolve_assignee_member_ids
-// (same rule as listMyTaskAssignments — see the comment there).
+// (same rule as listMyTaskAssignments â€” see the comment there).
 export async function resolveAssigneeMemberIds(
   tenantId: string, assignee: unknown
 ): Promise<string[]> {

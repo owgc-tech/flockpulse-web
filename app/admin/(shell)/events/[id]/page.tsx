@@ -43,7 +43,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   const canManage = isAdminTier(role) || event.owner_member_id === memberId;
 
   // FP-221: outstanding task refusals are shown only to those who can manage the
-  // event (owner or Admin-tier) — never fetched, let alone passed down, otherwise.
+  // event (owner or Admin-tier) â€” never fetched, let alone passed down, otherwise.
   const outstandingRefusals = canManage ? await listOutstandingRefusalsForEvent(tenantId, event.id) : [];
 
   return (
