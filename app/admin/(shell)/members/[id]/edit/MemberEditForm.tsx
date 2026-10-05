@@ -82,8 +82,10 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     }
   }
 
-  async function handleDeactivate() {
-    if (!confirm(`Deactivate ${member.first_name} ${member.last_name}? They will no longer appear in active member lists.`)) return;
+  // FP-235: "Deactivate" is now "Remove" — it deletes the person's login and identifying
+  // details (their past activity stays, anonymized). Same endpoint, same guard handling.
+  async function handleRemove() {
+    if (!confirm(`Remove ${member.first_name} ${member.last_name}? This permanently deletes their login and personal details. Their past activity stays but shows as 'Deactivated User'. This cannot be undone. To return, they need a new invitation and start as a new member.`)) return;
     setBusy(true);
     setError(null);
     setBlockedCount(null);
@@ -121,7 +123,13 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
         setOwnedEventCount(body.error.ownedEventCount ?? null);
         return;
       }
-      setError(body?.error?.message ?? 'Failed to deactivate member');
+      // FP-235: the record was scrubbed but deleting the login account failed — calling
+      // Remove again finishes the job.
+      if (body?.error?.code === 'AUTH_DELETE_FAILED') {
+        setError('Removed, but the login account could not be deleted. Try Remove again.');
+        return;
+      }
+      setError(body?.error?.message ?? 'Failed to remove member');
       return;
     }
     router.push('/admin/members');
@@ -144,7 +152,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
         <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Edit member</h1>
         {isDeactivated && (
           <span className="inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-            Deactivated
+            Removed
           </span>
         )}
       </div>
@@ -227,8 +235,9 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
       {!isDeactivated && (
         <div className="rounded-xl border border-red-200 bg-white p-6 dark:border-red-800 dark:bg-zinc-950">
           <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
-            Deactivating a member removes them from active member lists. Deactivation is blocked
-            while the member is still someone&apos;s Assigned Leader.
+            Removing a member permanently deletes their login and personal details; their past
+            activity stays but shows as &apos;Deactivated User&apos;. Removal is blocked while the
+            member is still someone&apos;s Assigned Leader or still owns groups or events.
           </p>
           {blockedCount !== null && (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
@@ -242,7 +251,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
           {ownedGroupCount !== null && (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               {member.first_name} {member.last_name} still owns {ownedGroupCount} group{ownedGroupCount === 1 ? '' : 's'}.
-              Reassign ownership from each group&apos;s edit page before deactivating —{' '}
+              Reassign ownership from each group&apos;s edit page before removing —{' '}
               <Link href="/admin/groups" className="font-medium underline hover:no-underline">
                 Groups
               </Link>.
@@ -251,18 +260,18 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
           {ownedEventCount !== null && (
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               {member.first_name} {member.last_name} still owns {ownedEventCount} event{ownedEventCount === 1 ? '' : 's'}.
-              Reassign ownership from each event&apos;s edit page before deactivating —{' '}
+              Reassign ownership from each event&apos;s edit page before removing —{' '}
               <Link href="/admin/events" className="font-medium underline hover:no-underline">
                 Events
               </Link>.
             </div>
           )}
           <button
-            onClick={handleDeactivate}
+            onClick={handleRemove}
             disabled={busy}
             className="rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
           >
-            Deactivate member
+            Remove member
           </button>
         </div>
       )}

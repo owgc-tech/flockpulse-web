@@ -11,6 +11,6 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     const { id } = await params;
     if (!id) return errorResponse('MISSING_PARAM', 'Group id required', 400);
 
-    const members = await getGroupMembers(id, ctx.tenantId);
+    const members = await getGroupMembers(id, ctx.tenantId, true); // FP-235: per-person screen — no removed members
     return NextResponse.json({ data: members });
   });

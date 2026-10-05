@@ -40,7 +40,7 @@ export default function MembersTable({ members }: Props) {
                         ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
                         : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                     }`}>
-                      {m.deleted_at ? 'Deactivated' : 'Active'}
+                      {m.deleted_at ? 'Removed' : 'Active'}
                     </span>
                   </td>
                 </tr>

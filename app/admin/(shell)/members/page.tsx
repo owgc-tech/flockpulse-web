@@ -20,7 +20,9 @@ export default async function MembersPage() {
   // DIP-FP-114-web: Members stays fully Admin-tier-only, excluded for Leader-tier.
   if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
 
-  const members = await listMembers(tenantId, true);
+  // FP-235: a removed member is anonymized ('Deactivated User', placeholder email) and is
+  // not a person this screen should offer — active members only.
+  const members = await listMembers(tenantId);
 
   return (
     <div className="px-6 py-8">

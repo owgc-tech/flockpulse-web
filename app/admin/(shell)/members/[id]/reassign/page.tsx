@@ -26,6 +26,9 @@ export default async function BulkReassignPage({ params }: { params: Promise<{ i
     redirect('/admin/members');
   }
 
+  // FP-235: a removed member is anonymous and not offered — back to the list.
+  if (outgoingLeader.deleted_at) redirect('/admin/members');
+
   // Not role-filtered: DIP-FP-69-FP-72-adj-1 (restricting Pastoral Leader assignment to
   // LEADER/ADMIN roles) was confirmed live to have never been executed — validate_assignment_tenant()
   // has no role clause, so the incoming-Leader pool stays "any active member," matching current

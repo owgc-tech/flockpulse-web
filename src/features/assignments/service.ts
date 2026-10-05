@@ -144,13 +144,19 @@ export async function setPastoralLeader(
 }
 
 // FP-7: Leader-scoped read — returns only members assigned to this leader.
-export async function getMyAssignedMembers(tenantId: string, leaderMemberId: string) {
-  const { data, error } = await serviceClient()
+//
+// FP-235: a removed member keeps their members row (anonymized as 'Deactivated User').
+// activeOnly drops them for PER-PERSON screens that list people (the leader's own
+// "my members" list). It defaults to false because this same lookup also scopes leader
+// rosters (RSVP/announcement rosters keep an anonymous row so totals add up) and backs
+// the deactivation guard's affected-member count, which counts every assignment row.
+export async function getMyAssignedMembers(tenantId: string, leaderMemberId: string, activeOnly = false) {
+  let q = serviceClient()
     .from('assignments')
     .select(`
       id,
       member_id,
-      members!assignments_member_id_fkey (
+      members!assignments_member_id_fkey${activeOnly ? '!inner' : ''} (
         id, email, first_name, last_name, role
       )
     `)
@@ -158,6 +164,8 @@ export async function getMyAssignedMembers(tenantId: string, leaderMemberId: str
     .eq('leader_member_id', leaderMemberId)
     .eq('assignment_type', 'LEADER')
     .is('deleted_at', null);
+  if (activeOnly) q = q.is('members.deleted_at', null);
+  const { data, error } = await q;
 
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => row.members);
@@ -166,13 +174,17 @@ export async function getMyAssignedMembers(tenantId: string, leaderMemberId: str
 // FP-71: Group Edit's Membership section — the group's current active membership.
 // Returns the assignment id alongside member info so the frontend's Remove action can call
 // the existing DELETE /api/assignments?id=<assignmentId> directly — no new write path.
-export async function getGroupMembers(groupId: string, tenantId: string) {
-  const { data, error } = await serviceClient()
+//
+// FP-235: activeOnly drops removed members (anonymized rows) for the per-person
+// membership screen; it defaults to false because group-scoped reports resolve a group's
+// members through this function and keep removed members' anonymous rows so totals add up.
+export async function getGroupMembers(groupId: string, tenantId: string, activeOnly = false) {
+  let q = serviceClient()
     .from('assignments')
     .select(`
       id,
       member_id,
-      members!assignments_member_id_fkey (
+      members!assignments_member_id_fkey${activeOnly ? '!inner' : ''} (
         id, email, first_name, last_name, role
       )
     `)
@@ -180,6 +192,8 @@ export async function getGroupMembers(groupId: string, tenantId: string) {
     .eq('group_id', groupId)
     .eq('assignment_type', 'GROUP')
     .is('deleted_at', null);
+  if (activeOnly) q = q.is('members.deleted_at', null);
+  const { data, error } = await q;
 
   if (error) throw error;
   return (data ?? []).map((row: Record<string, unknown>) => ({
