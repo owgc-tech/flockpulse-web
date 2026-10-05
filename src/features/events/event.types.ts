@@ -71,11 +71,18 @@ export interface EventListRow {
   // is still live (SCHEDULED or ACTIVE). Always false for everyone else, including the
   // refuser. Not a badge input on its own; mobile decides how to show it.
   needs_attention: boolean;
+  // FP-222-adj-1: names of the tasks that have at least one outstanding refusal — only
+  // when needs_attention is true, otherwise []. Task names only, never people.
+  needs_attention_tasks: string[];
   // FP-222: true when the caller has opened this event before AND events.version has
   // moved past the version they last saw. Never opened = false (a first-time viewer
   // sees no indicator). A refusal alone is not a modification. Reflects the state
   // BEFORE any view is recorded by the same request.
   is_modified: boolean;
+  // FP-222-adj-1: labels of WHAT changed since the caller last opened the event (from the
+  // audit log; fixed vocabulary and display order, see modifiedFields.ts) — only when
+  // is_modified is true, otherwise []. Never old/new values.
+  modified_fields: string[];
 }
 
 // FP-167-1: the admin Events page's paginated list row shape. Deliberately not
@@ -98,6 +105,12 @@ export interface EventListItemRow {
   online_meeting_platform_label: string | null;
   rsvp_closure_days: number | null;
   created_at: string;
+  // FP-222-adj-1: the web events list's Needs attention marker. needs_attention is true
+  // only for an Admin-tier viewer, or a Leader for the events they own, when the event is
+  // live (SCHEDULED/ACTIVE) and has an outstanding refusal; needs_attention_tasks names
+  // the refused tasks. Always false / [] when listEvents is called without a viewer.
+  needs_attention: boolean;
+  needs_attention_tasks: string[];
 }
 
 export interface EventDetailRow extends EventListRow {

@@ -7,6 +7,7 @@ import type {
   MyTaskAssignmentRow,
   TaskResponseStatus,
   OutstandingRefusal,
+  EventTaskAssignmentWithRefusals,
 } from './eventTaskAssignment.types';
 import {
   insertEventTaskAssignment,
@@ -22,6 +23,7 @@ import {
   resolveAssigneeMemberIds,
 } from './eventTaskAssignment.repository';
 import { attachEffectiveStatus, recordEventViewBestEffort } from '@/src/features/events/service';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
 function serviceClient() {
   return createClient(
@@ -300,6 +302,41 @@ export async function listTaskAssignmentsForEvent(
   eventId: string, tenantId: string
 ): Promise<EventTaskAssignmentRow[]> {
   return await listEventTaskAssignmentsForEvent(eventId, tenantId);
+}
+
+// FP-222-adj-1: the event's task assignments plus WHO refused, for the mobile detail
+// screen (same data the web event page shows as "Refused: Name"). refused_by is filled
+// ONLY when the caller may manage the event — the exact rule app/admin/(shell)/events/[id]/
+// page.tsx uses for canManage: Admin tier, or the event's owner (events.owner_member_id).
+// For everyone else (another Leader, a plain member, the refuser) every row carries an
+// empty array, and the refusals are not even read.
+export async function listTaskAssignmentsForEventWithRefusals(
+  eventId: string, tenantId: string, caller: { memberId: string; role: Role }
+): Promise<EventTaskAssignmentWithRefusals[]> {
+  const rows = await listEventTaskAssignmentsForEvent(eventId, tenantId);
+  const empty = rows.map((r) => ({ ...r, refused_by: [] }));
+  if (rows.length === 0) return empty;
+
+  let canManage = isAdminTier(caller.role);
+  if (!canManage) {
+    const { data: event, error } = await serviceClient()
+      .from('events')
+      .select('owner_member_id')
+      .eq('id', eventId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (error) throw error;
+    canManage = !!event && event.owner_member_id === caller.memberId;
+  }
+  if (!canManage) return empty;
+
+  const refusals = await listOutstandingRefusalsForEvent(tenantId, eventId);
+  const byAssignment = new Map<string, { member_id: string; name: string }[]>();
+  for (const r of refusals) {
+    if (!byAssignment.has(r.assignment_id)) byAssignment.set(r.assignment_id, []);
+    byAssignment.get(r.assignment_id)!.push({ member_id: r.member_id, name: r.member_name });
+  }
+  return rows.map((r) => ({ ...r, refused_by: byAssignment.get(r.id) ?? [] }));
 }
 
 // FP-161-5: "My Tasks" — every task assignment that includes the calling member,

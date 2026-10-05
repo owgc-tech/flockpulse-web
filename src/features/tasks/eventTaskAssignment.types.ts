@@ -41,6 +41,20 @@ export interface OutstandingRefusal {
   responded_at: string;
 }
 
+// FP-222-adj-1: one person with an outstanding refusal on an assignment.
+export interface RefusedBy {
+  member_id: string;
+  name: string;
+}
+
+// FP-222-adj-1: GET /api/event-tasks-assignments?event_id=X rows. refused_by lists the
+// people with a CURRENT outstanding refusal on this assignment (names as on the web event
+// page: first and last) — filled ONLY for the event's owner and Admin-tier callers (the web
+// event page's canManage rule); an empty array for everyone else.
+export interface EventTaskAssignmentWithRefusals extends EventTaskAssignmentRow {
+  refused_by: RefusedBy[];
+}
+
 export interface CreateEventTaskAssignmentInput {
   eventId: string;
   taskId: string;
