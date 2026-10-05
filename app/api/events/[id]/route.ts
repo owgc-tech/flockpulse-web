@@ -17,7 +17,10 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     try {
       // DIP-FP-191-web-adj-1: callerMemberId so acknowledged_at reflects this
       // specific caller's state, not a shared/global value.
-      const event = await getEventById(id, ctx.tenantId, ctx.memberId);
+      // FP-222: ctx.role lets the detail carry the same needs_attention flag the list does
+      // (owner or Admin-tier only); is_modified/needs_attention are the state BEFORE a view
+      // is recorded — recording is POST /api/events/:id/view.
+      const event = await getEventById(id, ctx.tenantId, ctx.memberId, ctx.role);
       return NextResponse.json({ data: event });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === 'NOT_FOUND') {

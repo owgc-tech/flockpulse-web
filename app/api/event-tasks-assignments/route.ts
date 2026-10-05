@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
         eventId: event_id,
         taskId: task_id,
         assignee: assignee ?? null,
-      });
+      }, ctx.memberId); // FP-222: actor, so the editor never sees their own change as modified
       return NextResponse.json({ data: assignment }, { status: 201 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;

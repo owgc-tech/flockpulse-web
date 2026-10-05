@@ -66,6 +66,16 @@ export interface EventListRow {
   // invited). Admins/Leader-owners also see events they were never invited to —
   // those come back false and must not trigger RSVP prompts or badge counts.
   is_attendee: boolean;
+  // FP-222: shown only to the event's owner and to Admin-tier callers — true when a
+  // CURRENT assignee has an outstanding refusal on a task of this event and the event
+  // is still live (SCHEDULED or ACTIVE). Always false for everyone else, including the
+  // refuser. Not a badge input on its own; mobile decides how to show it.
+  needs_attention: boolean;
+  // FP-222: true when the caller has opened this event before AND events.version has
+  // moved past the version they last saw. Never opened = false (a first-time viewer
+  // sees no indicator). A refusal alone is not a modification. Reflects the state
+  // BEFORE any view is recorded by the same request.
+  is_modified: boolean;
 }
 
 // FP-167-1: the admin Events page's paginated list row shape. Deliberately not

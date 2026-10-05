@@ -6,6 +6,7 @@ import {
   listSlotsForTaskUpcoming,
   runAutoAssignTaskSlots,
 } from './eventTaskAssignment.repository';
+import { recordEventViewBestEffort } from '@/src/features/events/service';
 
 // DIP-FP-190-web: one entry per (event, member) pair the round-robin landed
 // on that turns out to conflict with that member's filed unavailability.
@@ -228,6 +229,12 @@ export async function runTaskAutoAssign(
   }
   await validateEventTypeIds(eventTypeIds, tenantId);
   const assignments = await runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
+  // FP-222 editor rule: auto-assign bumps the version of every event whose slot it changed;
+  // record the actor's own view for each event it returned so they never see their own
+  // run as "modified". Best-effort, never fails the run.
+  for (const eventId of new Set(assignments.map((a) => a.event_id))) {
+    await recordEventViewBestEffort(tenantId, actorMemberId, eventId);
+  }
   const conflicts = await computeUnavailabilityConflicts(tenantId, assignments);
   return { assignments, conflicts };
 }

@@ -21,7 +21,7 @@ import {
   listCurrentRefusedResponsesForEvent,
   resolveAssigneeMemberIds,
 } from './eventTaskAssignment.repository';
-import { attachEffectiveStatus } from '@/src/features/events/service';
+import { attachEffectiveStatus, recordEventViewBestEffort } from '@/src/features/events/service';
 
 function serviceClient() {
   return createClient(
@@ -177,8 +177,11 @@ function mapUnavailabilityError(error: unknown): never {
   throw error;
 }
 
+// FP-222: actorMemberId (optional, trailing) — the member who made the write. After a
+// successful write the version has been bumped, so the actor's own view is recorded at
+// the new version (best-effort) and they never see their own change as "modified".
 export async function createTaskAssignment(
-  tenantId: string, input: CreateEventTaskAssignmentInput
+  tenantId: string, input: CreateEventTaskAssignmentInput, actorMemberId?: string
 ): Promise<EventTaskAssignmentRow> {
   if (!input.eventId) throw err('VALIDATION_ERROR', 'eventId is required');
   if (!input.taskId) throw err('VALIDATION_ERROR', 'taskId is required');
@@ -189,15 +192,18 @@ export async function createTaskAssignment(
   const assignee = await validateAssignee(normalizeAssignee(input.assignee), tenantId);
   await validateAssigneeLimit(assignee, input.taskId, tenantId);
 
+  let created: EventTaskAssignmentRow;
   try {
-    return await insertEventTaskAssignment(tenantId, { ...input, assignee });
+    created = await insertEventTaskAssignment(tenantId, { ...input, assignee });
   } catch (error: unknown) {
     mapUnavailabilityError(error);
   }
+  await recordEventViewBestEffort(tenantId, actorMemberId, created.event_id);
+  return created;
 }
 
 export async function updateTaskAssignment(
-  id: string, tenantId: string, input: UpdateEventTaskAssignmentInput
+  id: string, tenantId: string, input: UpdateEventTaskAssignmentInput, actorMemberId?: string
 ): Promise<EventTaskAssignmentRow> {
   const existing = await getEventTaskAssignment(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
@@ -214,13 +220,20 @@ export async function updateTaskAssignment(
     mapUnavailabilityError(error);
   }
   if (!updated) throw err('NOT_FOUND', 'Event task assignment not found');
+  // FP-222: only when the write really changed something — update_task_assignment returns
+  // the row untouched (same updated_at, no version bump) for an identical assignee, and a
+  // no-op must not clear the actor's own "modified" state.
+  if (updated.updated_at !== existing.updated_at) {
+    await recordEventViewBestEffort(tenantId, actorMemberId, updated.event_id);
+  }
   return updated;
 }
 
-export async function deleteTaskAssignment(id: string, tenantId: string): Promise<void> {
+export async function deleteTaskAssignment(id: string, tenantId: string, actorMemberId?: string): Promise<void> {
   const existing = await getEventTaskAssignment(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
-  await deleteEventTaskAssignment(id, tenantId);
+  const deleted = await deleteEventTaskAssignment(id, tenantId);
+  if (deleted) await recordEventViewBestEffort(tenantId, actorMemberId, existing.event_id);
 }
 
 // FP-221: a member commits to or refuses a task assignment. tenantId and
