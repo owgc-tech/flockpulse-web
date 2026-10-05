@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
-import { createTaskAssignment, listTaskAssignmentsForEvent } from '@/src/features/tasks/eventTaskAssignment.service';
+import { createTaskAssignment, listTaskAssignmentsForEventWithRefusals } from '@/src/features/tasks/eventTaskAssignment.service';
 
 // Leader-tier-or-above, matching how the old prayer_leader_member_id/food_assignment
 // event columns this table replaced (FP-161-3, columns dropped in FP-161-4) were
@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
     const eventId = req.nextUrl.searchParams.get('event_id');
     if (!eventId) return errorResponse('MISSING_FIELD', 'event_id query param required', 400);
 
-    const assignments = await listTaskAssignmentsForEvent(eventId, ctx.tenantId);
+    // FP-222-adj-1: each row also carries refused_by (who refused) — filled only for the
+    // event's owner and Admin-tier callers, an empty array for everyone else.
+    const assignments = await listTaskAssignmentsForEventWithRefusals(eventId, ctx.tenantId, { memberId: ctx.memberId, role: ctx.role });
     return NextResponse.json({ data: assignments }, { status: 200 });
   });
 }

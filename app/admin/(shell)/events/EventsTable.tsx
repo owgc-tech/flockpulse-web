@@ -232,7 +232,26 @@ export default function EventsTable({
                         onClick={() => { window.location.href = `/admin/events/${ev.id}`; }}
                         className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
                       >
-                        <td className={`px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100 ${isLastRow ? 'rounded-bl-xl' : ''}`}>{ev.name}</td>
+                        <td className={`px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100 ${isLastRow ? 'rounded-bl-xl' : ''}`}>
+                          {ev.name}
+                          {/* FP-222-adj-1: shown only for an event with an outstanding refusal (and only to
+                              Admin tier / the owning Leader — decided server-side); same red bold style as the
+                              "Refused:" line on the event page. Icon + text, never colour alone. Rows without
+                              a refusal render nothing extra, so their height is unchanged. */}
+                          {ev.needs_attention ? (
+                            <div
+                              className="mt-0.5 flex items-start gap-1 text-xs font-bold text-red-600 dark:text-red-400"
+                              data-testid={`event-needs-attention-${ev.id}`}
+                            >
+                              <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-px shrink-0">
+                                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                <line x1="12" y1="9" x2="12" y2="13" />
+                                <line x1="12" y1="17" x2="12.01" y2="17" />
+                              </svg>
+                              <span>{ev.needs_attention_tasks.length > 0 ? `Needs attention: ${ev.needs_attention_tasks.join(', ')}` : 'Needs attention'}</span>
+                            </div>
+                          ) : null}
+                        </td>
                         <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">{eventTypeById.get(ev.event_type_id)?.name ?? '—'}</td>
                         <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                           {new Date(ev.start_datetime).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}

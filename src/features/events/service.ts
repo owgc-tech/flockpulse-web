@@ -9,6 +9,8 @@ import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
 import { getAcknowledgedAt, getAcknowledgedAtMap } from '@/src/features/announcements/announcement.repository';
 import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import type { EventListItemRow } from './event.types';
+import { getModifiedFieldsByEvent } from './modifiedFields';
+import { listRefusedTaskNamesByEvent } from '@/src/features/tasks/refusedTasks';
 
 function serviceClient() {
   return createClient(
@@ -488,7 +490,9 @@ async function attachEffectiveStatusBulk<T extends { id: string }>(tenantId: str
   return events.map((e) => ({ ...e, effective_status: byId.get(e.id) as string }));
 }
 
-const LIST_EVENTS_COLS = 'id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
+// FP-222-adj-1: owner_member_id is selected only to decide the Needs attention marker
+// (owner or Admin); it is stripped from the rows before they are returned.
+const LIST_EVENTS_COLS = 'id, name, status, owner_member_id, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
 
 export interface ListEventsOptions {
   limit?: number;
@@ -500,6 +504,10 @@ export interface ListEventsOptions {
   month?: string;
   // Effective status values (DRAFT/SCHEDULED/ACTIVE/COMPLETED/LOCKED/CANCELLED).
   status?: string[];
+  // FP-222-adj-1: who is looking. Needed only for the Needs attention marker, which
+  // is shown to Admin-tier callers and to a Leader for the events they own. Without
+  // a viewer every row comes back needs_attention: false.
+  viewer?: { memberId: string; role: Role };
 }
 
 export interface ListEventsResult<T> {
@@ -558,8 +566,11 @@ export async function listEvents(
   if (!options.status || options.status.length === 0) {
     const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
-    const withStatus = await attachEffectiveStatus(data ?? []);
-    return { data: withStatus as unknown as EventListItemRow[], hasMore: offset + withStatus.length < (count ?? 0) };
+    // FP-222-adj-1: one bulk status lookup for the page (it was one RPC per row), so the
+    // request costs the same number of queries for 5 rows as for 100.
+    const withStatus = await attachEffectiveStatusBulk(tenantId, data ?? []);
+    const marked = await attachNeedsAttentionMarker(tenantId, withStatus, options.viewer);
+    return { data: marked as unknown as EventListItemRow[], hasMore: offset + withStatus.length < (count ?? 0) };
   }
 
   const { data: candidates, error } = await query;
@@ -579,8 +590,42 @@ export async function listEvents(
   const withStatus = candidates.map((e: { id: string }) => ({ ...e, effective_status: statusById.get(e.id) ?? 'DRAFT' }));
   const matching = withStatus.filter((e: { effective_status: string }) => options.status!.includes(e.effective_status));
   const page = matching.slice(offset, offset + limit);
+  const marked = await attachNeedsAttentionMarker(tenantId, page, options.viewer);
 
-  return { data: page as unknown as EventListItemRow[], hasMore: offset + page.length < matching.length };
+  return { data: marked as unknown as EventListItemRow[], hasMore: offset + page.length < matching.length };
+}
+
+// FP-222-adj-1: the web admin events list marker — needs_attention and
+// needs_attention_tasks for the page of rows just fetched, with the SAME rule as the
+// mobile flag (computeIndicatorFlags): only for an Admin-tier viewer or a Leader for
+// the events they own; the event must be live (SCHEDULED or ACTIVE — not draft,
+// cancelled or ended) and have an outstanding refusal whose person still resolves as
+// an assignee (events_with_outstanding_refusals). Batched: one RPC for the page, then
+// the task names in a constant number of queries — nothing per row.
+async function attachNeedsAttentionMarker<T extends { id: string; owner_member_id?: string | null; effective_status: string }>(
+  tenantId: string, rows: T[], viewer: ListEventsOptions['viewer']
+): Promise<(Omit<T, 'owner_member_id'> & { needs_attention: boolean; needs_attention_tasks: string[] })[]> {
+  const candidates = viewer
+    ? rows.filter((r) => (isAdminTier(viewer.role) || r.owner_member_id === viewer.memberId) && ['SCHEDULED', 'ACTIVE'].includes(r.effective_status))
+    : [];
+
+  let flagged = new Set<string>();
+  let names = new Map<string, string[]>();
+  if (candidates.length > 0) {
+    const { data, error } = await serviceClient().rpc('events_with_outstanding_refusals', {
+      p_tenant_id: tenantId,
+      p_event_ids: candidates.map((r) => r.id),
+    });
+    if (error) throw error;
+    flagged = new Set(((data ?? []) as { event_id: string }[]).map((r) => r.event_id));
+    if (flagged.size > 0) names = await listRefusedTaskNamesByEvent(tenantId, [...flagged]);
+  }
+
+  return rows.map((row) => {
+    const { owner_member_id: _owner, ...rest } = row;
+    void _owner;
+    return { ...rest, needs_attention: flagged.has(row.id), needs_attention_tasks: flagged.has(row.id) ? (names.get(row.id) ?? []) : [] };
+  });
 }
 
 // FP-167-1: found live while changing listEvents()'s contract, not in the DIP's
@@ -740,7 +785,9 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
       // the caller was never invited, so mobile must not prompt/badge/allow RSVP.
       is_attendee: attendeeEventIds.has(e.id),
       needs_attention: indicatorFlags.get(e.id)?.needs_attention ?? false,
+      needs_attention_tasks: indicatorFlags.get(e.id)?.needs_attention_tasks ?? [],
       is_modified: indicatorFlags.get(e.id)?.is_modified ?? false,
+      modified_fields: indicatorFlags.get(e.id)?.modified_fields ?? [],
     };
   });
 }
@@ -758,10 +805,22 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
 //                    greater than the version they last saw. No row = false.
 interface IndicatorEvent { id: string; version: number; owner_member_id: string | null; effective_status: string }
 
+interface IndicatorFlags {
+  needs_attention: boolean;
+  needs_attention_tasks: string[];
+  is_modified: boolean;
+  modified_fields: string[];
+}
+
+// FP-222-adj-1: the flags now also say WHAT — needs_attention_tasks (names of the tasks
+// with an outstanding refusal; only when needs_attention is true) and modified_fields
+// (labels of what changed since the caller last opened the event, from the audit log —
+// see modifiedFields.ts; only when is_modified is true). Both are batched: the task
+// names in a constant number of queries, the audit entries in ONE.
 async function computeIndicatorFlags(
   tenantId: string, memberId: string, role: Role | undefined, events: IndicatorEvent[]
-): Promise<Map<string, { needs_attention: boolean; is_modified: boolean }>> {
-  const flags = new Map<string, { needs_attention: boolean; is_modified: boolean }>();
+): Promise<Map<string, IndicatorFlags>> {
+  const flags = new Map<string, IndicatorFlags>();
   if (events.length === 0) return flags;
 
   const db = serviceClient();
@@ -786,11 +845,23 @@ async function computeIndicatorFlags(
   const lastSeen = new Map((viewsResult.data ?? []).map((v: { event_id: string; last_seen_version: number }) => [v.event_id, v.last_seen_version]));
   const withRefusal = new Set(((refusalsResult.data ?? []) as { event_id: string }[]).map((r) => r.event_id));
 
+  const modified = events.filter((e) => {
+    const seen = lastSeen.get(e.id);
+    return seen !== undefined && e.version > seen;
+  });
+  const [taskNames, modifiedFields] = await Promise.all([
+    withRefusal.size > 0 ? listRefusedTaskNamesByEvent(tenantId, [...withRefusal]) : Promise.resolve(new Map<string, string[]>()),
+    getModifiedFieldsByEvent(tenantId, modified.map((e) => ({ id: e.id, lastSeenVersion: lastSeen.get(e.id)!, currentVersion: e.version }))),
+  ]);
+
   for (const e of events) {
     const seen = lastSeen.get(e.id);
+    const isModified = seen !== undefined && e.version > seen;
     flags.set(e.id, {
       needs_attention: withRefusal.has(e.id),
-      is_modified: seen !== undefined && e.version > seen,
+      needs_attention_tasks: withRefusal.has(e.id) ? (taskNames.get(e.id) ?? []) : [],
+      is_modified: isModified,
+      modified_fields: isModified ? (modifiedFields.get(e.id) ?? ['Details']) : [],
     });
   }
   return flags;
@@ -800,7 +871,7 @@ async function computeIndicatorFlags(
 // current version). Never stores a version above the event's current one (a client can't
 // claim to have seen the future) and never lowers a stored one (the SQL function keeps
 // GREATEST). No access check here — recordEventViewForCaller is the caller-facing form.
-export async function recordEventView(tenantId: string, memberId: string, eventId: string, version?: number): Promise<void> {
+export async function recordEventView(tenantId: string, memberId: string, eventId: string, version?: number): Promise<number> {
   if (version !== undefined && (!Number.isInteger(version) || version < 0)) {
     const err = new Error('version must be a non-negative integer') as Error & { code: string };
     err.code = 'VALIDATION_ERROR';
@@ -827,6 +898,10 @@ export async function recordEventView(tenantId: string, memberId: string, eventI
     p_tenant_id: tenantId, p_event_id: eventId, p_member_id: memberId, p_version: toStore,
   });
   if (rpcError) throw rpcError;
+  // FP-222-adj-1: the version this call recorded, after clamping to the event's current
+  // version — what POST /api/events/:id/view returns. (A lower version posted later
+  // returns that lower number even though the stored value, kept by GREATEST, stays higher.)
+  return toStore;
 }
 
 // FP-222: POST /api/events/:id/view — the same visibility rule the event list applies:
@@ -836,7 +911,7 @@ export async function recordEventView(tenantId: string, memberId: string, eventI
 // NOT_FOUND.
 export async function recordEventViewForCaller(
   tenantId: string, memberId: string, role: Role, eventId: string, version?: number
-): Promise<void> {
+): Promise<number> {
   const { data: event, error } = await serviceClient()
     .from('events')
     .select('id, owner_member_id')
@@ -859,7 +934,7 @@ export async function recordEventViewForCaller(
     throw err;
   }
 
-  await recordEventView(tenantId, memberId, eventId, version);
+  return recordEventView(tenantId, memberId, eventId, version);
 }
 
 // FP-222 editor rule: whoever just changed an event must never see their own change as
@@ -938,7 +1013,9 @@ export async function getEventById(id: string, tenantId: string, callerMemberId?
     // internal callers that don't need per-caller state).
     is_attendee: isAttendee,
     needs_attention: flags?.needs_attention ?? false,
+    needs_attention_tasks: flags?.needs_attention_tasks ?? [],
     is_modified: flags?.is_modified ?? false,
+    modified_fields: flags?.modified_fields ?? [],
     effective_status: effectiveStatus as string,
     rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
   };

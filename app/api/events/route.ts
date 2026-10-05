@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
       eventTypeIds: eventTypeIdsParam ? eventTypeIdsParam.split(',').filter(Boolean) : undefined,
       month: monthParam ?? undefined,
       status: statusParam ? statusParam.split(',').filter(Boolean) : undefined,
+      // FP-222-adj-1: the viewer decides who sees the Needs attention marker (Admin tier,
+      // or a Leader for the events they own).
+      viewer: { memberId: ctx.memberId, role: ctx.role },
     });
     return NextResponse.json(result);
   });

@@ -341,12 +341,15 @@ async function main() {
   const noAuth = await viewPOST(req('POST', `/api/events/${RE}/view`), ctxFor(RE));
   check('POST /view without a token: 401', noAuth.status === 401, String(noAuth.status));
   const ok1 = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token), ctxFor(RE));
-  check('POST /view, no body: 204 with an empty body', ok1.status === 204 && (await ok1.text()) === '', String(ok1.status));
+  const ok1Body = await ok1.json();
+  check('POST /view, no body: 200 with the envelope { data: { version } } (FP-222-adj-1; was 204 with no body)', ok1.status === 200 && ok1Body?.data?.version === (await evVersion(RE)), JSON.stringify({ s: ok1.status, b: ok1Body }));
   check('...and the view row was written at the current version', (await viewRow(RE, rMember.id))?.last_seen_version === (await evVersion(RE)));
   const ok2 = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token, JSON.stringify({ version: 99999 })), ctxFor(RE));
-  check('POST /view with a version above the current one: 204, clamped', ok2.status === 204 && (await viewRow(RE, rMember.id))?.last_seen_version === (await evVersion(RE)));
+  const ok2Body = await ok2.json();
+  check('POST /view with a version above the current one: 200, clamped (the envelope carries the clamped version)', ok2.status === 200 && ok2Body?.data?.version === (await evVersion(RE)) && (await viewRow(RE, rMember.id))?.last_seen_version === (await evVersion(RE)));
   const again = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token, JSON.stringify({ version: 1 })), ctxFor(RE));
-  check('POST /view repeated with a lower version: 204, stored version not lowered', again.status === 204 && (await viewRow(RE, rMember.id))?.last_seen_version === (await evVersion(RE)));
+  const againBody = await again.json();
+  check('POST /view repeated with a lower version: 200, stored version not lowered', again.status === 200 && againBody?.data?.version === 1 && (await viewRow(RE, rMember.id))?.last_seen_version === (await evVersion(RE)));
   const badBody = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token, JSON.stringify({ version: 'two' })), ctxFor(RE));
   check('POST /view with a non-numeric version: 422', badBody.status === 422, String(badBody.status));
   const notJson = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token, 'not json'), ctxFor(RE));
@@ -361,7 +364,7 @@ async function main() {
   const xt = await viewPOST(req('POST', `/api/events/${T2event}/view`, rAdmin.token), ctxFor(T2event));
   check("POST /view for another tenant's event, as an Admin: 404", xt.status === 404, String(xt.status));
   const adminAny = await viewPOST(req('POST', `/api/events/${RE2}/view`, rAdmin.token), ctxFor(RE2));
-  check('POST /view as an Admin on any event of the tenant: 204', adminAny.status === 204);
+  check('POST /view as an Admin on any event of the tenant: 200', adminAny.status === 200 && typeof (await adminAny.json())?.data?.version === 'number');
 
   // detail + list carry the flags through the real handlers
   await updateEvent(RE, T1, { name: 'Edited by owner ' + stamp, actorMemberId: owner }, undefined);
@@ -373,7 +376,7 @@ async function main() {
   check('GET /api/events/mine carries the same flags', mine.status === 200 && mineRow?.is_modified === true && mineRow?.needs_attention === false);
   const reopen = await viewPOST(req('POST', `/api/events/${RE}/view`, rMember.token), ctxFor(RE));
   const det2 = (await (await detailGET(req('GET', `/api/events/${RE}`, rMember.token), ctxFor(RE))).json()).data;
-  check('after POST /view the detail shows is_modified=false', reopen.status === 204 && det2.is_modified === false);
+  check('after POST /view the detail shows is_modified=false', reopen.status === 200 && det2.is_modified === false);
 
   // ============================================================== REMOVAL
   console.log('\n=== Removal');

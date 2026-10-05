@@ -24,6 +24,7 @@ export default async function EventsPage({
 
   const tenantId = user.app_metadata?.tenant_id as string | undefined;
   const role = user.app_metadata?.role as Role | undefined;
+  const memberId = user.app_metadata?.member_id as string | undefined;
   const token = (await supabase.auth.getSession()).data.session?.access_token;
 
   // DIP-FP-114-web: Events is read-accessible to Leader-tier (own-created events
@@ -44,6 +45,8 @@ export default async function EventsPage({
       eventTypeIds: initialFilters.eventTypeIds.length > 0 ? initialFilters.eventTypeIds : undefined,
       month: initialFilters.month || undefined,
       status: initialFilters.status.length > 0 ? initialFilters.status : undefined,
+      // FP-222-adj-1: who is looking, for the Needs attention marker.
+      viewer: memberId ? { memberId, role } : undefined,
     }),
     listEventTypes(tenantId),
     listGroups(tenantId),
