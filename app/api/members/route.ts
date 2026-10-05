@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
-import { listMembers, getMemberById, createMember, updateMember, softDeleteMember } from '@/src/features/members/service';
+import { listMembers, getMemberById, createMember, updateMember, removeMember } from '@/src/features/members/service';
 
 const requireAdmin = requireRole('ADMIN');
 
@@ -96,7 +96,9 @@ export const DELETE = (req: NextRequest) =>
     // if_assigned_leader) while the member is still someone's active Pastoral Leader —
     // resolution path is the new bulk-reassign screen for this member.
     try {
-      await softDeleteMember(id, ctx.tenantId);
+      // FP-235: removal deletes the login and identifying details (reason DEACTIVATED);
+      // retrying an already-removed member finishes whatever is left.
+      await removeMember(id, ctx.tenantId, 'DEACTIVATED');
       return NextResponse.json({ data: { id, deleted: true } });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
@@ -115,6 +117,9 @@ export const DELETE = (req: NextRequest) =>
           { status: 409 }
         );
       }
+      // FP-235: scrubbed, but the Auth login could not be deleted — the client tells the
+      // admin to press Remove again, which completes it.
+      if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
       throw err;
     }
   }));

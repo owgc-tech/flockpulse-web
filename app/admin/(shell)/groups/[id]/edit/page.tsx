@@ -30,7 +30,7 @@ export default async function GroupEditPage({ params }: { params: Promise<{ id: 
   // listMembers() defaults to active-only — the "add member" picker should only offer
   // active members, matching what trigger_validate_assignment_tenant() itself enforces.
   const [groupMembers, allMembers] = await Promise.all([
-    getGroupMembers(id, tenantId),
+    getGroupMembers(id, tenantId, true), // FP-235: removed members are not offered
     listMembers(tenantId),
   ]);
 

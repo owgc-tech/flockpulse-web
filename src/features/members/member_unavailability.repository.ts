@@ -106,8 +106,11 @@ export async function listUnavailabilityForTenant(
 ): Promise<AdminUnavailabilityRow[]> {
   let q = serviceClient()
     .from('member_unavailability_ranges')
-    .select('id, member_id, start_date, end_date, members(first_name, last_name)')
+    // FP-235: members!inner + deleted_at filter — this admin list is per person, so a
+    // removed member's unavailability is not offered.
+    .select('id, member_id, start_date, end_date, members!inner(first_name, last_name)')
     .eq('tenant_id', tenantId)
+    .is('members.deleted_at', null)
     .order('start_date', { ascending: true });
 
   if (filters.memberId) q = q.eq('member_id', filters.memberId);

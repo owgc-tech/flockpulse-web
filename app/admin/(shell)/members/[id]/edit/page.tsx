@@ -27,6 +27,9 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
     redirect('/admin/members');
   }
 
+  // FP-235: a removed member is anonymous and not offered — back to the list.
+  if (member.deleted_at) redirect('/admin/members');
+
   // listMembers() defaults to active-only — the Pastoral Leader dropdown should only offer
   // active members, matching what trigger_validate_assignment_tenant() itself enforces.
   const [members, currentLeaderAssignment, assignedMembers, roleCatalog] = await Promise.all([

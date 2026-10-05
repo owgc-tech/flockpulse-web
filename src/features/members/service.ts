@@ -307,147 +307,100 @@ export async function updateMyProfile(memberId: string, tenantId: string, input:
   return data;
 }
 
-// Soft-delete only — no hard-delete path exists by design.
-export async function softDeleteMember(id: string, tenantId: string) {
-  const { data, error } = await serviceClient()
-    .from('members')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .select('id')
-    .single();
+// FP-235: removing a member — for ANY reason — deletes their login and identifying
+// details, but keeps the members row and its primary key so records in other tables
+// (attendance, RSVPs, answers, talk completions, assignments) are never orphaned and
+// keep counting in organization statistics. ONE shared routine serves both the admin
+// Remove action (DEACTIVATED) and the in-app account deletion (SELF_DELETED):
+//
+//   1. remove_member() (20261004000078) in ONE transaction: a single UPDATE of the
+//      members row (deleted_at, placeholder email, 'Deactivated User' / 'Self-deleted
+//      User' name, birthdate reduced to January 1 of its year; gender and marital
+//      status kept) so the three guard triggers and the FP-234 prune trigger fire on
+//      it, plus scrubbing of the person's invitation rows. A rejecting guard aborts
+//      everything, so a guard rejection never deletes anyone's login.
+//   2. Only then auth.admin.deleteUser(user_id), which frees the email so the person
+//      can be re-invited as a brand-new member.
+//
+// Retryable: calling it again for a member that is already removed finishes whatever
+// is left (scrubs details a pre-FP-235 deactivation kept, deletes a login that is still
+// there) instead of returning NOT_FOUND_IN_TENANT.
+export type RemoveMemberReason = 'SELF_DELETED' | 'DEACTIVATED';
 
-  // Previously this silently "succeeded" (no error, no rows-affected check) even when nothing
-  // matched — a nonexistent/foreign-tenant/already-deactivated id looked identical to a real
-  // deactivation. Checking rows-affected via .select().single() and mapping the PGRST116
-  // "no rows" case to NOT_FOUND_IN_TENANT closes that gap.
-  if (error) {
-    // FP-74: mirrors talk.service.ts's exact pattern for FP-29's analogous guard —
-    // code === 'P0001' (Postgres's generic "raised exception" SQLSTATE) then a message
-    // substring match, mapped to the same INVALID_STATE_TRANSITION code. The affected-member
-    // count is parsed out of the trigger's own message and attached structurally so the route
-    // doesn't need to re-parse free text.
-    // DIP-FP-193-web: matches the renamed trigger message (migration
-    // 20260806000066) — this substring and that RAISE EXCEPTION text must
-    // always change together, or the delete-block silently stops matching.
-    if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
-      const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/to (\d+) member/);
-      if (match) err.assignedMemberCount = parseInt(match[1], 10);
-      throw err;
-    }
-    // FP-146: same guard-reason pattern, distinguished by which count field is present —
-    // this trigger's message uses "owns N group(s)" instead of "assigned ... to N member(s)".
-    // Matched on 'group(s)' specifically (not just 'still owns') since FP-161-2 added a second
-    // "still owns" guard reason below whose message also contains that substring.
-    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
-      const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/owns (\d+) group/);
-      if (match) err.ownedGroupCount = parseInt(match[1], 10);
-      throw err;
-    }
-    // FP-161-2: third guard-reason branch — this trigger's message uses "owns N event(s)"
-    // instead of "group(s)", distinguished the same way ownedGroupCount is above.
-    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
-      const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/owns (\d+) event/);
-      if (match) err.ownedEventCount = parseInt(match[1], 10);
-      throw err;
-    }
+// FP-74 / FP-146 / FP-161-2 guard-trigger mapping — unchanged from the old
+// softDeleteMember()/deleteOwnAccount(): code === 'P0001' (Postgres's generic "raised
+// exception" SQLSTATE) plus a message-substring match, mapped to INVALID_STATE_TRANSITION
+// with the affected count parsed out of the trigger's own message and attached
+// structurally so the route doesn't need to re-parse free text. The substrings and the
+// triggers' RAISE EXCEPTION texts (20260806000066, 20260719000049, 20260720000052) must
+// always change together, or the removal block silently stops matching.
+function mapRemoveMemberError(error: { code?: string; message?: string }): never {
+  if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
+    const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
+    err.code = 'INVALID_STATE_TRANSITION';
+    const match = error.message.match(/to (\d+) member/);
+    if (match) err.assignedMemberCount = parseInt(match[1], 10);
+    throw err;
+  }
+  // Matched on 'group(s)' specifically (not just 'still owns') since the event-ownership
+  // guard's message also contains 'still owns'.
+  if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
+    const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
+    err.code = 'INVALID_STATE_TRANSITION';
+    const match = error.message.match(/owns (\d+) group/);
+    if (match) err.ownedGroupCount = parseInt(match[1], 10);
+    throw err;
+  }
+  if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
+    const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
+    err.code = 'INVALID_STATE_TRANSITION';
+    const match = error.message.match(/owns (\d+) event/);
+    if (match) err.ownedEventCount = parseInt(match[1], 10);
+    throw err;
+  }
+  if (error.code === 'FP404') {
     const err = new Error('Member not found for this tenant') as Error & { code: string };
     err.code = 'NOT_FOUND_IN_TENANT';
     throw err;
   }
-  if (!data) {
-    const err = new Error('Member not found for this tenant') as Error & { code: string };
-    err.code = 'NOT_FOUND_IN_TENANT';
+  throw error;
+}
+
+export async function removeMember(memberId: string, tenantId: string, reason: RemoveMemberReason): Promise<void> {
+  const db = serviceClient();
+
+  const { data, error } = await db.rpc('remove_member', {
+    p_tenant_id: tenantId,
+    p_member_id: memberId,
+    p_reason: reason,
+  });
+  if (error) mapRemoveMemberError(error);
+
+  const userId = data as string | null;
+  if (!userId) return;
+
+  // The record is already scrubbed and (since every API call checks deleted_at IS NULL)
+  // the person is already locked out; a failure here only leaves a stray login, which is
+  // why it is reported distinctly and why calling remove again completes it. A login that
+  // is already gone (an earlier in-app delete, or a retry) counts as success.
+  const { error: deleteAuthError } = await db.auth.admin.deleteUser(userId);
+  if (deleteAuthError) {
+    const e = deleteAuthError as { status?: number; code?: string; message: string };
+    if (e.status === 404 || e.code === 'user_not_found') return;
+    const err = new Error(`Member removed but the Auth identity could not be deleted: ${deleteAuthError.message}`) as Error & { code: string };
+    err.code = 'AUTH_DELETE_FAILED';
     throw err;
   }
 }
 
-// DIP-FP-187-web: self-service account deletion — scrubs the caller's own PII
-// and deactivates their members row in one atomic UPDATE (not two writes),
-// reusing the exact deleted_at transition softDeleteMember() uses so its
-// three existing guard triggers (Assigned Leader, group ownership, event
-// ownership) apply automatically, then deletes the Supabase Auth identity so
-// login is genuinely no longer possible.
-//
-// Grounding correction made while writing this: the DIP's literal plan sets
-// gender/marital_status/birthdate to NULL. All three are NOT NULL
-// (20260629000020_registration_completion.sql) — that UPDATE would fail
-// every single call with a 23502 not-null violation. Reused that same
-// migration's own established backfill placeholder convention instead
-// (gender='MALE', marital_status='SINGLE', birthdate='1990-01-01') — inert
-// placeholder values once combined with the scrubbed name/email, not
-// real data about anyone.
-export async function deleteOwnAccount(userId: string, tenantId: string, memberId: string): Promise<void> {
-  const db = serviceClient();
+// Admin Remove (DELETE /api/members?id=). Kept under its old name for existing callers.
+export async function softDeleteMember(id: string, tenantId: string) {
+  await removeMember(id, tenantId, 'DEACTIVATED');
+}
 
-  const { data, error } = await db
-    .from('members')
-    .update({
-      deleted_at: new Date().toISOString(),
-      email: `deleted-${memberId}@deleted.invalid`, // .invalid is the IANA-reserved TLD (RFC 2606) for exactly this
-      first_name: 'Deleted',
-      last_name: 'Member',
-      gender: 'MALE',
-      marital_status: 'SINGLE',
-      birthdate: '1990-01-01',
-    })
-    .eq('id', memberId)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .select('id')
-    .single();
-
-  // Same three guard branches as softDeleteMember() above — these triggers
-  // fire on the deleted_at transition itself, regardless of which code path
-  // sets it, so the identical error-mapping applies unchanged.
-  if (error) {
-    if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
-      const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/to (\d+) member/);
-      if (match) err.assignedMemberCount = parseInt(match[1], 10);
-      throw err;
-    }
-    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
-      const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/owns (\d+) group/);
-      if (match) err.ownedGroupCount = parseInt(match[1], 10);
-      throw err;
-    }
-    if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
-      const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
-      err.code = 'INVALID_STATE_TRANSITION';
-      const match = error.message.match(/owns (\d+) event/);
-      if (match) err.ownedEventCount = parseInt(match[1], 10);
-      throw err;
-    }
-    const err = new Error('Member not found for this tenant') as Error & { code: string };
-    err.code = 'NOT_FOUND_IN_TENANT';
-    throw err;
-  }
-  if (!data) {
-    const err = new Error('Member not found for this tenant') as Error & { code: string };
-    err.code = 'NOT_FOUND_IN_TENANT';
-    throw err;
-  }
-
-  // DB half committed successfully — now remove the Auth identity so login is
-  // genuinely no longer possible. Sequenced deliberately after the DB write:
-  // if this fails, the person is already fully locked out (every API call
-  // already checks deleted_at IS NULL) and their PII is already scrubbed — a
-  // stray auth.users row becomes a manual cleanup item, not a live privacy gap.
-  const { error: deleteAuthError } = await db.auth.admin.deleteUser(userId);
-  if (deleteAuthError) {
-    const err = new Error(`Account deactivated but Auth identity deletion failed: ${deleteAuthError.message}`) as Error & { code: string };
-    err.code = 'AUTH_DELETE_FAILED';
-    throw err;
-  }
+// DIP-FP-187-web / FP-235: self-service account deletion — same routine, labelled
+// 'Self-deleted User'. userId is accepted for the existing call signature; the login to
+// delete is read from the member row inside remove_member().
+export async function deleteOwnAccount(_userId: string, tenantId: string, memberId: string): Promise<void> {
+  await removeMember(memberId, tenantId, 'SELF_DELETED');
 }

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     // ADMIN calling this gets members assigned to them as leader (may be empty).
     // To get all assignments across leaders, use GET /api/assignments instead.
-    const members = await getMyAssignedMembers(ctx.tenantId, ctx.memberId);
+    const members = await getMyAssignedMembers(ctx.tenantId, ctx.memberId, true); // FP-235: per-person list — no removed members
     return NextResponse.json({ data: members });
   });
 }
