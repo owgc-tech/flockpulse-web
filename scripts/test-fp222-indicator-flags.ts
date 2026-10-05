@@ -233,6 +233,31 @@ async function main() {
   check('auto-assign: the actor (Admin) sees false', (await detailFlags(admin, 'ADMIN', E10)).is_modified === false);
   check('auto-assign: the owner (had opened it) sees true', (await detailFlags(owner, 'LEADER', E10)).is_modified === true);
 
+  console.log(' auto-assign records the actor view ONLY for events it really changed:');
+  // (1) a run that covers an event someone else edited, and changes nothing on it
+  await recordEventViewForCaller(T1, admin, 'ADMIN', E10);                       // the admin has now seen E10 as it is
+  await updateEvent(E10, T1, { name: 'Edited by the owner ' + stamp, actorMemberId: owner }, undefined);   // someone else edits it
+  const seenE10 = (await viewRow(E10, admin))?.last_seen_version ?? -1;
+  check('precondition: the admin\'s last_seen_version is older than the event\'s version, so is_modified is TRUE',
+    seenE10 < (await evVersion(E10)) && (await detailFlags(admin, 'ADMIN', E10)).is_modified === true, `seen=${seenE10} current=${await evVersion(E10)}`);
+  const vE10Before = await evVersion(E10);
+  await runTaskAutoAssign(T1, task2, [{ type: 'member', id: R3 }], admin, [etAuto]);   // same roster as before: E10's slot is already R3
+  check('precondition: the run changed nothing on that event (version unchanged)', (await evVersion(E10)) === vE10Before);
+  check('(1) a run that covers an event someone else edited and changes nothing on it leaves is_modified TRUE for the admin',
+    (await detailFlags(admin, 'ADMIN', E10)).is_modified === true && (await listFlags(admin, 'ADMIN', E10))?.is_modified === true);
+  check('(1b) ...and the admin\'s stored last_seen_version was not touched', (await viewRow(E10, admin))?.last_seen_version === seenE10);
+
+  // (2) a run that really changes a slot: the actor sees false, someone who had opened the event sees true
+  const E13 = await mkEvent({ type: etAuto, attendees: [plainMember, R3] });
+  await recordEventViewForCaller(T1, admin, 'ADMIN', E13);
+  await recordEventViewForCaller(T1, owner, 'LEADER', E13);
+  const vE13Before = await evVersion(E13);
+  await runTaskAutoAssign(T1, task2, [{ type: 'member', id: R3 }], admin, [etAuto]);
+  check('precondition: the run really changed a slot on E13 (version increased)', (await evVersion(E13)) > vE13Before);
+  check('(2) an event on which the run changed a slot gives is_modified FALSE for the actor', (await detailFlags(admin, 'ADMIN', E13)).is_modified === false && (await listFlags(admin, 'ADMIN', E13))?.is_modified === false);
+  check('(2b) ...while the owner, who had opened it, sees TRUE', (await detailFlags(owner, 'LEADER', E13)).is_modified === true);
+  check('(2c) ...and E10 (covered by the same run, unchanged) is still TRUE for the admin', (await detailFlags(admin, 'ADMIN', E10)).is_modified === true);
+
   console.log(' recording rules:');
   const E11 = await mkEvent({ attendees: [plainMember] });
   await updateEvent(E11, T1, { name: 'bump ' + stamp, actorMemberId: owner }, undefined);
