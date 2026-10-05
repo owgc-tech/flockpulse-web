@@ -18,7 +18,7 @@ export async function PATCH(
     const { assignee } = body;
 
     try {
-      const updated = await updateTaskAssignment(id, ctx.tenantId, { assignee });
+      const updated = await updateTaskAssignment(id, ctx.tenantId, { assignee }, ctx.memberId); // FP-222: actor
       return NextResponse.json({ data: updated }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
@@ -44,7 +44,7 @@ export async function DELETE(
   const { id } = await params;
   return withAuth(req, requireLeader(async (_, ctx) => {
     try {
-      await deleteTaskAssignment(id, ctx.tenantId);
+      await deleteTaskAssignment(id, ctx.tenantId, ctx.memberId); // FP-222: actor
       return NextResponse.json({ data: { id } }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;

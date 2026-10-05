@@ -448,6 +448,10 @@ export async function updateEvent(id: string, tenantId: string, input: UpdateEve
   // block have both been removed entirely — event_notifications no longer
   // exists. Mobile's own local reminder reconciliation is the live mechanism;
   // no server-side dispatch worker for this table was ever built.
+
+  // FP-222 editor rule: the editor must never see their own edit as "modified" — record
+  // their view at the event's new version. Best-effort: never fails the edit.
+  await recordEventViewBestEffort(tenantId, input.actorMemberId ?? undefined, id);
   return updated;
 }
 
@@ -466,6 +470,22 @@ export async function attachEffectiveStatus<T extends { id: string }>(events: T[
       return { ...e, effective_status: effectiveStatus as string };
     })
   );
+}
+
+// FP-222: the same derivation as attachEffectiveStatus (the SQL get_event_effective_status
+// logic, via its bulk wrapper get_events_effective_statuses), but ONE round trip for the
+// whole list instead of one RPC per event — so the member event list costs a constant
+// number of queries however many events it holds. Tenant-scoped, which is why it is a
+// separate function: attachEffectiveStatus has no tenant argument and other callers use it.
+async function attachEffectiveStatusBulk<T extends { id: string }>(tenantId: string, events: T[]): Promise<(T & { effective_status: string })[]> {
+  if (events.length === 0) return [];
+  const { data, error } = await serviceClient().rpc('get_events_effective_statuses', {
+    p_tenant_id: tenantId,
+    p_event_ids: events.map((e) => e.id),
+  });
+  if (error) throw error;
+  const byId = new Map(((data ?? []) as { event_id: string; effective_status: string }[]).map((r) => [r.event_id, r.effective_status]));
+  return events.map((e) => ({ ...e, effective_status: byId.get(e.id) as string }));
 }
 
 const LIST_EVENTS_COLS = 'id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, created_at';
@@ -635,7 +655,7 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
 
   let eventsQuery = db
     .from('events')
-    .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
+    .select('id, name, status, version, owner_member_id, start_datetime, end_datetime, location_name, location_address, target, event_type_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_at, created_by_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
     .eq('tenant_id', tenantId);
 
   if (eventIds) eventsQuery = eventsQuery.in('id', eventIds);
@@ -673,7 +693,7 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
     created_by_member: Array.isArray(e.created_by_member) ? (e.created_by_member[0] ?? null) : e.created_by_member,
   }));
 
-  const withEffectiveStatus = await attachEffectiveStatus(normalizedEvents);
+  const withEffectiveStatus = await attachEffectiveStatusBulk(tenantId, normalizedEvents);
 
   // FP-166: reverses FP-94/FP-66's original decision to let CANCELLED events pass
   // through regardless of timing — Joseph now wants them filtered out of My Events
@@ -685,7 +705,7 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
 
   // DIP-FP-191-web-adj-2: one batch acknowledgement lookup for the whole page,
   // not a query per row — merged into the final map below same as rsvpByEvent.
-  const [{ data: rsvps, error: rsvpError }, tenantDefaultDays, acknowledgedAtMap] = await Promise.all([
+  const [{ data: rsvps, error: rsvpError }, tenantDefaultDays, acknowledgedAtMap, indicatorFlags] = await Promise.all([
     db
       .from('rsvps')
       .select('event_id, rsvp_status, rsvp_reason')
@@ -694,6 +714,8 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
       .in('event_id', upcoming.map((e) => e.id)),
     getTenantRsvpClosureDaysDefault(tenantId),
     getAcknowledgedAtMap(tenantId, memberId, upcoming.map((e) => e.id)),
+    // FP-222: both flags for the whole page in two batched queries, never per event.
+    computeIndicatorFlags(tenantId, memberId, role, upcoming),
   ]);
 
   if (rsvpError) throw rsvpError;
@@ -704,8 +726,12 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
 
   return upcoming.map((e) => {
     const rsvp = rsvpByEvent.get(e.id);
+    // version and owner_member_id were selected only to compute the FP-222 flags; they
+    // are not part of the list payload (the detail response carries them already).
+    const { version: _version, owner_member_id: _owner, ...listFields } = e;
+    void _version; void _owner;
     return {
-      ...e,
+      ...listFields,
       rsvp_status: (rsvp?.rsvp_status as 'YES' | 'NO' | undefined) ?? null,
       rsvp_reason: rsvp?.rsvp_reason ?? null,
       rsvp_closure_at: computeRsvpClosureAt(e.start_datetime, e.rsvp_closure_days, tenantDefaultDays),
@@ -713,8 +739,140 @@ export async function listEventsForMember(tenantId: string, memberId: string, ro
       // FP-223-adj-2: false for events visible only via Admin/owner widening —
       // the caller was never invited, so mobile must not prompt/badge/allow RSVP.
       is_attendee: attendeeEventIds.has(e.id),
+      needs_attention: indicatorFlags.get(e.id)?.needs_attention ?? false,
+      is_modified: indicatorFlags.get(e.id)?.is_modified ?? false,
     };
   });
+}
+
+// FP-222: the two Events-tab indicators for a set of events, in a constant number of
+// queries however many events there are (one read of the caller's view rows, one call
+// to events_with_outstanding_refusals) — never per event.
+//
+//   needs_attention  only for the event's OWNER (events.owner_member_id = caller) or an
+//                    Admin-tier caller; an event with no owner is therefore Admin-only.
+//                    Requires an outstanding refusal (a current REFUSED response whose
+//                    person still resolves as an assignee — see the SQL function) and a
+//                    live event (SCHEDULED or ACTIVE: not draft, cancelled or ended).
+//   is_modified      the caller has a view row for the event AND events.version is
+//                    greater than the version they last saw. No row = false.
+interface IndicatorEvent { id: string; version: number; owner_member_id: string | null; effective_status: string }
+
+async function computeIndicatorFlags(
+  tenantId: string, memberId: string, role: Role | undefined, events: IndicatorEvent[]
+): Promise<Map<string, { needs_attention: boolean; is_modified: boolean }>> {
+  const flags = new Map<string, { needs_attention: boolean; is_modified: boolean }>();
+  if (events.length === 0) return flags;
+
+  const db = serviceClient();
+  const isAdmin = role ? isAdminTier(role) : false;
+  const attentionCandidates = events.filter(
+    (e) => (isAdmin || e.owner_member_id === memberId) && ['SCHEDULED', 'ACTIVE'].includes(e.effective_status)
+  );
+
+  const [viewsResult, refusalsResult] = await Promise.all([
+    db.from('event_member_views')
+      .select('event_id, last_seen_version')
+      .eq('tenant_id', tenantId)
+      .eq('member_id', memberId)
+      .in('event_id', events.map((e) => e.id)),
+    attentionCandidates.length > 0
+      ? db.rpc('events_with_outstanding_refusals', { p_tenant_id: tenantId, p_event_ids: attentionCandidates.map((e) => e.id) })
+      : Promise.resolve({ data: [] as { event_id: string }[], error: null }),
+  ]);
+  if (viewsResult.error) throw viewsResult.error;
+  if (refusalsResult.error) throw refusalsResult.error;
+
+  const lastSeen = new Map((viewsResult.data ?? []).map((v: { event_id: string; last_seen_version: number }) => [v.event_id, v.last_seen_version]));
+  const withRefusal = new Set(((refusalsResult.data ?? []) as { event_id: string }[]).map((r) => r.event_id));
+
+  for (const e of events) {
+    const seen = lastSeen.get(e.id);
+    flags.set(e.id, {
+      needs_attention: withRefusal.has(e.id),
+      is_modified: seen !== undefined && e.version > seen,
+    });
+  }
+  return flags;
+}
+
+// FP-222: records that memberId has seen this event at `version` (default: the event's
+// current version). Never stores a version above the event's current one (a client can't
+// claim to have seen the future) and never lowers a stored one (the SQL function keeps
+// GREATEST). No access check here — recordEventViewForCaller is the caller-facing form.
+export async function recordEventView(tenantId: string, memberId: string, eventId: string, version?: number): Promise<void> {
+  if (version !== undefined && (!Number.isInteger(version) || version < 0)) {
+    const err = new Error('version must be a non-negative integer') as Error & { code: string };
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  const db = serviceClient();
+  const { data: event, error } = await db
+    .from('events')
+    .select('version')
+    .eq('id', eventId)
+    .eq('tenant_id', tenantId)
+    .single();
+  if (error || !event) {
+    const err = new Error('Event not found') as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const current = event.version as number;
+  const toStore = version === undefined ? current : Math.min(version, current);
+
+  const { error: rpcError } = await db.rpc('record_event_view', {
+    p_tenant_id: tenantId, p_event_id: eventId, p_member_id: memberId, p_version: toStore,
+  });
+  if (rpcError) throw rpcError;
+}
+
+// FP-222: POST /api/events/:id/view — the same visibility rule the event list applies:
+// Admin-tier may open any event of the tenant, a Leader-tier caller the events they own
+// or are invited to, a Member the events they are invited to. Anything else is
+// FORBIDDEN_SCOPE; an event that does not exist (or belongs to another tenant) is
+// NOT_FOUND.
+export async function recordEventViewForCaller(
+  tenantId: string, memberId: string, role: Role, eventId: string, version?: number
+): Promise<void> {
+  const { data: event, error } = await serviceClient()
+    .from('events')
+    .select('id, owner_member_id')
+    .eq('id', eventId)
+    .eq('tenant_id', tenantId)
+    .single();
+  if (error || !event) {
+    const err = new Error('Event not found') as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const allowed =
+    isAdminTier(role) ||
+    (isLeaderTierOrAbove(role) && event.owner_member_id === memberId) ||
+    (await isEventAttendee(tenantId, eventId, memberId));
+  if (!allowed) {
+    const err = new Error('You do not have access to this event') as Error & { code: string };
+    err.code = 'FORBIDDEN_SCOPE';
+    throw err;
+  }
+
+  await recordEventView(tenantId, memberId, eventId, version);
+}
+
+// FP-222 editor rule: whoever just changed an event must never see their own change as
+// "modified", so every successful edit / task-assignment write records a view for the
+// ACTOR at the event's new version. Best-effort by design — a failure is logged and
+// never fails the edit that already succeeded.
+export async function recordEventViewBestEffort(tenantId: string, memberId: string | undefined, eventId: string | null | undefined): Promise<void> {
+  if (!memberId || !eventId) return;
+  try {
+    await recordEventView(tenantId, memberId, eventId);
+  } catch (e) {
+    console.error('[FP-222] could not record the editor view (ignored):', (e as { code?: string })?.code ?? '', (e as Error)?.message ?? e);
+  }
 }
 
 // FP-223-adj-3: single-event form of the event_attendees lookup
@@ -735,7 +893,7 @@ async function isEventAttendee(tenantId: string, eventId: string, memberId: stri
 // callers (getEventRoster, cancelEvent, getEventReminderContext) pass only
 // (id, tenantId) and get acknowledged_at: null with no extra query, since
 // none of them need per-caller state. Only GET /api/events/:id passes it.
-export async function getEventById(id: string, tenantId: string, callerMemberId?: string) {
+export async function getEventById(id: string, tenantId: string, callerMemberId?: string, callerRole?: Role) {
   const { data: event, error } = await serviceClient()
     .from('events')
     .select('id, name, status, start_datetime, end_datetime, location_name, location_address, target, event_type_id, talk_id, version, created_at, updated_at, recurrence_series_id, online_meeting_resource_id, online_meeting_url, online_meeting_platform_label, rsvp_closure_days, announcement_body, guests_allowed, created_by_member_id, owner_member_id, event_type:event_types(id, name, system_key), created_by_member:members!created_by_member_id(id, first_name, last_name)')
@@ -761,6 +919,15 @@ export async function getEventById(id: string, tenantId: string, callerMemberId?
   const eventType = Array.isArray(event.event_type) ? event.event_type[0] : event.event_type;
   const createdByMember = Array.isArray(event.created_by_member) ? (event.created_by_member[0] ?? null) : event.created_by_member;
 
+  // FP-222: the same two flags as the list, computed by the same function, as they
+  // stand BEFORE this request records a view (recording is POST /api/events/:id/view).
+  // Only when the caller is known — internal callers pass no caller and get false/false.
+  const flags = callerMemberId
+    ? (await computeIndicatorFlags(tenantId, callerMemberId, callerRole, [{
+        id: event.id, version: event.version, owner_member_id: event.owner_member_id, effective_status: effectiveStatus as string,
+      }])).get(event.id)
+    : undefined;
+
   return {
     ...event,
     event_type: eventType,
@@ -770,6 +937,8 @@ export async function getEventById(id: string, tenantId: string, callerMemberId?
     // event_attendees row. Always false when no callerMemberId is passed (the
     // internal callers that don't need per-caller state).
     is_attendee: isAttendee,
+    needs_attention: flags?.needs_attention ?? false,
+    is_modified: flags?.is_modified ?? false,
     effective_status: effectiveStatus as string,
     rsvp_closure_at: computeRsvpClosureAt(event.start_datetime, event.rsvp_closure_days, tenantDefaultDays),
   };

@@ -6,6 +6,7 @@ import {
   listSlotsForTaskUpcoming,
   runAutoAssignTaskSlots,
 } from './eventTaskAssignment.repository';
+import { recordEventViewBestEffort } from '@/src/features/events/service';
 
 // DIP-FP-190-web: one entry per (event, member) pair the round-robin landed
 // on that turns out to conflict with that member's filed unavailability.
@@ -204,6 +205,52 @@ async function computeUnavailabilityConflicts(
   return conflicts;
 }
 
+// FP-222 editor rule for auto-assign. The run returns every slot it processed, including
+// slots it left exactly as they were, so "returned" does not mean "changed". The only
+// reliable signal is events.version: auto_assign_task_slots() bumps an event's version
+// only when it created a slot or changed its assignee. So the versions of the candidate
+// events are read just before the run's writes (one query, every event of the selected
+// event types — a superset of what the run can touch) and again just after (one query,
+// the events the run returned), and the actor's own view is recorded ONLY for events
+// whose version actually increased. An event the run covered but left unchanged gets no
+// view recorded, so an earlier "Recently Modified" on it (someone else's edit) survives.
+//
+// Best-effort end to end: if either version read, or a recording, fails, it is logged
+// and ignored — the run itself has already succeeded and must never fail here.
+async function readEventVersionsBestEffort(
+  tenantId: string, filter: { eventTypeIds?: string[]; eventIds?: string[] }
+): Promise<Map<string, number> | null> {
+  try {
+    let q = serviceClient().from('events').select('id, version').eq('tenant_id', tenantId);
+    if (filter.eventTypeIds) q = q.in('event_type_id', filter.eventTypeIds);
+    if (filter.eventIds) q = q.in('id', filter.eventIds);
+    const { data, error } = await q;
+    if (error) throw error;
+    return new Map((data ?? []).map((e: { id: string; version: number }) => [e.id, e.version]));
+  } catch (e) {
+    console.error('[FP-222] could not read event versions around auto-assign (ignored):', (e as Error)?.message ?? e);
+    return null;
+  }
+}
+
+async function recordActorViewForChangedEvents(
+  tenantId: string, actorMemberId: string, versionsBefore: Map<string, number> | null,
+  assignments: { event_id: string }[]
+): Promise<void> {
+  if (!versionsBefore) return;
+  const eventIds = [...new Set(assignments.map((a) => a.event_id))];
+  if (eventIds.length === 0) return;
+  const versionsAfter = await readEventVersionsBestEffort(tenantId, { eventIds });
+  if (!versionsAfter) return;
+  for (const eventId of eventIds) {
+    const before = versionsBefore.get(eventId);
+    const after = versionsAfter.get(eventId);
+    if (before !== undefined && after !== undefined && after > before) {
+      await recordEventViewBestEffort(tenantId, actorMemberId, eventId);
+    }
+  }
+}
+
 // DIP-FP-180-adj-6: replaces runPrayerLeaderAutoAssign/runFoodAssignmentAutoAssign.
 // individualOnly is read live from the selected task's tasks.individual_only —
 // the generic screen has no per-route hardcoded boolean to fall back on.
@@ -227,7 +274,9 @@ export async function runTaskAutoAssign(
     throw err('VALIDATION_ERROR', `A roster can contain at most ${limit} groups/individuals combined`);
   }
   await validateEventTypeIds(eventTypeIds, tenantId);
+  const versionsBefore = await readEventVersionsBestEffort(tenantId, { eventTypeIds });
   const assignments = await runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
+  await recordActorViewForChangedEvents(tenantId, actorMemberId, versionsBefore, assignments);
   const conflicts = await computeUnavailabilityConflicts(tenantId, assignments);
   return { assignments, conflicts };
 }
