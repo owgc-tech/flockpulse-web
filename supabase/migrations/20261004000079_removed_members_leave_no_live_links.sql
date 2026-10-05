@@ -38,9 +38,14 @@
 -- them could then never be soft-deleted (not by an admin, not by the removal of the
 -- person it describes), and the cleanup below would abort the whole migration. The
 -- active-leader requirement exists to stop NEW or live links to an inactive leader;
--- a row that is being soft-deleted (deleted_at set) creates no such link. So the leader
--- check now applies only when NEW.deleted_at IS NULL. Everything else is unchanged;
--- every case that was rejected for an active row is still rejected.
+-- a row that is being soft-deleted (deleted_at set) creates no such link.
+--
+-- So the SAME-TENANT check on the leader still applies to EVERY row (cross-tenant
+-- referential safety is never relaxed — a soft-deleted row may not reference a leader
+-- in another tenant), and only the "leader must be active" requirement is relaxed, and
+-- only for a row that is itself being soft-deleted (NEW.deleted_at IS NOT NULL).
+-- Everything else is unchanged; every case that was rejected for an active row is still
+-- rejected, and the exception text is unchanged.
 -- ==============================================================
 
 CREATE OR REPLACE FUNCTION public.validate_assignment_tenant()
@@ -59,12 +64,12 @@ BEGIN
     END IF;
   END IF;
 
-  IF NEW.leader_member_id IS NOT NULL AND NEW.deleted_at IS NULL THEN
+  IF NEW.leader_member_id IS NOT NULL THEN
     IF NOT EXISTS (
       SELECT 1 FROM members m
       WHERE m.id = NEW.leader_member_id
         AND m.tenant_id = NEW.tenant_id
-        AND m.deleted_at IS NULL
+        AND (NEW.deleted_at IS NOT NULL OR m.deleted_at IS NULL)
     ) THEN
       RAISE EXCEPTION 'CROSS_TENANT_ACCESS: leader_member_id % does not belong to tenant % or is inactive', NEW.leader_member_id, NEW.tenant_id;
     END IF;
