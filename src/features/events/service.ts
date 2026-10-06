@@ -7,7 +7,7 @@ import { getCourse } from '@/src/features/formation/course.repository';
 import { getTenantRsvpClosureDaysDefault } from '@/src/features/rsvps/rsvp.repository';
 import { computeRsvpClosureAt } from '@/src/features/rsvps/rsvp-window';
 import { getAcknowledgedAt, getAcknowledgedAtMap } from '@/src/features/announcements/announcement.repository';
-import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
+import { isAdminTier, isExactlyLeaderTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import type { EventListItemRow } from './event.types';
 import { getModifiedFieldsByEvent } from './modifiedFields';
 import { listRefusedTaskNamesByEvent } from '@/src/features/tasks/refusedTasks';
@@ -904,14 +904,15 @@ export async function recordEventView(tenantId: string, memberId: string, eventI
   return toStore;
 }
 
-// FP-222: POST /api/events/:id/view — the same visibility rule the event list applies:
-// Admin-tier may open any event of the tenant, a Leader-tier caller the events they own
-// or are invited to, a Member the events they are invited to. Anything else is
-// FORBIDDEN_SCOPE; an event that does not exist (or belongs to another tenant) is
-// NOT_FOUND.
-export async function recordEventViewForCaller(
-  tenantId: string, memberId: string, role: Role, eventId: string, version?: number
-): Promise<number> {
+// FP-222 / FP-240: "may this caller open this event" — the same visibility rule the event
+// list applies: Admin-tier may open any event of the tenant, a Leader-tier caller the events
+// they own or are invited to, a Member the events they are invited to. Anything else is
+// FORBIDDEN_SCOPE; an event that does not exist (or belongs to another tenant) is NOT_FOUND.
+// Shared by POST /api/events/:id/view and GET /api/events/:id/roster so the two can never
+// drift. (GET /api/events/:id itself has no per-event check — FP-239; do not copy that gap.)
+export async function assertCallerCanOpenEvent(
+  tenantId: string, memberId: string, role: Role, eventId: string
+): Promise<void> {
   const { data: event, error } = await serviceClient()
     .from('events')
     .select('id, owner_member_id')
@@ -933,7 +934,14 @@ export async function recordEventViewForCaller(
     err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
+}
 
+// FP-222: POST /api/events/:id/view — behavior and error codes unchanged; the access rule
+// now lives in assertCallerCanOpenEvent above.
+export async function recordEventViewForCaller(
+  tenantId: string, memberId: string, role: Role, eventId: string, version?: number
+): Promise<number> {
+  await assertCallerCanOpenEvent(tenantId, memberId, role, eventId);
   return recordEventView(tenantId, memberId, eventId, version);
 }
 
@@ -1180,7 +1188,23 @@ export interface RosterEntry {
 // FP-95: scopeToLeaderMemberId, when provided, filters the roster down to members
 // assigned to that leader via getMembersAssignedToLeader() — reused as-is, not
 // reimplemented. Omitted (Admin callers) preserves FP-67's full-roster behavior.
-export async function getEventRoster(eventId: string, tenantId: string, scopeToLeaderMemberId?: string): Promise<RosterEntry[]> {
+//
+// FP-240: options. The DEFAULT ({}) is exactly the behavior above, so every existing caller
+// (the web admin page's `?view=admin` read, tests) is unchanged.
+//   hideRemoved — drop attendees whose member has been removed (members.deleted_at set),
+//     for past and upcoming events alike. The attendee row itself is untouched (history).
+//   viewer      — redact each person's decline reason: rsvp_reason is returned only when
+//     the viewer is Admin tier, or is that person themself, or is the LEADER of that person
+//     (the person is in the viewer's assigned members — computed once per request); null for
+//     everyone else. response and guest_count are never redacted.
+export interface RosterOptions {
+  viewer?: { memberId: string; role: Role };
+  hideRemoved?: boolean;
+}
+
+export async function getEventRoster(
+  eventId: string, tenantId: string, scopeToLeaderMemberId?: string, options: RosterOptions = {}
+): Promise<RosterEntry[]> {
   const db = serviceClient();
 
   const event = await getEventById(eventId, tenantId); // NOT_FOUND if missing/cross-tenant
@@ -1188,13 +1212,21 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
 
   const { data: attendees, error: attendeesError } = await db
     .from('event_attendees')
-    .select('member_id, members(first_name, last_name)')
+    .select('member_id, members(first_name, last_name, deleted_at)')
     .eq('event_id', eventId)
     .eq('tenant_id', tenantId);
 
   if (attendeesError) throw attendeesError;
 
   let scopedAttendees = attendees ?? [];
+  if (options.hideRemoved) {
+    // The joined members row decides: a removed member — or an attendee whose member row
+    // cannot be read at all — is dropped, never returned with blank names.
+    scopedAttendees = scopedAttendees.filter((a: { members: unknown }) => {
+      const m = Array.isArray(a.members) ? a.members[0] : a.members;
+      return !!m && (m as { deleted_at: string | null }).deleted_at === null;
+    });
+  }
   if (scopeToLeaderMemberId) {
     const assignedMembers = await getMembersAssignedToLeader(scopeToLeaderMemberId, tenantId);
     const assignedIds = new Set(assignedMembers.map((m) => (m as { id: string }).id));
@@ -1213,6 +1245,17 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
     (rsvps ?? []).map(r => [r.member_id as string, r as { rsvp_status: string; rsvp_reason: string | null; guest_count: number | null }])
   );
 
+  // FP-240: whose decline reason this viewer may read. Admin tier: everyone's. Leader tier:
+  // only the people assigned to them (ONE lookup per request, not per row). Anyone: their own.
+  const viewer = options.viewer;
+  let assignedToViewer = new Set<string>();
+  if (viewer && isExactlyLeaderTier(viewer.role)) {
+    const assigned = await getMembersAssignedToLeader(viewer.memberId, tenantId);
+    assignedToViewer = new Set(assigned.map((m) => (m as { id: string }).id));
+  }
+  const canSeeReason = (memberId: string): boolean =>
+    !viewer || isAdminTier(viewer.role) || viewer.memberId === memberId || assignedToViewer.has(memberId);
+
   return scopedAttendees.map((a: { member_id: string; members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }) => {
     const member = Array.isArray(a.members) ? a.members[0] : a.members;
     const rsvp = rsvpByMember.get(a.member_id);
@@ -1230,7 +1273,7 @@ export async function getEventRoster(eventId: string, tenantId: string, scopeToL
       first_name: member?.first_name ?? '',
       last_name: member?.last_name ?? '',
       response,
-      rsvp_reason: rsvp?.rsvp_reason ?? null,
+      rsvp_reason: canSeeReason(a.member_id) ? (rsvp?.rsvp_reason ?? null) : null,
       guest_count: rsvp?.guest_count ?? null,
     };
   });

@@ -61,7 +61,10 @@ export default function EventDetail({ event, eventTypes, groups, members, meetin
   const [taskAssignments, setTaskAssignments] = useState<EventTaskAssignmentRow[]>([]);
 
   useEffect(() => {
-    fetch(`/api/events/${event.id}/roster`, { headers: { Authorization: `Bearer ${token}` } })
+    // FP-240: ?view=admin keeps this page's roster exactly as it always was (Leader tier or above,
+    // a Leader scoped to their own members, removed members included, no redaction); the roster
+    // route's default view is now the one the mobile app uses.
+    fetch(`/api/events/${event.id}/roster?view=admin`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(body => setRoster(body.data ?? []))
       .catch(() => setRoster([]));
