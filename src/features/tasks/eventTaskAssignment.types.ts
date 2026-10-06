@@ -32,27 +32,36 @@ export interface TaskAssignmentResponseRow {
   created_at: string;
 }
 
-// FP-221: one outstanding refusal shown to the event owner / Admins.
-export interface OutstandingRefusal {
-  assignment_id: string;
-  task_id: string;
-  member_id: string;
-  member_name: string;
-  responded_at: string;
-}
-
 // FP-222-adj-1: one person with an outstanding refusal on an assignment.
 export interface RefusedBy {
   member_id: string;
   name: string;
 }
 
-// FP-222-adj-1: GET /api/event-tasks-assignments?event_id=X rows. refused_by lists the
+// FP-242: one resolved assignee of a task assignment and their CURRENT response
+// (PENDING = no current response). via_group_id is null for a person assigned directly (or
+// both directly and through a group), otherwise the first listed group they belong to.
+export type AssigneeState = 'COMMITTED' | 'REFUSED' | 'PENDING';
+
+export interface AssigneeStateEntry {
+  member_id: string;
+  name: string;
+  state: AssigneeState;
+  via_group_id: string | null;
+}
+
+// FP-222-adj-1 / FP-242: GET /api/event-tasks-assignments?event_id=X rows. refused_by lists the
 // people with a CURRENT outstanding refusal on this assignment (names as on the web event
-// page: first and last) — filled ONLY for the event's owner and Admin-tier callers (the web
-// event page's canManage rule); an empty array for everyone else.
+// page: first and last). assignee_states is one entry per resolved assignee in display order
+// (direct members, then each group in assignee.group_ids order; within a section REFUSED,
+// PENDING, COMMITTED, then name), at most 100 entries; assignee_states_total is the uncapped
+// count. All three are filled ONLY for the event's owner and Admin-tier callers (the web event
+// page's canManage rule); [] / [] / 0 for everyone else. refused_by is kept, with the same
+// shape, for older phone builds.
 export interface EventTaskAssignmentWithRefusals extends EventTaskAssignmentRow {
   refused_by: RefusedBy[];
+  assignee_states: AssigneeStateEntry[];
+  assignee_states_total: number;
 }
 
 export interface CreateEventTaskAssignmentInput {

@@ -4,7 +4,6 @@ import { getEventById, listMeetingResources } from '@/src/features/events/servic
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
-import { listOutstandingRefusalsForEvent } from '@/src/features/tasks/eventTaskAssignment.service';
 import type { EventDetailRow } from '@/src/features/events/event.types';
 import { isAdminTier, isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 import EventDetail from './EventDetail';
@@ -42,14 +41,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
 
   const canManage = isAdminTier(role) || event.owner_member_id === memberId;
 
-  // FP-221: outstanding task refusals are shown only to those who can manage the
-  // event (owner or Admin-tier) — never fetched, let alone passed down, otherwise.
-  const outstandingRefusals = canManage ? await listOutstandingRefusalsForEvent(tenantId, event.id) : [];
-
   return (
     <div className="px-6 py-8">
       <div className="mx-auto max-w-3xl">
-        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} meetingResources={meetingResources} token={token} canManage={canManage} outstandingRefusals={outstandingRefusals} />
+        <EventDetail event={event} eventTypes={eventTypes} groups={groups ?? []} members={members ?? []} meetingResources={meetingResources} token={token} canManage={canManage} />
       </div>
     </div>
   );
