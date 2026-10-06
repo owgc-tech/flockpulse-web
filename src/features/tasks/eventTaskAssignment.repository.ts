@@ -7,6 +7,7 @@ import type {
   TaskAutoAssignSlotRow,
   TaskAssignmentResponseRow,
   TaskResponseStatus,
+  AssigneeStateEntry,
 } from './eventTaskAssignment.types';
 
 const COLS = 'id, tenant_id, event_id, task_id, assignee, created_at, updated_at';
@@ -120,34 +121,18 @@ export async function listCurrentResponsesForMember(
   return (data ?? []) as { assignment_id: string; status: TaskResponseStatus }[];
 }
 
-// FP-221: current REFUSED rows for an event, with the member's name. Whether the
-// member still resolves as an assignee is filtered by the service.
-export async function listCurrentRefusedResponsesForEvent(
+// FP-242: every resolved assignee of every task assignment on an event, with their
+// current response, in ONE call (list_event_task_assignee_states returns one JSONB array
+// so a large group never hits PostgREST's row limit).
+export async function listAssigneeStatesForEvent(
   tenantId: string, eventId: string
-): Promise<{ assignment_id: string; task_id: string; member_id: string; responded_at: string; first_name: string; last_name: string }[]> {
-  const { data, error } = await serviceClient()
-    .from('event_task_assignment_responses')
-    .select('assignment_id, task_id, member_id, responded_at, members(first_name, last_name)')
-    .eq('tenant_id', tenantId)
-    .eq('event_id', eventId)
-    .eq('is_current', true)
-    .eq('status', 'REFUSED')
-    .not('assignment_id', 'is', null);
-  if (error) throw error;
-  return ((data ?? []) as unknown as {
-    assignment_id: string; task_id: string; member_id: string; responded_at: string;
-    members: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
-  }[]).map((r) => {
-    const m = Array.isArray(r.members) ? r.members[0] : r.members;
-    return {
-      assignment_id: r.assignment_id,
-      task_id: r.task_id,
-      member_id: r.member_id,
-      responded_at: r.responded_at,
-      first_name: m?.first_name ?? '',
-      last_name: m?.last_name ?? '',
-    };
+): Promise<(AssigneeStateEntry & { assignment_id: string })[]> {
+  const { data, error } = await serviceClient().rpc('list_event_task_assignee_states', {
+    p_tenant_id: tenantId,
+    p_event_id: eventId,
   });
+  if (error) throw error;
+  return (data ?? []) as (AssigneeStateEntry & { assignment_id: string })[];
 }
 
 // FP-221: resolves an assignee JSONB to member ids via resolve_assignee_member_ids

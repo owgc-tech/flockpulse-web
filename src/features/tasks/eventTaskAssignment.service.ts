@@ -6,7 +6,7 @@ import type {
   UpdateEventTaskAssignmentInput,
   MyTaskAssignmentRow,
   TaskResponseStatus,
-  OutstandingRefusal,
+  AssigneeStateEntry,
   EventTaskAssignmentWithRefusals,
 } from './eventTaskAssignment.types';
 import {
@@ -19,9 +19,9 @@ import {
   getTaskAssignmentLimit,
   submitTaskAssignmentResponseRpc,
   listCurrentResponsesForMember,
-  listCurrentRefusedResponsesForEvent,
-  resolveAssigneeMemberIds,
+  listAssigneeStatesForEvent,
 } from './eventTaskAssignment.repository';
+import { orderAssigneeStates, capAssigneeStates, refusedByFromStates } from './assigneeStates';
 import { attachEffectiveStatus, recordEventViewBestEffort } from '@/src/features/events/service';
 import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
 
@@ -266,55 +266,23 @@ export async function submitTaskAssignmentResponse(
   }
 }
 
-// FP-221: current REFUSED responses on an event whose member still resolves as an
-// assignee (a refusal by someone since removed from a group, say, is hidden even
-// before anything clears it), with member names. Resolution goes through
-// resolve_assignee_member_ids — one call per assignment that actually has a
-// refusal, not per assignment on the event.
-export async function listOutstandingRefusalsForEvent(
-  tenantId: string, eventId: string
-): Promise<OutstandingRefusal[]> {
-  const refused = await listCurrentRefusedResponsesForEvent(tenantId, eventId);
-  if (refused.length === 0) return [];
-
-  const assignments = await listEventTaskAssignmentsForEvent(eventId, tenantId);
-  const assigneeById = new Map(assignments.map((a) => [a.id, a.assignee]));
-
-  const assignmentIds = [...new Set(refused.map((r) => r.assignment_id))];
-  const resolvedByAssignment = new Map<string, Set<string>>();
-  await Promise.all(assignmentIds.map(async (id) => {
-    const memberIds = await resolveAssigneeMemberIds(tenantId, assigneeById.get(id) ?? null);
-    resolvedByAssignment.set(id, new Set(memberIds));
-  }));
-
-  return refused
-    .filter((r) => resolvedByAssignment.get(r.assignment_id)?.has(r.member_id))
-    .map((r) => ({
-      assignment_id: r.assignment_id,
-      task_id: r.task_id,
-      member_id: r.member_id,
-      member_name: `${r.first_name} ${r.last_name}`.trim(),
-      responded_at: r.responded_at,
-    }));
-}
-
 export async function listTaskAssignmentsForEvent(
   eventId: string, tenantId: string
 ): Promise<EventTaskAssignmentRow[]> {
   return await listEventTaskAssignmentsForEvent(eventId, tenantId);
 }
 
-// FP-222-adj-1: the event's task assignments plus WHO refused, for the mobile detail
-// screen (same data the web event page shows as "Refused: Name"). refused_by is filled
+// FP-222-adj-1 / FP-242: the event's task assignments plus WHO refused (refused_by) and every
+// assignee's current state (assignee_states, for the web and mobile pills). Both are filled
 // ONLY when the caller may manage the event — the exact rule app/admin/(shell)/events/[id]/
 // page.tsx uses for canManage: Admin tier, or the event's owner (events.owner_member_id).
-// For everyone else (another Leader, a plain member, the refuser) every row carries an
-// empty array, and the refusals are not even read.
+// For everyone else (another Leader, a plain member, the refuser) every row carries empty
+// arrays and a zero total, and the responses are not even read.
 export async function listTaskAssignmentsForEventWithRefusals(
   eventId: string, tenantId: string, caller: { memberId: string; role: Role }
 ): Promise<EventTaskAssignmentWithRefusals[]> {
   const rows = await listEventTaskAssignmentsForEvent(eventId, tenantId);
-  const empty = rows.map((r) => ({ ...r, refused_by: [] }));
+  const empty = rows.map((r) => ({ ...r, refused_by: [], assignee_states: [], assignee_states_total: 0 }));
   if (rows.length === 0) return empty;
 
   let canManage = isAdminTier(caller.role);
@@ -330,13 +298,18 @@ export async function listTaskAssignmentsForEventWithRefusals(
   }
   if (!canManage) return empty;
 
-  const refusals = await listOutstandingRefusalsForEvent(tenantId, eventId);
-  const byAssignment = new Map<string, { member_id: string; name: string }[]>();
-  for (const r of refusals) {
-    if (!byAssignment.has(r.assignment_id)) byAssignment.set(r.assignment_id, []);
-    byAssignment.get(r.assignment_id)!.push({ member_id: r.member_id, name: r.member_name });
+  // ONE call for every assignee state on the event, however many tasks or people.
+  const states = await listAssigneeStatesForEvent(tenantId, eventId);
+  const byAssignment = new Map<string, AssigneeStateEntry[]>();
+  for (const { assignment_id, ...entry } of states) {
+    if (!byAssignment.has(assignment_id)) byAssignment.set(assignment_id, []);
+    byAssignment.get(assignment_id)!.push(entry);
   }
-  return rows.map((r) => ({ ...r, refused_by: byAssignment.get(r.id) ?? [] }));
+  return rows.map((r) => {
+    const ordered = orderAssigneeStates(byAssignment.get(r.id) ?? [], r.assignee);
+    const { shown, total } = capAssigneeStates(ordered);
+    return { ...r, refused_by: refusedByFromStates(ordered), assignee_states: shown, assignee_states_total: total };
+  });
 }
 
 // FP-161-5: "My Tasks" — every task assignment that includes the calling member,
