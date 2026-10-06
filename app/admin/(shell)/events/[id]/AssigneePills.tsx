@@ -28,7 +28,7 @@ function Pills({ entries, extra }: { entries: AssigneeStateEntry[]; extra?: numb
       {extra !== undefined && extra > 0 && (
         <li className={`${PILL_BASE} ${PILL_CLASS.PENDING}`}>
           +{extra} more
-          <span className="sr-only"> more assignees</span>
+          <span className="sr-only"> assignees</span>
         </li>
       )}
     </ul>
