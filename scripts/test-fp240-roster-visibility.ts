@@ -194,7 +194,9 @@ async function main() {
   const memberView = await roster(upcoming, m1.token, '?view=admin');
   check("...as a Member: 403 FORBIDDEN_ROLE, exactly as before", memberView.status === 403 && memberView.code === 'FORBIDDEN_ROLE');
   const strangerLeaderView = await roster(upcoming, strangerLeader.token, '?view=admin');
-  check('...a Leader who is neither owner nor invited still gets their (empty) scoped roster, as before — no new access check on that view', strangerLeaderView.status === 200 && (strangerLeaderView.rows ?? []).length === 0);
+  // FP-239 changed this expectation on purpose: the admin view now also requires that the caller may open the event
+  // (it used to return an empty scoped roster to a Leader who neither owns nor is invited to the event).
+  check('...a Leader who is neither owner nor invited is now refused: 403 FORBIDDEN_SCOPE (FP-239 added the event-access check to this view)', strangerLeaderView.status === 403 && strangerLeaderView.code === 'FORBIDDEN_SCOPE');
 
   // ============================================================= order / guest_count
   console.log('\n=== Order and guest_count unchanged');

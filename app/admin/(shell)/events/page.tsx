@@ -30,6 +30,8 @@ export default async function EventsPage({
   // DIP-FP-114-web: Events is read-accessible to Leader-tier (own-created events
   // remain mutable — enforced by the API layer and reflected in EventDetail's UI).
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !token) redirect('/login');
+  // FP-239: the list is scoped to this person, so a missing member id cannot be served.
+  if (!memberId) redirect('/login');
 
   const { eventTypeIds, month, status } = await searchParams;
   const initialFilters = {
@@ -47,6 +49,8 @@ export default async function EventsPage({
       status: initialFilters.status.length > 0 ? initialFilters.status : undefined,
       // FP-222-adj-1: who is looking, for the Needs attention marker.
       viewer: memberId ? { memberId, role } : undefined,
+      // FP-239: a Leader sees only the events they own or are invited to (Admin tier: all).
+      visibleTo: { memberId, role },
     }),
     listEventTypes(tenantId),
     listGroups(tenantId),

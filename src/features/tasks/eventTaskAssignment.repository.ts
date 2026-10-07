@@ -200,18 +200,24 @@ export async function getTaskAssignmentLimit(tenantId: string): Promise<number> 
 // done in application code, matching the established fetch-and-reduce
 // convention (getEligibleAttendanceRows). Events with no row surface with
 // id: null, assignee: null.
+//
+// FP-239: ownerMemberId (optional) limits the slots to events that member owns — a Leader's
+// auto-assign only ever lists, and (see runAutoAssignTaskSlots) only ever changes, their own
+// events. Admin tier passes nothing.
 export async function listSlotsForTaskUpcoming(
-  tenantId: string, taskId: string, eventTypeIds: string[]
+  tenantId: string, taskId: string, eventTypeIds: string[], ownerMemberId?: string
 ): Promise<TaskAutoAssignSlotRow[]> {
   if (eventTypeIds.length === 0) return [];
 
   const db = serviceClient();
 
-  const { data: eventRows, error: eventError } = await db
+  let eventQuery = db
     .from('events')
     .select('id, name, start_datetime, end_datetime')
     .eq('tenant_id', tenantId)
     .in('event_type_id', eventTypeIds);
+  if (ownerMemberId) eventQuery = eventQuery.eq('owner_member_id', ownerMemberId);
+  const { data: eventRows, error: eventError } = await eventQuery;
   if (eventError) throw eventError;
   if (!eventRows || eventRows.length === 0) return [];
 
@@ -263,8 +269,13 @@ export async function listSlotsForTaskUpcoming(
 // pre-validated by the caller (autoAssign.service.ts's validateRoster);
 // eventTypeIds is likewise trusted pre-validated by validateEventTypeIds
 // (DIP-FP-180-adj-4).
+//
+// FP-239: ownerMemberId (optional) is passed as p_owner_member_id, so the run touches only events
+// that member owns. Omitted for Admin tier (the argument is left out, so the function's default
+// NULL = no scope applies).
 export async function runAutoAssignTaskSlots(
-  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
+  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[],
+  ownerMemberId?: string
 ): Promise<EventTaskAssignmentRow[]> {
   const { data, error } = await serviceClient().rpc('auto_assign_task_slots', {
     p_tenant_id: tenantId,
@@ -272,6 +283,7 @@ export async function runAutoAssignTaskSlots(
     p_roster: roster,
     p_actor_member_id: actorMemberId,
     p_event_type_ids: eventTypeIds,
+    ...(ownerMemberId ? { p_owner_member_id: ownerMemberId } : {}),
   });
   if (error) throw error;
   return (data ?? []) as EventTaskAssignmentRow[];

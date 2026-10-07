@@ -179,15 +179,35 @@ function mapUnavailabilityError(error: unknown): never {
   throw error;
 }
 
+// FP-239: a Leader changes nothing on an event they do not own. scopeToOwnerMemberId (optional,
+// trailing — the same pattern as updateEvent / publishEvent / cancelEvent) is set by the routes
+// for a Leader-tier caller; Admin tier passes nothing. Checked BEFORE any validation or write,
+// so a refused call changes nothing. An event that does not exist is left to the existing
+// validation / NOT_FOUND handling of each function.
+async function assertCallerOwnsEvent(eventId: string, tenantId: string, scopeToOwnerMemberId: string | undefined): Promise<void> {
+  if (!scopeToOwnerMemberId) return;
+  const { data, error } = await serviceClient()
+    .from('events')
+    .select('owner_member_id')
+    .eq('id', eventId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) throw error;
+  if (data && data.owner_member_id !== scopeToOwnerMemberId) {
+    throw err('FORBIDDEN_SCOPE', 'You may only change tasks on events you own');
+  }
+}
+
 // FP-222: actorMemberId (optional, trailing) — the member who made the write. After a
 // successful write the version has been bumped, so the actor's own view is recorded at
 // the new version (best-effort) and they never see their own change as "modified".
 export async function createTaskAssignment(
-  tenantId: string, input: CreateEventTaskAssignmentInput, actorMemberId?: string
+  tenantId: string, input: CreateEventTaskAssignmentInput, actorMemberId?: string, scopeToOwnerMemberId?: string
 ): Promise<EventTaskAssignmentRow> {
   if (!input.eventId) throw err('VALIDATION_ERROR', 'eventId is required');
   if (!input.taskId) throw err('VALIDATION_ERROR', 'taskId is required');
 
+  await assertCallerOwnsEvent(input.eventId, tenantId, scopeToOwnerMemberId);
   await validateEventId(input.eventId, tenantId);
   await validateTaskId(input.taskId, tenantId);
   // FP-234: de-duplicated, then strictly validated (create has no stored ids).
@@ -205,10 +225,11 @@ export async function createTaskAssignment(
 }
 
 export async function updateTaskAssignment(
-  id: string, tenantId: string, input: UpdateEventTaskAssignmentInput, actorMemberId?: string
+  id: string, tenantId: string, input: UpdateEventTaskAssignmentInput, actorMemberId?: string, scopeToOwnerMemberId?: string
 ): Promise<EventTaskAssignmentRow> {
   const existing = await getEventTaskAssignment(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
+  await assertCallerOwnsEvent(existing.event_id, tenantId, scopeToOwnerMemberId);
 
   // FP-234: de-duplicate, then drop ids that are stored-but-no-longer-active; the
   // FP-220 limit / individual_only checks run on this final, normalized list.
@@ -231,9 +252,12 @@ export async function updateTaskAssignment(
   return updated;
 }
 
-export async function deleteTaskAssignment(id: string, tenantId: string, actorMemberId?: string): Promise<void> {
+export async function deleteTaskAssignment(
+  id: string, tenantId: string, actorMemberId?: string, scopeToOwnerMemberId?: string
+): Promise<void> {
   const existing = await getEventTaskAssignment(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Event task assignment not found');
+  await assertCallerOwnsEvent(existing.event_id, tenantId, scopeToOwnerMemberId);
   const deleted = await deleteEventTaskAssignment(id, tenantId);
   if (deleted) await recordEventViewBestEffort(tenantId, actorMemberId, existing.event_id);
 }
