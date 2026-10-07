@@ -266,6 +266,10 @@ async function main() {
   // ============================================================ endpoint gating
   console.log('\n=== GET /api/event-tasks-assignments (real JWTs)');
   const routeEv = await mkEvent(ownerL.id);
+  // FP-239: the endpoint now requires that the caller may open the event, so the non-owner Leader and the plain
+  // Member are INVITED here (the refuser holds a task, which also grants access); what is checked is still that
+  // none of them receives the states.
+  for (const m of [otherLeaderL.id, memberL.id]) must(await svc.from('event_attendees').insert({ tenant_id: T1, event_id: routeEv, member_id: m }).select('event_id'), 'invite');
   const routeTask = await task('Route');
   const routeAsg = (await createTaskAssignment(T1, { eventId: routeEv, taskId: routeTask, assignee: { member_ids: [refuserL.id, ann] } }, adminL.id)).id;
   await submitTaskAssignmentResponse(T1, refuserL.id, routeAsg, 'REFUSED');
@@ -284,7 +288,7 @@ async function main() {
   const noAuth = await assignmentsGET(req(`/api/event-tasks-assignments?event_id=${routeEv}`));
   check('no token: 401', noAuth.status === 401);
   const xt = await assignmentsGET(req(`/api/event-tasks-assignments?event_id=${t2ev}`, adminL.token));
-  check("a T1 Admin asking for a T2 event gets an empty list (no rows, no states)", xt.status === 200 && eq((await xt.json()).data, []));
+  check("a T1 Admin asking for a T2 event gets 404 NOT_FOUND (FP-239; it used to be an empty list), no rows, no states", xt.status === 404 && (await xt.json()).error?.code === 'NOT_FOUND');
 
   // ============================================================ query count
   console.log('\n=== Query count is constant');

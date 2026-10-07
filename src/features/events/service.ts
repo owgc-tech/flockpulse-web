@@ -508,6 +508,11 @@ export interface ListEventsOptions {
   // is shown to Admin-tier callers and to a Leader for the events they own. Without
   // a viewer every row comes back needs_attention: false.
   viewer?: { memberId: string; role: Role };
+  // FP-239: whose list this is. For a Leader-tier caller the list is limited to the events
+  // they own or are invited to (list_member_visible_events); Admin tier, or no visibleTo
+  // (internal use), keeps the unscoped tenant query. Events a person can open only because
+  // they hold a task on them are deliberately not listed.
+  visibleTo?: { memberId: string; role: Role };
 }
 
 export interface ListEventsResult<T> {
@@ -549,10 +554,19 @@ export async function listEvents(
   const offset = Math.max(options.offset ?? 0, 0);
   const db = serviceClient();
 
-  let query = db
+  const fromEvents = () => db
     .from('events')
     .select(LIST_EVENTS_COLS, { count: 'exact' })
     .eq('tenant_id', tenantId);
+  // FP-239: a Leader-tier caller reads through list_member_visible_events (owned or invited),
+  // which returns event rows, so the same type / month / order / range steps apply to it.
+  const scoped = options.visibleTo && isExactlyLeaderTier(options.visibleTo.role) ? options.visibleTo : null;
+  let query = scoped
+    ? (db
+        .rpc('list_member_visible_events', { p_tenant_id: tenantId, p_member_id: scoped.memberId }, { count: 'exact' })
+        .select(LIST_EVENTS_COLS)
+        .eq('tenant_id', tenantId) as unknown as ReturnType<typeof fromEvents>)
+    : fromEvents();
 
   if (options.eventTypeIds && options.eventTypeIds.length > 0) {
     query = query.in('event_type_id', options.eventTypeIds);
@@ -904,36 +918,65 @@ export async function recordEventView(tenantId: string, memberId: string, eventI
   return toStore;
 }
 
-// FP-222 / FP-240: "may this caller open this event" — the same visibility rule the event
-// list applies: Admin-tier may open any event of the tenant, a Leader-tier caller the events
-// they own or are invited to, a Member the events they are invited to. Anything else is
+// FP-222 / FP-240 / FP-239: "may this caller open this event" — ONE rule for every event
+// endpoint (web and phone). Admin tier may open any event of the tenant. A Leader-tier caller
+// may open events they own, are invited to, or currently hold a task on. A Member may open
+// events they are invited to or currently hold a task on. "Currently hold a task" means
+// resolving as an assignee (directly or through a group) of any task on a non-draft event
+// (is_member_assigned_to_event); it grants the same access as an invitation. Anything else is
 // FORBIDDEN_SCOPE; an event that does not exist (or belongs to another tenant) is NOT_FOUND.
-// Shared by POST /api/events/:id/view and GET /api/events/:id/roster so the two can never
-// drift. (GET /api/events/:id itself has no per-event check — FP-239; do not copy that gap.)
-export async function assertCallerCanOpenEvent(
+// Shared by every route that reads one event: GET /api/events/:id, .../reminder-context,
+// .../roster (both views), POST .../view, GET /api/event-tasks-assignments?event_id= and the
+// announcement acknowledgement roster, so they can never drift. Checks run cheap-first and
+// stop at the first match: Admin, owner (Leader tier), invited, assigned.
+export type CallerEventAccess = 'OK' | 'NOT_FOUND' | 'FORBIDDEN_SCOPE';
+
+export async function canCallerOpenEvent(
   tenantId: string, memberId: string, role: Role, eventId: string
-): Promise<void> {
+): Promise<CallerEventAccess> {
   const { data: event, error } = await serviceClient()
     .from('events')
     .select('id, owner_member_id')
     .eq('id', eventId)
     .eq('tenant_id', tenantId)
     .single();
-  if (error || !event) {
-    const err = new Error('Event not found') as Error & { code: string };
-    err.code = 'NOT_FOUND';
-    throw err;
-  }
+  if (error || !event) return 'NOT_FOUND';
 
   const allowed =
     isAdminTier(role) ||
     (isLeaderTierOrAbove(role) && event.owner_member_id === memberId) ||
-    (await isEventAttendee(tenantId, eventId, memberId));
-  if (!allowed) {
+    (await isEventAttendee(tenantId, eventId, memberId)) ||
+    (await isMemberAssignedToEvent(tenantId, eventId, memberId));
+  return allowed ? 'OK' : 'FORBIDDEN_SCOPE';
+}
+
+export async function assertCallerCanOpenEvent(
+  tenantId: string, memberId: string, role: Role, eventId: string
+): Promise<void> {
+  const access = await canCallerOpenEvent(tenantId, memberId, role, eventId);
+  if (access === 'NOT_FOUND') {
+    const err = new Error('Event not found') as Error & { code: string };
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  if (access === 'FORBIDDEN_SCOPE') {
     const err = new Error('You do not have access to this event') as Error & { code: string };
     err.code = 'FORBIDDEN_SCOPE';
     throw err;
   }
+}
+
+// FP-239: does this member currently resolve as an assignee of any task on this (non-draft)
+// event — the "assigned" clause of the rule above. One RPC; the resolution rule is
+// resolve_assignee_member_ids's, plus tenant and active-member filtering.
+async function isMemberAssignedToEvent(tenantId: string, eventId: string, memberId: string): Promise<boolean> {
+  const { data, error } = await serviceClient().rpc('is_member_assigned_to_event', {
+    p_tenant_id: tenantId,
+    p_event_id: eventId,
+    p_member_id: memberId,
+  });
+  if (error) throw error;
+  return data === true;
 }
 
 // FP-222: POST /api/events/:id/view — behavior and error codes unchanged; the access rule

@@ -28,6 +28,8 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     if (req.nextUrl.searchParams.get('view') === 'admin') {
       return requireLeader(async () => {
         try {
+          // FP-239: a Leader may read the admin roster view only of an event they may open.
+          await assertCallerCanOpenEvent(ctx.tenantId, ctx.memberId, ctx.role, id);
           // DIP-FP-113-web: rank-based, not a literal `role === 'LEADER'` — a
           // PASTORAL_LEADER caller must get the same scoped-to-own-members
           // roster a LEADER gets, not fall through to the Admin-tier
@@ -35,9 +37,9 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
           const roster = await getEventRoster(id, ctx.tenantId, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
           return NextResponse.json({ data: roster });
         } catch (err: unknown) {
-          if ((err as { code?: string }).code === 'NOT_FOUND') {
-            return errorResponse('NOT_FOUND', 'Event not found', 404);
-          }
+          const code = (err as { code?: string }).code;
+          if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', 'Event not found', 404);
+          if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
           throw err;
         }
       })(req, ctx);

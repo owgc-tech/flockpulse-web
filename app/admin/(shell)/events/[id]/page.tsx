@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
-import { getEventById, listMeetingResources } from '@/src/features/events/service';
+import { canCallerOpenEvent, getEventById, listMeetingResources } from '@/src/features/events/service';
 import { listEventTypes } from '@/src/features/event-types/event-type.service';
 import { listGroups } from '@/src/features/groups/service';
 import { listMembers } from '@/src/features/members/service';
@@ -24,6 +24,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
   // FP-161-2: gated on owner_member_id (transferable), not created_by_member_id
   // (permanent audit history only, no longer read for permission checks).
   if (!tenantId || !role || !isLeaderTierOrAbove(role) || !memberId || !token) redirect('/login');
+
+  // FP-239: an event this person may not open (not theirs, not invited, no task on it) goes
+  // back to the list, the same as an event that does not exist.
+  if ((await canCallerOpenEvent(tenantId, memberId, role, id)) !== 'OK') redirect('/admin/events');
 
   let event: EventDetailRow;
   try {

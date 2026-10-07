@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { getTaskAutoAssignData } from '@/src/features/tasks/autoAssign.service';
 
 // Leader-tier-or-above, matching event-tasks-assignments's existing gating.
+// FP-239: a Leader's slot list holds only the events they own (Admin tier: every upcoming event).
 const requireLeader = requireRole('LEADER');
 
 // GET /api/tasks/auto-assign/slots?task_id=X&event_type_ids=a,b,c — every
@@ -25,7 +26,9 @@ export async function GET(req: NextRequest) {
     const eventTypeIds = rawEventTypeIds ? rawEventTypeIds.split(',').filter(Boolean) : [];
 
     try {
-      const { slots } = await getTaskAutoAssignData(ctx.tenantId, taskId, eventTypeIds);
+      const { slots } = await getTaskAutoAssignData(
+        ctx.tenantId, taskId, eventTypeIds, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined
+      );
       return NextResponse.json({ data: slots }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;

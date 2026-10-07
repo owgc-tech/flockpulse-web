@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
-import { getEventById, updateEvent } from '@/src/features/events/service';
+import { assertCallerCanOpenEvent, getEventById, updateEvent } from '@/src/features/events/service';
 import { isResolvableAddress } from '@/src/lib/geocodio';
 import { validateLocationAddress } from '@/src/features/events/event.types';
 
@@ -15,6 +15,8 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
     if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
 
     try {
+      // FP-239: the caller must be allowed to open this event (the shared rule) — before any read.
+      await assertCallerCanOpenEvent(ctx.tenantId, ctx.memberId, ctx.role, id);
       // DIP-FP-191-web-adj-1: callerMemberId so acknowledged_at reflects this
       // specific caller's state, not a shared/global value.
       // FP-222: ctx.role lets the detail carry the same needs_attention flag the list does
@@ -23,9 +25,9 @@ export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string
       const event = await getEventById(id, ctx.tenantId, ctx.memberId, ctx.role);
       return NextResponse.json({ data: event });
     } catch (err: unknown) {
-      if ((err as { code?: string }).code === 'NOT_FOUND') {
-        return errorResponse('NOT_FOUND', 'Event not found', 404);
-      }
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', 'Event not found', 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
       throw err;
     }
   });

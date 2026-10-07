@@ -12,8 +12,12 @@ const requireLeader = requireRole('LEADER');
 // infinite scroll. All optional — omitting them preserves "first page,
 // unfiltered" behavior. eventTypeIds/status are comma-separated ids/values;
 // month is 'YYYY-MM'. See listEvents() for how each is actually applied.
+//
+// FP-239: Leader tier or above only (a Member gets 403 FORBIDDEN_ROLE — this feed backs the web
+// admin Events page, the phone uses /api/events/mine), and a Leader's list holds only the events
+// they own or are invited to (Admin tier sees every event, as before).
 export async function GET(req: NextRequest) {
-  return withAuth(req, async (_, ctx) => {
+  return withAuth(req, requireLeader(async (_, ctx) => {
     const { searchParams } = req.nextUrl;
     const limitParam = searchParams.get('limit');
     const offsetParam = searchParams.get('offset');
@@ -30,9 +34,10 @@ export async function GET(req: NextRequest) {
       // FP-222-adj-1: the viewer decides who sees the Needs attention marker (Admin tier,
       // or a Leader for the events they own).
       viewer: { memberId: ctx.memberId, role: ctx.role },
+      visibleTo: { memberId: ctx.memberId, role: ctx.role },
     });
     return NextResponse.json(result);
-  });
+  }));
 }
 
 export const POST = (req: NextRequest) =>

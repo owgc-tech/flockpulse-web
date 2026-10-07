@@ -134,11 +134,13 @@ export async function validateEventTypeIds(eventTypeIds: string[], tenantId: str
 // getFoodAssignmentAutoAssignData now that the screen is task-generic. task
 // is returned (with name and individual_only) so the client can render the
 // label and roster-picker mode without either being hardcoded per route.
+//
+// FP-239: ownerMemberId (optional) limits the slots to events that member owns (a Leader's view).
 export async function getTaskAutoAssignData(
-  tenantId: string, taskId: string, eventTypeIds: string[]
+  tenantId: string, taskId: string, eventTypeIds: string[], ownerMemberId?: string
 ): Promise<{ task: { id: string; name: string; individual_only: boolean }; slots: TaskAutoAssignSlotRow[] }> {
   const task = await getTaskById(tenantId, taskId);
-  const slots = await listSlotsForTaskUpcoming(tenantId, task.id, eventTypeIds);
+  const slots = await listSlotsForTaskUpcoming(tenantId, task.id, eventTypeIds, ownerMemberId);
   return { task, slots };
 }
 
@@ -260,8 +262,14 @@ async function recordActorViewForChangedEvents(
 // SET LOCAL inside auto_assign_task_slots()), so a slot that lands on an
 // unavailable member still succeeds; this surfaces that after the fact
 // instead of silently or as a hard failure.
+//
+// FP-239: ownerMemberId (optional) limits the run to events that member owns — set by the route
+// for a Leader-tier caller, so a Leader's auto-assign changes only their own events (the slot list
+// they saw and the events the run changes are the same set). Admin tier passes nothing. The
+// version snapshot below may stay unscoped: it only detects which events actually changed.
 export async function runTaskAutoAssign(
-  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[]
+  tenantId: string, taskId: string, roster: RosterEntry[], actorMemberId: string, eventTypeIds: string[],
+  ownerMemberId?: string
 ): Promise<RunTaskAutoAssignResult> {
   const task = await getTaskById(tenantId, taskId);
   await validateRoster(roster, tenantId, { individualOnly: task.individual_only });
@@ -275,7 +283,7 @@ export async function runTaskAutoAssign(
   }
   await validateEventTypeIds(eventTypeIds, tenantId);
   const versionsBefore = await readEventVersionsBestEffort(tenantId, { eventTypeIds });
-  const assignments = await runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds);
+  const assignments = await runAutoAssignTaskSlots(tenantId, task.id, roster, actorMemberId, eventTypeIds, ownerMemberId);
   await recordActorViewForChangedEvents(tenantId, actorMemberId, versionsBefore, assignments);
   const conflicts = await computeUnavailabilityConflicts(tenantId, assignments);
   return { assignments, conflicts };

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { runTaskAutoAssign } from '@/src/features/tasks/autoAssign.service';
 
 // Leader-tier-or-above, matching event-tasks-assignments's existing gating.
+// FP-239: a Leader's run covers only the events they own (Admin tier: every eligible event).
 const requireLeader = requireRole('LEADER');
 
 // POST /api/tasks/auto-assign — round-robin the given roster across every
@@ -30,7 +31,10 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(event_type_ids)) return errorResponse('MISSING_FIELD', 'event_type_ids array required', 400);
 
     try {
-      const { assignments, conflicts } = await runTaskAutoAssign(ctx.tenantId, task_id, roster, ctx.memberId, event_type_ids);
+      const { assignments, conflicts } = await runTaskAutoAssign(
+        ctx.tenantId, task_id, roster, ctx.memberId, event_type_ids,
+        isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined
+      );
       return NextResponse.json({ data: assignments, conflicts }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;

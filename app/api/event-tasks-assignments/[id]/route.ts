@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
 import { updateTaskAssignment, deleteTaskAssignment } from '@/src/features/tasks/eventTaskAssignment.service';
 
-// Leader-tier-or-above, matching POST /api/event-tasks-assignments.
+// Leader-tier-or-above, matching POST /api/event-tasks-assignments. FP-239: a Leader may change
+// or remove an assignment only on an event they own (403 FORBIDDEN_SCOPE otherwise).
 const requireLeader = requireRole('LEADER');
 
 // PATCH /api/event-tasks-assignments/:id — update the assignee (Leader-tier-or-above)
@@ -18,11 +19,12 @@ export async function PATCH(
     const { assignee } = body;
 
     try {
-      const updated = await updateTaskAssignment(id, ctx.tenantId, { assignee }, ctx.memberId); // FP-222: actor
+      const updated = await updateTaskAssignment(id, ctx.tenantId, { assignee }, ctx.memberId, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined); // FP-222: actor; FP-239: owner scope for a Leader
       return NextResponse.json({ data: updated }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', (err as Error).message, 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
       if (code === 'VALIDATION_ERROR') return errorResponse('VALIDATION_ERROR', (err as Error).message, 422);
       // DIP-FP-190-web: same memberName-attached shape as POST /api/event-tasks-assignments.
       if (code === 'MEMBER_UNAVAILABLE') {
@@ -44,11 +46,12 @@ export async function DELETE(
   const { id } = await params;
   return withAuth(req, requireLeader(async (_, ctx) => {
     try {
-      await deleteTaskAssignment(id, ctx.tenantId, ctx.memberId); // FP-222: actor
+      await deleteTaskAssignment(id, ctx.tenantId, ctx.memberId, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined); // FP-222: actor; FP-239: owner scope for a Leader
       return NextResponse.json({ data: { id } }, { status: 200 });
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', (err as Error).message, 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
       throw err;
     }
   }));
