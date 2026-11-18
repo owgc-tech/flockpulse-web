@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import type { MemberRow } from '@/src/features/members/member.types';
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function MembersTable({ members }: Props) {
+  const router = useRouter();
   return (
     <div className="flex flex-col gap-4">
       {members.length === 0 ? (
@@ -28,7 +30,7 @@ export default function MembersTable({ members }: Props) {
               {members.map(m => (
                 <tr
                   key={m.id}
-                  onClick={() => { window.location.href = `/admin/members/${m.id}/edit`; }}
+                  onClick={() => { router.push(`/admin/members/${m.id}/edit`); }}
                   className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
                 >
                   <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{m.first_name} {m.last_name}</td>
