@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import type { GroupRow } from '@/src/features/groups/group.types';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 function GroupRows({ groups, memberNameById }: { groups: GroupRow[]; memberNameById: Record<string, string> }) {
+  const router = useRouter();
   return (
     <table className="w-full text-sm">
       <thead>
@@ -22,7 +24,7 @@ function GroupRows({ groups, memberNameById }: { groups: GroupRow[]; memberNameB
         {groups.map(g => (
           <tr
             key={g.id}
-            onClick={() => { window.location.href = `/admin/groups/${g.id}/edit`; }}
+            onClick={() => { router.push(`/admin/groups/${g.id}/edit`); }}
             className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
           >
             <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{g.name}</td>
