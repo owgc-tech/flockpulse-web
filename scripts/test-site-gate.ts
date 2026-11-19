@@ -40,6 +40,9 @@ check('gated /_next/static/x.js', d('flockpulse.ca', '/_next/static/x.js', 'prod
 check('gated /_next/image', d('flockpulse.ca', '/_next/image', 'production'), 'asset');
 check('gated /favicon.ico', d('flockpulse.ca', '/favicon.ico', 'production'), 'asset');
 check('gated /icon.png', d('flockpulse.ca', '/icon.png', 'production'), 'asset');
+check('gated /flockpulse-logo.png', d('flockpulse.ca', '/flockpulse-logo.png', 'production'), 'asset');
+check('gated /flockpulse-logo.png.html: exact match only', d('flockpulse.ca', '/flockpulse-logo.png.html', 'production'), 'coming-soon');
+check('preview host /flockpulse-logo.png', d('preview.flockpulse.ca', '/flockpulse-logo.png', 'preview'), 'pass');
 
 console.log('=== Launch switch');
 check("publicLaunch 'true' opens the site", d('flockpulse.ca', '/', 'production', 'true'), 'pass');
