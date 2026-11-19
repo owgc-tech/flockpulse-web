@@ -76,14 +76,14 @@ export async function recordManualCompletion(
     return {
       success: false,
       code: 'NOT_FOUND',
-      message: `Talk ${talkId} not found in tenant`,
+      message: `Session ${talkId} not found in tenant`,
     };
   }
   if (talk.deleted_at !== null) {
     return {
       success: false,
       code: 'NOT_FOUND',
-      message: `Talk ${talkId} has been deleted`,
+      message: `Session ${talkId} has been deleted`,
     };
   }
 
@@ -101,7 +101,7 @@ export async function recordManualCompletion(
     return {
       success: false,
       code: 'VALIDATION_ERROR',
-      message: `Talk already recorded as completed via ${sourceLabel}`,
+      message: `Session already recorded as completed via ${sourceLabel}`,
       existingRow: existing,
     };
   }

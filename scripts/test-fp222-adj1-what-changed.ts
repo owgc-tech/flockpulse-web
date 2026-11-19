@@ -70,7 +70,7 @@ async function main() {
     ['location_name', 'Other hall', 'Location'], ['location_address', '2 Side St', 'Location'],
     ['event_type_id', 'ty2', 'Event type'],
     ['online_meeting_url', 'https://x.test/j', 'Online meeting'], ['online_meeting_platform_label', 'Meet', 'Online meeting'], ['online_meeting_resource_id', 'res1', 'Online meeting'],
-    ['talk_id', 'talk1', 'Talk'],
+    ['talk_id', 'talk1', 'Session'],
     ['rsvp_closure_days', 3, 'RSVP settings'], ['guests_allowed', true, 'RSVP settings'],
     ['target', { group_ids: ['g2'], member_ids: [] }, 'Invitees'],
     ['status', 'CANCELLED', 'Status'],
@@ -242,7 +242,7 @@ async function main() {
   const talk = must(await svc.from('talks').insert({ tenant_id: T1, module_id: mod, name: 'Ta', sequence_order: 1, for_single_men: true }).select('id').single(), 'talk').id;
   const talkEv = await mkEvent({ attendees: [viewer] });
   await open(talkEv); await edit(talkEv, { talkId: talk });
-  await expectFields("talk -> ['Talk']", talkEv, ['Talk']);
+  await expectFields("talk -> ['Session']", talkEv, ['Session']);
 
   const noopEv = await mkEvent({ attendees: [viewer], name: 'NoOp-' + stamp });
   await open(noopEv); await edit(noopEv, { name: 'NoOp-' + stamp });

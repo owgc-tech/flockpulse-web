@@ -45,7 +45,7 @@ export default function DeletedTalksTable({ initialTalks, token }: Props) {
   if (!talks.length) {
     return (
       <p className="rounded-xl border border-zinc-200 bg-white px-6 py-10 text-center text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-950">
-        No deleted talks.
+        No deleted sessions.
       </p>
     );
   }

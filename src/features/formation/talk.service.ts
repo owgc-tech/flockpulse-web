@@ -44,7 +44,7 @@ export async function updateTalk(
   id: string, tenantId: string, input: UpdateTalkInput
 ): Promise<TalkRow> {
   const existing = await getTalk(id, tenantId);
-  if (!existing) throw err('NOT_FOUND', 'Talk not found');
+  if (!existing) throw err('NOT_FOUND', 'Session not found');
 
   if (input.name !== undefined && !input.name.trim()) {
     throw err('VALIDATION_ERROR', 'name cannot be empty');
@@ -59,7 +59,7 @@ export async function updateTalk(
       ...input,
       name: input.name?.trim(),
     });
-    if (!updated) throw err('NOT_FOUND', 'Talk not found');
+    if (!updated) throw err('NOT_FOUND', 'Session not found');
     return updated;
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
@@ -69,7 +69,7 @@ export async function updateTalk(
     if (code === 'P0001') {
       const msg = (e as Error).message ?? '';
       if (msg.includes('Cannot soft-delete talk')) {
-        throw err('INVALID_STATE_TRANSITION', msg);
+        throw err('INVALID_STATE_TRANSITION', "This session can't be deleted because one or more events use it.");
       }
     }
     throw e;
@@ -78,7 +78,7 @@ export async function updateTalk(
 
 export async function getTalkById(id: string, tenantId: string): Promise<TalkRow> {
   const talk = await getTalk(id, tenantId);
-  if (!talk) throw err('NOT_FOUND', 'Talk not found');
+  if (!talk) throw err('NOT_FOUND', 'Session not found');
   return talk;
 }
 
@@ -130,8 +130,8 @@ export async function listDeletedTalks(tenantId: string): Promise<DeletedTalkRow
 
 export async function restoreTalk(id: string, tenantId: string): Promise<TalkRow> {
   const existing = await getTalk(id, tenantId);
-  if (!existing) throw err('NOT_FOUND', 'Talk not found');
-  if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Talk is not deleted');
+  if (!existing) throw err('NOT_FOUND', 'Session not found');
+  if (existing.deleted_at === null) throw err('VALIDATION_ERROR', 'Session is not deleted');
 
   const parentModule = await getModule(existing.module_id, tenantId);
   if (!parentModule) throw err('NOT_FOUND', 'Parent module not found');
@@ -145,7 +145,7 @@ export async function restoreTalk(id: string, tenantId: string): Promise<TalkRow
       deletedAt: null,
       sequenceOrder: maxOrder + 1,
     });
-    if (!restored) throw err('NOT_FOUND', 'Talk not found');
+    if (!restored) throw err('NOT_FOUND', 'Session not found');
     return restored;
   } catch (e: unknown) {
     if ((e as { code?: string }).code === '23505') {

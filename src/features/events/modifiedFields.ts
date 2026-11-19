@@ -56,7 +56,7 @@ const COLUMN_LABELS: Record<string, string> = {
   online_meeting_url: 'Online meeting',
   online_meeting_platform_label: 'Online meeting',
   online_meeting_resource_id: 'Online meeting',
-  talk_id: 'Talk',
+  talk_id: 'Session',
   rsvp_closure_days: 'RSVP settings',
   guests_allowed: 'RSVP settings',
   target: 'Invitees',
@@ -68,7 +68,7 @@ const IGNORED_COLUMNS = new Set(['id', 'tenant_id', 'version', 'updated_at', 'cr
 
 export const LABEL_ORDER = [
   'Name', 'Description', 'Date & time', 'Location', 'Event type', 'Online meeting',
-  'Talk', 'RSVP settings', 'Invitees', 'Status', 'Tasks', 'Details',
+  'Session', 'RSVP settings', 'Invitees', 'Status', 'Tasks', 'Details',
 ] as const;
 
 type Json = unknown;

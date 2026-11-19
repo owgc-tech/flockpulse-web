@@ -580,7 +580,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
       {isFormation && (
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Formation talk</p>
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Training session</p>
           <div className="grid grid-cols-3 gap-3">
             <select className={inputClass} value={courseId} onChange={e => { setCourseId(e.target.value); setModuleId(''); setTalkId(''); }}>
               <option value="">Course…</option>
@@ -591,7 +591,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
               {visibleModules.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
             <select className={inputClass} value={talkId} onChange={e => setTalkId(e.target.value)} disabled={!moduleId}>
-              <option value="">Talk…</option>
+              <option value="">Session…</option>
               {visibleTalks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
