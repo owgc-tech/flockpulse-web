@@ -93,7 +93,7 @@ export default function FormationProgressBrowser({ members, tenantId, adminMembe
       {/* Progress panel */}
       <div className="flex-1">
         {!selectedMemberId && (
-          <p className="py-12 text-center text-sm text-zinc-400">Select a member to view their formation progress.</p>
+          <p className="py-12 text-center text-sm text-zinc-400">Select a member to view their training progress.</p>
         )}
         {selectedMemberId && isPending && (
           <p className="py-12 text-center text-sm text-zinc-400">Loading progress...</p>
@@ -230,7 +230,7 @@ function ModuleRow({ mod, tenantId, adminMemberId, memberId, token, canRecord, o
         <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{mod.module_name}</span>
         <div className="flex items-center gap-2">
           <span className={`text-xs ${mod.module_completed ? 'text-green-600 dark:text-green-400' : 'text-zinc-400'}`}>
-            {completedTalks}/{mod.talks.length} talks
+            {completedTalks}/{mod.talks.length} sessions
             {mod.module_completed ? ' · Complete' : ''}
           </span>
           <span className="text-zinc-400">{open ? '▲' : '▼'}</span>
@@ -255,7 +255,7 @@ function ModuleRow({ mod, tenantId, adminMemberId, memberId, token, canRecord, o
       )}
 
       {open && mod.talks.length === 0 && (
-        <p className="px-3 py-2 text-xs text-zinc-400">No relevant talks for this member in this module.</p>
+        <p className="px-3 py-2 text-xs text-zinc-400">No relevant sessions for this member in this module.</p>
       )}
     </div>
   );

@@ -194,7 +194,7 @@ export default function FounderCompleteForm() {
             <label htmlFor="communityName" className={labelClass}>Community name</label>
             <input
               id="communityName" name="communityName" type="text" required
-              placeholder="e.g. Grace Community Church"
+              placeholder="e.g. Grace Community Church, Riverside Community Association"
               className={inputClass}
               value={communityName}
               onChange={e => setCommunityName(e.target.value)}

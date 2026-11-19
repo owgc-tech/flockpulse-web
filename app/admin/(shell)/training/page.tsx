@@ -21,9 +21,9 @@ export default async function FormationPage() {
   return (
     <div className="flex flex-col">
       <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Formation</h1>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Training</h1>
         <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-          Manage courses, modules, and talks.
+          Manage courses, modules, and sessions.
         </p>
       </div>
       <FormationBrowser initialCourses={courses} token={token} />
