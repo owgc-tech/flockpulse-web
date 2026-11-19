@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
+import { isLeaderTierOrAbove, errorResponse, type Role } from '@/src/lib/auth/middleware';
+import { siteGateDecision } from '@/src/lib/site-gate';
 
 // MFA trust cookie written by /login/mfa-challenge/actions.ts after successful
 // TOTP verification. Value is a Unix-ms timestamp (when trust expires).
@@ -8,6 +9,28 @@ const MFA_EXPIRES_COOKIE = 'fp_mfa_expires_at';
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // FP-249: site gate runs first, before any auth logic. Not gated => 'pass' and the
+  // logic below is unchanged.
+  const gate = siteGateDecision({
+    host: req.headers.get('host') ?? req.nextUrl.host,
+    pathname,
+    vercelEnv: process.env.VERCEL_ENV,
+    publicLaunch: process.env.FP_PUBLIC_LAUNCH,
+  });
+  if (gate === 'coming-soon') {
+    const res = NextResponse.rewrite(new URL('/coming-soon', req.url));
+    res.headers.set('X-Robots-Tag', 'noindex');
+    return res;
+  }
+  if (gate === 'api-not-found') {
+    const res = errorResponse('NOT_FOUND', 'Not available yet.', 404);
+    res.headers.set('X-Robots-Tag', 'noindex');
+    return res;
+  }
+  if (gate === 'asset') {
+    return NextResponse.next();
+  }
 
   // Only protect /admin/* routes. All other paths pass through unchanged.
   if (!pathname.startsWith('/admin')) {
@@ -83,5 +106,7 @@ export default async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  // FP-249: the gate must see every page and API path (it was /admin only). Static
+  // assets are excluded here; site-gate.ts also treats them as 'asset'.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png).*)'],
 };
