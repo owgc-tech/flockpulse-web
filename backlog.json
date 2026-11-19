@@ -1,0 +1,414 @@
+{
+  "epics": [
+    {
+      "PDEEpicID": "EPIC-1",
+      "title": "EPIC-1 — Tenant & Access Control",
+      "description": "Enable secure authentication, additive role-based authorization enforcement, and strict tenant isolation.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-1.1",
+          "PDEEpicID": "EPIC-1",
+          "title": "STORY-1.1 — Authenticate User and Resolve Tenant Context",
+          "description": "Return authenticated user identity, role, and tenant scope on every request.",
+          "acceptanceCriteria": [
+            "Valid JWT returns user context including user_id, role, tenant_id, and linked member_id",
+            "Invalid or expired token returns AUTH_REQUIRED or INVALID_TOKEN error",
+            "tenant_id is derived from authenticated context only; client-supplied tenant_id is ignored",
+            "All responses are scoped to the authenticated tenant"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-1.2",
+          "PDEEpicID": "EPIC-1",
+          "title": "STORY-1.2 — Enforce Additive Role-Based Access Control",
+          "description": "Enforce additive RBAC where Admin inherits all Leader capabilities and Leader inherits all Member capabilities.",
+          "acceptanceCriteria": [
+            "Member can perform only Member-scoped actions",
+            "Leader can perform all Member actions plus leader-scoped actions",
+            "Admin can perform all Leader and Member actions plus admin-scoped actions",
+            "Unauthorized access returns FORBIDDEN_ROLE error",
+            "Leader access is further restricted to assigned members for confirmation workflows",
+            "Cross-tenant access is blocked with CROSS_TENANT_ACCESS error"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-2",
+      "title": "EPIC-2 — Member & Group Management",
+      "description": "Enable creation and management of members, groups, and leader assignments.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-2.1",
+          "PDEEpicID": "EPIC-2",
+          "title": "STORY-2.1 — Create and Manage Members",
+          "description": "Enable admin to create, update, and soft-delete members.",
+          "acceptanceCriteria": [
+            "Member created with required fields (first_name, last_name, email, tenant_id)",
+            "Updates persist correctly",
+            "Soft-deleted members are excluded from active lists, RSVP, self-report, and confirmation workflows",
+            "Unique active email enforced per tenant"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-2.2",
+          "PDEEpicID": "EPIC-2",
+          "title": "STORY-2.2 — Assign Members to Groups and Leaders",
+          "description": "Enable assignment of members to groups and to Pastoral Leaders.",
+          "acceptanceCriteria": [
+            "Members can be assigned to groups",
+            "Leader-to-member relationships are stored and retrievable",
+            "Duplicate active assignments are prevented",
+            "Groups can be used for event targeting"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-3",
+      "title": "EPIC-3 — Event Lifecycle Management",
+      "description": "Enable full lifecycle management of events including state transitions, versioning, and expected member materialization.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-3.1",
+          "PDEEpicID": "EPIC-3",
+          "title": "STORY-3.1 — Create and Publish Event",
+          "description": "Enable admin to create and schedule an event with required fields and notification configuration.",
+          "acceptanceCriteria": [
+            "Event starts in DRAFT state",
+            "Publish transitions event to SCHEDULED",
+            "Required fields validated (event_type_id, name, start_datetime, end_datetime, location_name, target)",
+            "end_datetime must be after start_datetime",
+            "Expected members materialized on scheduling",
+            "Notification schedules created for pre-event reminder, post-event self-report prompt, and leader confirmation tasks"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-3.2",
+          "PDEEpicID": "EPIC-3",
+          "title": "STORY-3.2 — Manage Event State Transitions",
+          "description": "Automatically transition event through lifecycle states at the correct times.",
+          "acceptanceCriteria": [
+            "SCHEDULED transitions to ACTIVE at start_datetime",
+            "ACTIVE transitions to COMPLETED at end_datetime",
+            "COMPLETED transitions to LOCKED after attendance window closes",
+            "Cancelled events suppress all pending notifications and block RSVP, self-report, and confirmation actions"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-3.3",
+          "PDEEpicID": "EPIC-3",
+          "title": "STORY-3.3 — Update Event and Trigger Notifications",
+          "description": "Allow event updates with version tracking and change notifications.",
+          "acceptanceCriteria": [
+            "Updates increment the event version",
+            "Event update triggers a notification to expected members with changed details",
+            "Immutable fields cannot be edited after notifications have been sent",
+            "Reschedule of timing recalculates unsent notification schedules"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-4",
+      "title": "EPIC-4 — RSVP Management",
+      "description": "Enable members to submit RSVP intent before events with validation rules including mandatory reason for No.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-4.1",
+          "PDEEpicID": "EPIC-4",
+          "title": "STORY-4.1 — Submit RSVP Response",
+          "description": "Enable member to submit pre-event attendance intent.",
+          "acceptanceCriteria": [
+            "Member can submit RSVP Yes or No before event start",
+            "Response is stored with responded_at timestamp",
+            "Latest RSVP overwrites previous (upsert on event_id + member_id)",
+            "RSVP never creates or modifies official attendance"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-4.2",
+          "PDEEpicID": "EPIC-4",
+          "title": "STORY-4.2 — Enforce RSVP No Reason Requirement",
+          "description": "Ensure RSVP No responses require a reason.",
+          "acceptanceCriteria": [
+            "RSVP No submission without reason is rejected with RSVP_REASON_REQUIRED error",
+            "Reason is stored with the RSVP record",
+            "RSVP Yes does not require a reason"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-5",
+      "title": "EPIC-5 — Member Attendance Self-Report",
+      "description": "Enable members to self-report their attendance after events with optional feedback and star rating (Yes), or mandatory reason (No).",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-5.1",
+          "PDEEpicID": "EPIC-5",
+          "title": "STORY-5.1 — Submit Post-Event Attendance Self-Report",
+          "description": "Enable member to self-report attendance after event ends.",
+          "acceptanceCriteria": [
+            "Member can submit Yes or No self-report only after event transitions to COMPLETED",
+            "Yes self-report: optional feedback text (max 1000 chars) and optional star_rating (integer 1–5) accepted",
+            "Yes self-report is saved as SELF_REPORTED_YES with status PENDING_CONFIRMATION",
+            "Member may not re-submit self-report for the same event after first submission",
+            "Self-report is stored separately from official attendance"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-5.2",
+          "PDEEpicID": "EPIC-5",
+          "title": "STORY-5.2 — Enforce Self-Report No Reason Requirement",
+          "description": "Ensure No self-reports require a reason and are immediately resolved as DID_NOT_ATTEND.",
+          "acceptanceCriteria": [
+            "No self-report without reason is rejected",
+            "No self-report with reason is accepted",
+            "No self-report immediately creates official attendance_status = DID_NOT_ATTEND without requiring leader confirmation",
+            "No leader notification is generated for a No self-report"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-6",
+      "title": "EPIC-6 — Leader Confirmation Workflow",
+      "description": "Enable Pastoral Leaders to confirm or reject member Yes self-reports, producing the official attendance record.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-6.1",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.1 — Notify Leader of Member Yes Self-Report",
+          "description": "Trigger a confirmation task notification to the assigned leader when a member self-reports Yes.",
+          "acceptanceCriteria": [
+            "Leader receives push notification: '[Member Name] reported they attended [Event Name]. Please confirm.'",
+            "Notification is sent only for Yes self-reports",
+            "Notification is sent only to the member's assigned Pastoral Leader",
+            "If no leader is assigned, notification is sent to admin"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-6.2",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.2 — Confirm or Reject Member Self-Report",
+          "description": "Enable leader to confirm or reject a member's Yes self-report to produce official attendance.",
+          "acceptanceCriteria": [
+            "Leader can view member name, event, self-report timestamp, feedback (if any), and star rating (if any)",
+            "Leader Confirm → official attendance_status = ATTENDED",
+            "Leader Reject → official attendance_status = DID_NOT_ATTEND",
+            "Confirmation is final; member cannot re-submit",
+            "Leader can only confirm for assigned members",
+            "Confirmation is audited with confirmed_by and confirmed_at"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-6.3",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.3 — Resolve No Self-Report as DID_NOT_ATTEND",
+          "description": "Immediately create official DID_NOT_ATTEND when member self-reports No.",
+          "acceptanceCriteria": [
+            "No self-report with reason immediately creates official attendance_status = DID_NOT_ATTEND",
+            "No leader confirmation notification is sent",
+            "Record is audited"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-6.4",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.4 — Admin Override of Official Attendance",
+          "description": "Allow admin to directly record or override official attendance for any member in the tenant.",
+          "acceptanceCriteria": [
+            "Admin can set attendance_status to ATTENDED or DID_NOT_ATTEND for any expected member",
+            "Override is allowed regardless of self-report status",
+            "Override is audited with actor_id, reason (optional), and timestamp",
+            "Override cannot be performed after event is LOCKED"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-6.5",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.5 — View Self-Report Context During Confirmation",
+          "description": "Enable leader to view member self-report details including feedback and star rating when confirming.",
+          "acceptanceCriteria": [
+            "Confirmation screen shows member name, self-report timestamp, feedback text (if provided), star rating (if provided)",
+            "RSVP status and reason are also visible as additional context",
+            "Only assigned members are visible to the leader"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-6.6",
+          "PDEEpicID": "EPIC-6",
+          "title": "STORY-6.6 — Lock Official Attendance Records",
+          "description": "Prevent all attendance changes after event is LOCKED.",
+          "acceptanceCriteria": [
+            "Official attendance records cannot be modified after event is LOCKED",
+            "Leader confirmation attempts after lock return ATTENDANCE_NOT_OPEN error",
+            "Admin override is also blocked after lock"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-7",
+      "title": "EPIC-7 — Formation Tracking Engine",
+      "description": "Enable deterministic formation progress tracking derived exclusively from leader-confirmed ATTENDED records.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-7.1",
+          "PDEEpicID": "EPIC-7",
+          "title": "STORY-7.1 — Link Formation Event to Talk",
+          "description": "Enable linking of a formation event to a specific Talk in the formation structure.",
+          "acceptanceCriteria": [
+            "Formation event requires valid talk_id",
+            "Invalid or soft-deleted talk_id is rejected",
+            "One event maps to at most one talk"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-7.2",
+          "PDEEpicID": "EPIC-7",
+          "title": "STORY-7.2 — Compute Formation Progress from Confirmed Attendance",
+          "description": "Calculate talk, module, and course completion based exclusively on leader-confirmed ATTENDED attendance.",
+          "acceptanceCriteria": [
+            "Talk is complete only when official attendance_status = ATTENDED for a formation event linked to that talk",
+            "RSVP Yes does not complete a talk",
+            "SELF_REPORTED_YES (pending confirmation) does not complete a talk",
+            "DID_NOT_ATTEND does not complete a talk",
+            "Module completion is correct when all talks in the module are complete",
+            "Course completion is correct when all talks across all modules are complete"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-8",
+      "title": "EPIC-8 — Notification System",
+      "description": "Enable reliable delivery of pre-event reminders, post-event self-report prompts, and leader confirmation task notifications with retry and failure handling.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-8.1",
+          "PDEEpicID": "EPIC-8",
+          "title": "STORY-8.1 — Send Pre-Event Reminder Notifications",
+          "description": "Deliver pre-event reminder with event details and RSVP prompt to expected members.",
+          "acceptanceCriteria": [
+            "Notification includes What (event name), When (datetime), Where (location + navigation link)",
+            "RSVP question is included: 'Are you attending?'",
+            "Delivered to all expected members per configured reminder schedule",
+            "Delivered via push channel"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-8.2",
+          "PDEEpicID": "EPIC-8",
+          "title": "STORY-8.2 — Send Post-Event Self-Report Prompt to Members",
+          "description": "Deliver post-event attendance self-report notification to expected members after event ends.",
+          "acceptanceCriteria": [
+            "Notification is sent to all expected members after event transitions to COMPLETED",
+            "Notification asks: 'Did you attend [Event Name]?'",
+            "Notification includes Yes and No response options",
+            "Notification is not sent for cancelled events"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-8.3",
+          "PDEEpicID": "EPIC-8",
+          "title": "STORY-8.3 — Send Leader Confirmation Task Notification",
+          "description": "Deliver confirmation task push notification to assigned leader when a member self-reports Yes.",
+          "acceptanceCriteria": [
+            "Leader receives notification: '[Member Name] reported they attended [Event Name]. Please confirm.'",
+            "Notification is triggered only for Yes self-reports",
+            "Notification routes leader to the confirmation screen for that member and event",
+            "Notification is not sent for No self-reports"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-8.4",
+          "PDEEpicID": "EPIC-8",
+          "title": "STORY-8.4 — Retry Failed Notifications",
+          "description": "Ensure reliable notification delivery through retry and failure handling.",
+          "acceptanceCriteria": [
+            "Up to 3 delivery attempts per recipient",
+            "Transient failures retried with exponential backoff",
+            "Permanent failures logged and moved to dead-letter queue",
+            "Notification status (pending, sent, failed) is queryable"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-9",
+      "title": "EPIC-9 — Reporting & Metrics",
+      "description": "Enable reporting across RSVP intent, member self-report status, official confirmed attendance, and formation progress.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-9.1",
+          "PDEEpicID": "EPIC-9",
+          "title": "STORY-9.1 — Generate RSVP Reports",
+          "description": "Provide visibility into pre-event RSVP intent.",
+          "acceptanceCriteria": [
+            "Filter by event, group, member",
+            "Yes/No/No-Response distribution shown",
+            "RSVP reason visible for No responses"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-9.2",
+          "PDEEpicID": "EPIC-9",
+          "title": "STORY-9.2 — Generate Attendance Reports",
+          "description": "Provide attendance insights distinguishing self-report status from official confirmed attendance.",
+          "acceptanceCriteria": [
+            "Filter by event, group, member, date range",
+            "Report shows: self-report status (Yes/No/No-Response) and official attendance status (ATTENDED/DID_NOT_ATTEND/PENDING_CONFIRMATION/UNRESPONDED)",
+            "Missing official attendance identified (expected members without a final official record)",
+            "Reports respect RBAC: leaders see only assigned members"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-9.3",
+          "PDEEpicID": "EPIC-9",
+          "title": "STORY-9.3 — Generate Formation Progress Reports",
+          "description": "Provide formation progress insights based only on confirmed ATTENDED records.",
+          "acceptanceCriteria": [
+            "Progress shown by member, talk, module, course",
+            "Completion metrics are based only on official ATTENDED status",
+            "Accurate aggregation at module and course level"
+          ]
+        }
+      ]
+    },
+    {
+      "PDEEpicID": "EPIC-10",
+      "title": "EPIC-10 — Audit & Compliance",
+      "description": "Enable full auditability of all RSVP, self-report, leader confirmation, and administrative actions.",
+      "stories": [
+        {
+          "PDEStoryID": "STORY-10.1",
+          "PDEEpicID": "EPIC-10",
+          "title": "STORY-10.1 — Log Audit Events",
+          "description": "Capture all critical system actions with before and after values.",
+          "acceptanceCriteria": [
+            "RSVP submissions and updates logged",
+            "Member self-report submissions logged",
+            "Leader confirmation (confirm and reject) actions logged",
+            "Admin attendance overrides logged",
+            "Event create, update, cancel actions logged",
+            "Before/after values stored for all mutations",
+            "Audit logs are immutable (no update or delete paths)"
+          ]
+        },
+        {
+          "PDEStoryID": "STORY-10.2",
+          "PDEEpicID": "EPIC-10",
+          "title": "STORY-10.2 — Query Audit Logs",
+          "description": "Allow authorized admin to view and filter audit logs.",
+          "acceptanceCriteria": [
+            "Filter by entity_type, entity_id, action, actor_id, date range",
+            "Only Senior Coordinator or authorized admin roles can access",
+            "Tenant-scoped: no cross-tenant log access"
+          ]
+        }
+      ]
+    }
+  ]
+}

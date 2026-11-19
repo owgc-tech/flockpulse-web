@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
+import { listMembers, getMemberById, createMember, updateMember, removeMember } from '@/src/features/members/service';
+
+const requireAdmin = requireRole('ADMIN');
+
+// GET /api/members — list (FP-69 List screen passes includeDeleted=true to show status)
+// GET /api/members?id=... — single member, for FP-72 Edit-screen prefill
+export async function GET(req: NextRequest) {
+  return withAuth(req, async (_, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      try {
+        const member = await getMemberById(id, ctx.tenantId);
+        return NextResponse.json({ data: member });
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === 'NOT_FOUND_IN_TENANT') {
+          return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+        }
+        throw err;
+      }
+    }
+
+    const includeDeleted = searchParams.get('includeDeleted') === 'true';
+    const members = await listMembers(ctx.tenantId, includeDeleted);
+    return NextResponse.json({ data: members });
+  });
+}
+
+export const POST = (req: NextRequest) =>
+  withAuth(req, requireAdmin(async (req, ctx) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
+
+    const { userId, email, firstName, lastName, role } = body;
+    if (!userId || !email || !firstName || !lastName || !role) {
+      return errorResponse('MISSING_FIELD', 'userId, email, firstName, lastName, role required', 400);
+    }
+    if (!['ADMIN', 'LEADER', 'MEMBER'].includes(role)) {
+      return errorResponse('INVALID_ROLE', 'role must be ADMIN, LEADER, or MEMBER', 400);
+    }
+
+    try {
+      const member = await createMember({ tenantId: ctx.tenantId, userId, email, firstName, lastName, role });
+      return NextResponse.json({ data: member }, { status: 201 });
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === 'DUPLICATE_EMAIL') {
+        return errorResponse('DUPLICATE_EMAIL', 'Email already active for this tenant', 409);
+      }
+      throw err;
+    }
+  }));
+
+export const PATCH = (req: NextRequest) =>
+  withAuth(req, requireAdmin(async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) return errorResponse('MISSING_PARAM', 'id query param required', 400);
+
+    const body = await req.json().catch(() => null);
+    if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
+
+    try {
+      const member = await updateMember(id, ctx.tenantId, {
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        role: body.role,
+        // DIP-FP-192-web: the new normal path — MemberEditForm.tsx now sends
+        // this instead of a bare role string. updateMember() derives role
+        // server-side from the entry's tier when this is present.
+        roleCatalogEntryId: body.roleCatalogEntryId,
+      });
+      return NextResponse.json({ data: member });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND_IN_TENANT') {
+        return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      if (code === 'NOT_FOUND') {
+        return errorResponse('INVALID_ROLE', 'roleCatalogEntryId not found for this tenant', 422);
+      }
+      throw err;
+    }
+  }));
+
+export const DELETE = (req: NextRequest) =>
+  withAuth(req, requireAdmin(async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) return errorResponse('MISSING_PARAM', 'id query param required', 400);
+
+    // FP-74: deactivation is now blocked at the DB level (trigger_block_member_deactivation_
+    // if_assigned_leader) while the member is still someone's active Pastoral Leader —
+    // resolution path is the new bulk-reassign screen for this member.
+    try {
+      // FP-235: removal deletes the login and identifying details (reason DEACTIVATED);
+      // retrying an already-removed member finishes whatever is left.
+      await removeMember(id, ctx.tenantId, 'DEACTIVATED');
+      return NextResponse.json({ data: { id, deleted: true } });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND_IN_TENANT') {
+        return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
+      }
+      if (code === 'INVALID_STATE_TRANSITION') {
+        const assignedMemberCount = (err as { assignedMemberCount?: number }).assignedMemberCount;
+        // FP-153: mirrors assignedMemberCount's own extraction — without this, member.service.ts's
+        // ownedGroupCount (added under FP-146) never reaches the client at all.
+        const ownedGroupCount = (err as { ownedGroupCount?: number }).ownedGroupCount;
+        // FP-161-2: same extraction, for member.service.ts's ownedEventCount.
+        const ownedEventCount = (err as { ownedEventCount?: number }).ownedEventCount;
+        return NextResponse.json(
+          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount, ownedEventCount } },
+          { status: 409 }
+        );
+      }
+      // FP-235: scrubbed, but the Auth login could not be deleted — the client tells the
+      // admin to press Remove again, which completes it.
+      if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
+      throw err;
+    }
+  }));

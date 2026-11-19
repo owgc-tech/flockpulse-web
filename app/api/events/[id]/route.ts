@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { withAuth, requireRole, errorResponse, isExactlyLeaderTier } from '@/src/lib/auth/middleware';
+import { assertCallerCanOpenEvent, getEventById, updateEvent } from '@/src/features/events/service';
+import { isResolvableAddress } from '@/src/lib/geocodio';
+import { validateLocationAddress } from '@/src/features/events/event.types';
+
+// DIP-FP-114-web: rank-based, not a literal `role === 'LEADER'` — see
+// isExactlyLeaderTier's own doc comment for why this must be rank-based
+// (a PASTORAL_LEADER caller needs the same ownership scoping a LEADER gets).
+const requireLeader = requireRole('LEADER');
+
+export const GET = (req: NextRequest, { params }: { params: Promise<{ id: string }> }) =>
+  withAuth(req, async (_, ctx) => {
+    const { id } = await params;
+    if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
+
+    try {
+      // FP-239: the caller must be allowed to open this event (the shared rule) — before any read.
+      await assertCallerCanOpenEvent(ctx.tenantId, ctx.memberId, ctx.role, id);
+      // DIP-FP-191-web-adj-1: callerMemberId so acknowledged_at reflects this
+      // specific caller's state, not a shared/global value.
+      // FP-222: ctx.role lets the detail carry the same needs_attention flag the list does
+      // (owner or Admin-tier only); is_modified/needs_attention are the state BEFORE a view
+      // is recorded — recording is POST /api/events/:id/view.
+      const event = await getEventById(id, ctx.tenantId, ctx.memberId, ctx.role);
+      return NextResponse.json({ data: event });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', 'Event not found', 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
+      throw err;
+    }
+  });
+
+export const PATCH = (req: NextRequest, { params }: { params: Promise<{ id: string }> }) =>
+  withAuth(req, requireLeader(async (req, ctx) => {
+    const { id } = await params;
+    if (!id) return errorResponse('MISSING_PARAM', 'Event id required', 400);
+
+    const body = await req.json().catch(() => null);
+    if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
+
+    const {
+      name, startDatetime, endDatetime, locationName, locationAddress, target, eventTypeId, talkId,
+      onlineMeetingResourceId, onlineMeetingUrl, onlineMeetingPlatformLabel,
+      rsvpClosureDays, announcementBody, guestsAllowed,
+    } = body;
+
+    // FP-219: server-side enforcement of the address length/junk check — only
+    // when the field is actually being updated (PATCH may omit it).
+    if (locationAddress !== undefined) {
+      const addressError = validateLocationAddress(locationAddress);
+      if (addressError) return errorResponse('INVALID_VALUE', addressError, 422);
+
+      // FP-219-adj-1: real-address verification (Geocodio), only when the
+      // address actually changed — re-saving other fields on an event whose
+      // stored address predates this check (or is a named venue Geocodio can't
+      // resolve) must not start failing, and unchanged addresses shouldn't burn
+      // the daily lookup quota. Fails open on any Geocodio-side error.
+      const existing = await getEventById(id, ctx.tenantId).catch(() => null);
+      if (existing?.location_address !== locationAddress && !(await isResolvableAddress(locationAddress))) {
+        return errorResponse('INVALID_VALUE', "We couldn't recognize this as a real address — please check it and try again", 422);
+      }
+    }
+
+    try {
+      const event = await updateEvent(id, ctx.tenantId, {
+        name,
+        startDatetime,
+        endDatetime,
+        locationName,
+        locationAddress,
+        target,
+        eventTypeId,
+        talkId,
+        onlineMeetingResourceId,
+        onlineMeetingUrl,
+        onlineMeetingPlatformLabel,
+        rsvpClosureDays,
+        announcementBody,
+        guestsAllowed,
+        actorMemberId: ctx.memberId,
+      }, isExactlyLeaderTier(ctx.role) ? ctx.memberId : undefined);
+      return NextResponse.json({ data: event });
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === 'NOT_FOUND') return errorResponse('NOT_FOUND', 'Event not found', 404);
+      if (code === 'FORBIDDEN_SCOPE') return errorResponse('FORBIDDEN_SCOPE', (err as Error).message, 403);
+      if (code === 'INVALID_STATE') return errorResponse('INVALID_STATE', (err as Error).message, 422);
+      if (code === 'IMMUTABLE_FIELD') return errorResponse('IMMUTABLE_FIELD', (err as Error).message, 422);
+      if (code === 'INVALID_DATETIME') return errorResponse('INVALID_DATETIME', (err as Error).message, 422);
+      if (code === 'INVALID_VALUE') return errorResponse('INVALID_VALUE', (err as Error).message, 422);
+      if (code === 'INVALID_TARGET') return errorResponse('INVALID_TARGET', (err as Error).message, 422);
+      if (code === 'INVALID_FORMATION_LINK') return errorResponse('INVALID_FORMATION_LINK', (err as Error).message, 422);
+      if (code === 'ANNOUNCEMENT_MISSING_EVERYONE_GROUP') return errorResponse('ANNOUNCEMENT_MISSING_EVERYONE_GROUP', (err as Error).message, 422);
+      // DIP-FP-120-web: see app/api/events/route.ts's POST handler for the
+      // identical rationale — 409 with structured conflict detail when
+      // available, generic message-only for the race-condition path.
+      if (code === 'MEETING_RESOURCE_CONFLICT') {
+        return NextResponse.json(
+          { error: { code, message: (err as Error).message, conflict: (err as { conflict?: unknown }).conflict ?? null } },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
+  }));

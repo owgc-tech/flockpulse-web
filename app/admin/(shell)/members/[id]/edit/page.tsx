@@ -1,0 +1,56 @@
+import { redirect } from 'next/navigation';
+import { createSupabaseServerClient } from '@/src/lib/supabase/server';
+import { getMemberById, listMembers } from '@/src/features/members/service';
+import { getActiveLeaderAssignment, getMembersAssignedToLeader } from '@/src/features/assignments/service';
+import { listRoleCatalog } from '@/src/features/role-catalog/role-catalog.service';
+import type { MemberRow } from '@/src/features/members/member.types';
+import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
+import MemberEditForm from './MemberEditForm';
+
+export default async function MemberEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) redirect('/login');
+
+  const tenantId = user.app_metadata?.tenant_id as string | undefined;
+  const role = user.app_metadata?.role as Role | undefined;
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
+
+  // DIP-FP-114-web: Members stays fully Admin-tier-only, excluded for Leader-tier.
+  if (!tenantId || !role || !isAdminTier(role) || !token) redirect('/login');
+
+  let member: MemberRow;
+  try {
+    member = await getMemberById(id, tenantId) as unknown as MemberRow;
+  } catch {
+    redirect('/admin/members');
+  }
+
+  // FP-235: a removed member is anonymous and not offered — back to the list.
+  if (member.deleted_at) redirect('/admin/members');
+
+  // listMembers() defaults to active-only — the Pastoral Leader dropdown should only offer
+  // active members, matching what trigger_validate_assignment_tenant() itself enforces.
+  const [members, currentLeaderAssignment, assignedMembers, roleCatalog] = await Promise.all([
+    listMembers(tenantId),
+    getActiveLeaderAssignment(id, tenantId),
+    getMembersAssignedToLeader(id, tenantId),
+    listRoleCatalog(tenantId),
+  ]);
+
+  return (
+    <div className="px-6 py-8">
+      <div className="mx-auto max-w-2xl">
+        <MemberEditForm
+          token={token}
+          member={member}
+          members={(members ?? []) as unknown as MemberRow[]}
+          currentLeaderMemberId={currentLeaderAssignment?.leader_member_id ?? null}
+          assignedMemberCount={(assignedMembers ?? []).length}
+          roleCatalog={roleCatalog}
+        />
+      </div>
+    </div>
+  );
+}

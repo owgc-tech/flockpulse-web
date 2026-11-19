@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(supabase:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "deny": [
+      "Bash(supabase db push:*)",
+      "Bash(supabase migration up --linked:*)",
+      "Bash(rm -rf /*)",
+      "Bash(git push --force*)",
+      "Bash(git push origin main*)",
+      "Bash(git push origin dev*)"
+    ]
+  },
+  "env": {
+    "SUPABASE_LOCAL_ONLY": "true"
+  }
+}

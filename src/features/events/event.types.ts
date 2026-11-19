@@ -1,0 +1,327 @@
+export type EventStatus = 'DRAFT' | 'SCHEDULED' | 'CANCELLED';
+export type EffectiveStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'LOCKED' | 'CANCELLED';
+
+export interface EventTarget {
+  group_ids?: string[];
+  member_ids?: string[];
+}
+
+// DIP-FP-191-web: nested on EventListRow/EventDetailRow so mobile can detect
+// an Announcement (system_key === 'ANNOUNCEMENT') without a second round-trip
+// to /api/event-types.
+export interface EventTypeSummary {
+  id: string;
+  name: string;
+  system_key: string | null;
+}
+
+// DIP-FP-191-web-adj-1: nested on EventListRow/EventDetailRow via the
+// existing events.created_by_member_id column (added by FP-114-web, already
+// populated on every create) — null for events that predate that column or
+// whose creator was later anonymized/deleted.
+export interface CreatedByMemberSummary {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface EventListRow {
+  id: string;
+  name: string;
+  status: EventStatus;
+  effective_status: EffectiveStatus;
+  start_datetime: string;
+  end_datetime: string;
+  location_name: string;
+  location_address: string;
+  target: EventTarget;
+  event_type_id: string;
+  // DIP-FP-120-web: online_meeting_resource_id (tracked Zoom account) and
+  // online_meeting_url/online_meeting_platform_label (freeform "other
+  // platform") are mutually exclusive at the app layer only — additive to
+  // the still-required physical location above, never a replacement for it.
+  online_meeting_resource_id: string | null;
+  online_meeting_url: string | null;
+  online_meeting_platform_label: string | null;
+  // FP-133: nullable per-event override of the tenant's rsvp_closure_days_default —
+  // null means "use the tenant default."
+  rsvp_closure_days: number | null;
+  // FP-134: server-computed cutoff (start_datetime − effective rsvp_closure_days), not a
+  // persisted column — see rsvp-window.ts's computeRsvpClosureAt().
+  rsvp_closure_at: string;
+  created_at: string;
+  // DIP-FP-191-web: null for every non-Announcement event.
+  announcement_body: string | null;
+  event_type: EventTypeSummary;
+  created_by_member: CreatedByMemberSummary | null;
+  // DIP-FP-189-web: default false — no effect on any event created before this
+  // field existed. Whether this event's RSVP flow accepts a guest_count at all.
+  guests_allowed: boolean;
+  // DIP-FP-191-web-adj-1, widened to list scope by DIP-FP-191-web-adj-2: whether
+  // the current authenticated caller has acknowledged this event, from
+  // announcement_acknowledgements. Null for any event the caller hasn't
+  // acknowledged, including every non-Announcement event.
+  acknowledged_at: string | null;
+  // FP-223-adj-2: true only when the caller has an event_attendees row (genuinely
+  // invited). Admins/Leader-owners also see events they were never invited to —
+  // those come back false and must not trigger RSVP prompts or badge counts.
+  is_attendee: boolean;
+  // FP-222: shown only to the event's owner and to Admin-tier callers — true when a
+  // CURRENT assignee has an outstanding refusal on a task of this event and the event
+  // is still live (SCHEDULED or ACTIVE). Always false for everyone else, including the
+  // refuser. Not a badge input on its own; mobile decides how to show it.
+  needs_attention: boolean;
+  // FP-222-adj-1: names of the tasks that have at least one outstanding refusal — only
+  // when needs_attention is true, otherwise []. Task names only, never people.
+  needs_attention_tasks: string[];
+  // FP-222: true when the caller has opened this event before AND events.version has
+  // moved past the version they last saw. Never opened = false (a first-time viewer
+  // sees no indicator). A refusal alone is not a modification. Reflects the state
+  // BEFORE any view is recorded by the same request.
+  is_modified: boolean;
+  // FP-222-adj-1: labels of WHAT changed since the caller last opened the event (from the
+  // audit log; fixed vocabulary and display order, see modifiedFields.ts) — only when
+  // is_modified is true, otherwise []. Never old/new values.
+  modified_fields: string[];
+}
+
+// FP-167-1: the admin Events page's paginated list row shape. Deliberately not
+// EventListRow — that type requires rsvp_closure_at (member-RSVP-specific,
+// computed only in listEventsForMember()); the admin list has no per-member
+// RSVP context to compute it from, and doesn't display it.
+export interface EventListItemRow {
+  id: string;
+  name: string;
+  status: EventStatus;
+  effective_status: EffectiveStatus;
+  start_datetime: string;
+  end_datetime: string;
+  location_name: string;
+  location_address: string;
+  target: EventTarget;
+  event_type_id: string;
+  online_meeting_resource_id: string | null;
+  online_meeting_url: string | null;
+  online_meeting_platform_label: string | null;
+  rsvp_closure_days: number | null;
+  created_at: string;
+  // FP-222-adj-1: the web events list's Needs attention marker. needs_attention is true
+  // only for an Admin-tier viewer, or a Leader for the events they own, when the event is
+  // live (SCHEDULED/ACTIVE) and has an outstanding refusal; needs_attention_tasks names
+  // the refused tasks. Always false / [] when listEvents is called without a viewer.
+  needs_attention: boolean;
+  needs_attention_tasks: string[];
+}
+
+export interface EventDetailRow extends EventListRow {
+  talk_id: string | null;
+  version: number;
+  updated_at: string;
+  recurrence_series_id: string | null;
+  // DIP-FP-114-web: historical audit only from FP-161-2 onward — no longer read for
+  // permission checks (owner_member_id below is), kept exactly as before for audit history.
+  created_by_member_id: string | null;
+  // FP-161-2: transferable Event Owner — the live permission gate for edit/publish/
+  // cancel/manage, replacing created_by_member_id for that purpose. NULL has the same
+  // meaning created_by_member_id === null did: Admin-tier only can manage this event
+  // (events predating FP-114-web, or predating this column's backfill).
+  owner_member_id: string | null;
+}
+
+// DIP-FP-191-web-adj-3: system_key added so EventForm.tsx's Announcement
+// detection can read the field the guard trigger actually protects (code is
+// unprotected — see block_system_event_type_rename_or_delete). No new query:
+// listEventTypes() (event-type.repository.ts) already selects system_key as
+// part of EventTypeRow — this type just hadn't been widened to type it.
+export interface EventTypeOption {
+  id: string;
+  name: string;
+  code: string;
+  system_key: string | null;
+}
+
+// Matches flockpulse-web's GET /api/meeting-resources response exactly.
+export interface MeetingResourceOption {
+  id: string;
+  name: string;
+  join_url: string;
+}
+
+// DIP-FP-120-web: shape of the { error: { code, message, conflict } } body
+// a 409 MEETING_RESOURCE_CONFLICT response carries — conflict is null for
+// the rare race-condition path (see events/service.ts's
+// meetingResourceRaceError()), populated for the normal pre-check path.
+export interface MeetingResourceConflictDetail {
+  eventId: string;
+  eventName: string;
+  startDatetime: string;
+  endDatetime: string;
+  bookedByName: string;
+}
+
+export interface GroupOption {
+  id: string;
+  name: string;
+}
+
+export interface MemberOption {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface CourseOption {
+  id: string;
+  name: string;
+}
+
+export interface ModuleOption {
+  id: string;
+  name: string;
+}
+
+export interface TalkOption {
+  id: string;
+  name: string;
+}
+
+export type RosterResponse = 'ACCEPTED' | 'DECLINED' | 'TENTATIVE' | 'NOT_RESPONDED';
+
+export interface RosterEntry {
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  response: RosterResponse;
+  rsvp_reason: string | null;
+  // DIP-FP-189-web-adj-1: this is a genuinely separate RosterEntry from
+  // events/service.ts's own (same name, different file — GET /api/events/:id/roster's
+  // JSON response is untyped at the wire, so nothing enforced these staying in sync).
+  // EventDetail.tsx imports this one, not service.ts's, so the fix belongs here too,
+  // not just in the file the DIP named — same class of gap as FP-191-web-adj-3.
+  guest_count: number | null;
+}
+
+// One-tap navigation link (FP-61): a universal Google Maps query link built from
+// location_address — opens the native app on mobile and Google Maps on the web.
+// FP-184 removed the location_url override field entirely (and the FP-183 interim
+// http(s) validation branch that protected it), closing the CodeQL js/xss-through-dom
+// finding structurally rather than leaving the patched-but-still-present field behind.
+export function getMapsUrl(locationAddress: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
+}
+
+// FP-219: lightweight sanity check for the Location Address field — a length
+// cap plus a rejection of obviously-junk input (blank, or one character
+// repeated throughout, e.g. "aaaaaaaa"). Not real address verification. Shared
+// by EventForm and both event API routes so client and server can't drift.
+export const LOCATION_ADDRESS_MAX_LENGTH = 200;
+
+export function validateLocationAddress(value: unknown): string | null {
+  if (typeof value !== 'string') return 'Location address must be text';
+  const trimmed = value.trim();
+  if (!trimmed) return 'Location address is required';
+  if (value.length > LOCATION_ADDRESS_MAX_LENGTH) {
+    return `Location address must be ${LOCATION_ADDRESS_MAX_LENGTH} characters or fewer`;
+  }
+  if (/^([\s\S])\1*$/u.test(trimmed)) return 'Enter a valid location address';
+  return null;
+}
+
+// ── FP-63: recurring series ──────────────────────────────────────────────────
+
+export type SeriesFrequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
+
+// Cap is a ceiling the admin can choose up to, never a forced default (DIP-FP-63-FP-68
+// Grounding Check). Enforced both client-side (live estimate) and server-side (authoritative).
+export const SERIES_FREQUENCY_CAPS: Record<SeriesFrequency, number> = {
+  WEEKLY: 52,
+  FORTNIGHTLY: 26,
+  MONTHLY: 12,
+};
+
+export interface OccurrenceDates {
+  start: Date;
+  end: Date;
+}
+
+// Advances firstStart by `occurrenceIndex` intervals of the given frequency. Weekly/Fortnightly
+// use fixed 7/14-day steps. Monthly advances by calendar month on the same day-of-month as
+// firstStart, clamped to the last day of the target month where it doesn't exist
+// (e.g. Jan 31 -> Feb 28) — per the DIP's explicit assumption about day-of-month handling.
+function addOccurrenceInterval(firstStart: Date, frequency: SeriesFrequency, occurrenceIndex: number): Date {
+  if (frequency === 'WEEKLY') {
+    const d = new Date(firstStart);
+    d.setDate(d.getDate() + 7 * occurrenceIndex);
+    return d;
+  }
+  if (frequency === 'FORTNIGHTLY') {
+    const d = new Date(firstStart);
+    d.setDate(d.getDate() + 14 * occurrenceIndex);
+    return d;
+  }
+  // MONTHLY — reset to the 1st before adding months to avoid intermediate-month rollover
+  // artifacts, then clamp the day-of-month to whatever the target month actually has.
+  const day = firstStart.getDate();
+  const target = new Date(firstStart);
+  target.setDate(1);
+  target.setMonth(target.getMonth() + occurrenceIndex);
+  const daysInTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, daysInTargetMonth));
+  target.setHours(firstStart.getHours(), firstStart.getMinutes(), firstStart.getSeconds(), firstStart.getMilliseconds());
+  return target;
+}
+
+// Single-sourced occurrence-date computation (DIP-FP-63-FP-68 Grounding Check: the cap-validation
+// math and the actual generation must be the same code path). Used identically by EventForm.tsx's
+// live "ends on date" estimate and event-series.service.ts's authoritative payload construction —
+// same function, two runtime contexts, never two implementations.
+export function computeOccurrenceDates(
+  firstStart: Date,
+  firstEnd: Date,
+  frequency: SeriesFrequency,
+  mode: 'COUNT' | 'UNTIL',
+  countOrUntil: number | Date
+): OccurrenceDates[] {
+  const durationMs = firstEnd.getTime() - firstStart.getTime();
+  const occurrences: OccurrenceDates[] = [];
+  const hardSafetyCap = 1000; // guards against runaway loops on bad input (e.g. untilDate far in the future)
+
+  if (mode === 'COUNT') {
+    const count = countOrUntil as number;
+    for (let i = 0; i < count; i++) {
+      const start = addOccurrenceInterval(firstStart, frequency, i);
+      occurrences.push({ start, end: new Date(start.getTime() + durationMs) });
+    }
+  } else {
+    const untilDate = countOrUntil as Date;
+    for (let i = 0; i < hardSafetyCap; i++) {
+      const start = addOccurrenceInterval(firstStart, frequency, i);
+      if (start.getTime() > untilDate.getTime()) break;
+      occurrences.push({ start, end: new Date(start.getTime() + durationMs) });
+    }
+  }
+
+  return occurrences;
+}
+
+export interface EventSeriesRow {
+  id: string;
+  tenant_id: string;
+  frequency: SeriesFrequency;
+  occurrence_count: number;
+  day_of_week: number | null;
+  created_by: string | null;
+  name: string;
+  event_type_id: string;
+  location_name: string;
+  location_address: string;
+  target: EventTarget;
+  talk_id: string | null;
+  created_at: string;
+}
+
+export interface CancelRemainingResult {
+  cancelled: number;
+  skipped: number;
+  failures: Array<{ event_id: string; message: string }>;
+}

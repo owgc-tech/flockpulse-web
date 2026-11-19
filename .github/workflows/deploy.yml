@@ -1,0 +1,27 @@
+name: FlockPulse Vercel Deployment
+on:
+  push:
+    branches:
+      - main
+      - dev
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set Deployment Target
+        id: var-meta
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "prod_flag=--prod" >> $GITHUB_OUTPUT
+          else
+            echo "prod_flag=" >> $GITHUB_OUTPUT
+          fi
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      - name: Deploy Project to Vercel
+        run: vercel deploy ${{ steps.var-meta.outputs.prod_flag }} --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
