@@ -69,7 +69,7 @@ export async function updateTalk(
     if (code === 'P0001') {
       const msg = (e as Error).message ?? '';
       if (msg.includes('Cannot soft-delete talk')) {
-        throw err('INVALID_STATE_TRANSITION', msg);
+        throw err('INVALID_STATE_TRANSITION', "This session can't be deleted because one or more events use it.");
       }
     }
     throw e;
