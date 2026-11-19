@@ -9,12 +9,22 @@ function err(code: string, message: string): Error & { code: string } {
 
 export async function createTask(tenantId: string, input: CreateTaskInput): Promise<TaskRow> {
   if (!input.name?.trim()) throw err('VALIDATION_ERROR', 'name is required');
-  return await insertTask(tenantId, { name: input.name.trim(), individualOnly: input.individualOnly });
+  if (input.alwaysShow !== undefined && typeof input.alwaysShow !== 'boolean') {
+    throw err('VALIDATION_ERROR', 'always_show must be a boolean');
+  }
+  return await insertTask(tenantId, {
+    name: input.name.trim(),
+    individualOnly: input.individualOnly,
+    alwaysShow: input.alwaysShow,
+  });
 }
 
 export async function updateTask(
   id: string, tenantId: string, input: UpdateTaskInput
 ): Promise<TaskRow> {
+  if (input.alwaysShow !== undefined && typeof input.alwaysShow !== 'boolean') {
+    throw err('VALIDATION_ERROR', 'always_show must be a boolean');
+  }
   const existing = await getTask(id, tenantId);
   if (!existing) throw err('NOT_FOUND', 'Task not found');
 
