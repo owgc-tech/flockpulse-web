@@ -15,11 +15,13 @@ export default function TasksTable({ initialTasks, token }: Props) {
 
   const [newName, setNewName] = useState('');
   const [newIndividualOnly, setNewIndividualOnly] = useState(false);
+  const [newAlwaysShow, setNewAlwaysShow] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editIndividualOnly, setEditIndividualOnly] = useState(false);
+  const [editAlwaysShow, setEditAlwaysShow] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -35,7 +37,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         const res = await fetch('/api/tasks', {
           method: 'POST',
           headers: authHeaders,
-          body: JSON.stringify({ name: newName.trim(), individual_only: newIndividualOnly }),
+          body: JSON.stringify({ name: newName.trim(), individual_only: newIndividualOnly, always_show: newAlwaysShow }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -45,6 +47,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         setTasks(prev => [...prev, body.data].sort((a, b) => a.name.localeCompare(b.name)));
         setNewName('');
         setNewIndividualOnly(false);
+        setNewAlwaysShow(false);
       } catch {
         setError('Network error — please try again');
       } finally {
@@ -57,6 +60,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
     setEditingId(t.id);
     setEditName(t.name);
     setEditIndividualOnly(t.individual_only);
+    setEditAlwaysShow(t.always_show);
   }
 
   function cancelEdit() {
@@ -73,7 +77,7 @@ export default function TasksTable({ initialTasks, token }: Props) {
         const res = await fetch(`/api/tasks/${id}`, {
           method: 'PATCH',
           headers: authHeaders,
-          body: JSON.stringify({ name: editName.trim(), individual_only: editIndividualOnly }),
+          body: JSON.stringify({ name: editName.trim(), individual_only: editIndividualOnly, always_show: editAlwaysShow }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -137,6 +141,13 @@ export default function TasksTable({ initialTasks, token }: Props) {
             <input type="checkbox" checked={newIndividualOnly} onChange={e => setNewIndividualOnly(e.target.checked)} />
             Individual only
           </label>
+          <label className="flex flex-col gap-0.5 pb-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+            <span className="flex items-center gap-1.5">
+              <input type="checkbox" checked={newAlwaysShow} onChange={e => setNewAlwaysShow(e.target.checked)} />
+              Always show on events
+            </span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">Shown on every new event form; can&apos;t be removed from an event.</span>
+          </label>
           <button
             onClick={handleCreate}
             disabled={creating || isPending || !newName.trim()}
@@ -189,6 +200,17 @@ export default function TasksTable({ initialTasks, token }: Props) {
                             />
                             Individual only
                           </label>
+                          <label className="flex flex-col gap-0.5 text-xs font-normal text-zinc-600 dark:text-zinc-400">
+                            <span className="flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={editAlwaysShow}
+                                onChange={e => setEditAlwaysShow(e.target.checked)}
+                              />
+                              Always show on events
+                            </span>
+                            <span className="text-zinc-500 dark:text-zinc-500">Shown on every new event form; can&apos;t be removed from an event.</span>
+                          </label>
                         </div>
                       ) : (
                         <button onClick={() => startEdit(t)} className="flex items-center gap-2 hover:underline">
@@ -196,6 +218,11 @@ export default function TasksTable({ initialTasks, token }: Props) {
                           {t.individual_only && (
                             <span className="inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                               Individual only
+                            </span>
+                          )}
+                          {t.always_show && (
+                            <span className="inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                              Always shown
                             </span>
                           )}
                         </button>
