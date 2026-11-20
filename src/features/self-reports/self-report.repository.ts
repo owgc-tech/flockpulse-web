@@ -223,7 +223,7 @@ export async function getSelfReportById(id: string): Promise<SelfReportRow> {
   const { data, error } = await serviceClient()
     .from('member_attendance_reports')
     .select(
-      'id, tenant_id, event_id, member_id, self_report_status, reason, feedback, star_rating, confirmation_status, submitted_at, created_at, updated_at'
+      'id, tenant_id, event_id, member_id, self_report_status, reason, confirmation_status, submitted_at, created_at, updated_at'
     )
     .eq('id', id)
     .single();

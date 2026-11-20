@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getGroupMembers } from '@/src/features/assignments/service';
 import { isAdminTier, type Role } from '@/src/lib/auth/middleware';
+import { orderAnonymousFeedback } from './anonymous-feedback';
 
 function serviceClient() {
   return createClient(
@@ -872,9 +873,11 @@ export interface DashboardStatsResult {
 // doesn't need to know or care what event type it is; only the dropdown-
 // listing and default-resolution functions above are type/visibility-aware.
 //
-// Feedback anonymization: the feedback query's SELECT list below never
-// includes member_id or any joined member field — feedback text comes back
-// with no way to trace it to who submitted it.
+// Feedback anonymization (FP-257): ratings and feedback are read from event_feedback,
+// a table that holds only id, tenant_id, event_id, star_rating and feedback — no author,
+// no report id, no time. The query selects star_rating, feedback only (never id), and the
+// feedback list is shuffled before it is sorted by rating, so the order never reflects
+// submission order either.
 //
 // Round-half-up via Math.round() for rating.rounded, matching the
 // convention used elsewhere in this file.
@@ -1013,16 +1016,15 @@ export async function getDashboardStats(
     else noResponseCount += 1;
   }
 
-  // Card 3: rating + feedback — anonymized (see doc comment above). SELECT
-  // list is still exactly star_rating, feedback — no member_id, no join to
-  // members. average is the raw mean; rounded is Math.round(average) —
+  // Card 3: rating + feedback — anonymized (see doc comment above). Reads
+  // event_feedback: SELECT list is exactly star_rating, feedback — no id, no member,
+  // no join. average is the raw mean; rounded is Math.round(average) —
   // split so mobile can choose which to display, per DIP-FP-182-web-adj-1.
   const { data: ratingRows, error: ratingError } = await db
-    .from('member_attendance_reports')
+    .from('event_feedback')
     .select('star_rating, feedback')
     .eq('event_id', eventId)
-    .eq('tenant_id', tenantId)
-    .eq('self_report_status', 'SELF_REPORTED_YES');
+    .eq('tenant_id', tenantId);
   if (ratingError) throw ratingError;
 
   const typedRatingRows = (ratingRows ?? []) as { star_rating: number | null; feedback: string | null }[];
@@ -1039,9 +1041,11 @@ export async function getDashboardStats(
     star,
     count: ratings.filter((r) => r === star).length,
   }));
-  const feedback = typedRatingRows
-    .filter((r): r is { star_rating: number | null; feedback: string } => !!r.feedback && r.feedback.trim().length > 0)
-    .map((r) => ({ star_rating: r.star_rating, feedback: r.feedback }));
+  const feedback = orderAnonymousFeedback(
+    typedRatingRows
+      .filter((r): r is { star_rating: number | null; feedback: string } => !!r.feedback && r.feedback.trim().length > 0)
+      .map((r) => ({ star_rating: r.star_rating, feedback: r.feedback })),
+  );
 
   return {
     attendance: {

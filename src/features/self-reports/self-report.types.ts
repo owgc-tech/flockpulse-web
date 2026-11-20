@@ -8,8 +8,8 @@ export interface SelfReportRow {
   member_id: string;
   self_report_status: SelfReportStatus;
   reason: string | null;
-  feedback: string | null;
-  star_rating: number | null;
+  // FP-257: feedback and star_rating are no longer on the self-report row — they live in
+  // event_feedback, which has no author.
   confirmation_status: ConfirmationStatus;
   submitted_at: string;
   created_at: string;
@@ -24,6 +24,8 @@ export interface SubmitSelfReportInput {
   starRating?: number;
 }
 
+// FP-257: feedback and star_rating stay in the response so the phone's contract is unchanged;
+// they echo what the member just sent (null for a No) and are never read back from the database.
 export interface SelfReportResponse {
   id: string;
   event_id: string;
