@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { blockerSentences, hasBlockers, type RemovalBlockers } from '@/src/features/members/removalBlockers';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { MemberRow } from '@/src/features/members/member.types';
@@ -32,9 +33,8 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
   const [isPending, setIsPending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [blockedCount, setBlockedCount] = useState<number | null>(null);
-  const [ownedGroupCount, setOwnedGroupCount] = useState<number | null>(null);
-  const [ownedEventCount, setOwnedEventCount] = useState<number | null>(null);
+  // FP-258: every reason the last Remove was refused (409), not just the first.
+  const [blockers, setBlockers] = useState<RemovalBlockers | null>(null);
 
   const isDeactivated = member.deleted_at !== null;
   // A member can't be their own Pastoral Leader.
@@ -88,9 +88,7 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     if (!confirm(`Remove ${member.first_name} ${member.last_name}? This permanently deletes their login and personal details. Their past activity stays but shows as 'Deactivated User'. This cannot be undone. To return, they need a new invitation and start as a new member.`)) return;
     setBusy(true);
     setError(null);
-    setBlockedCount(null);
-    setOwnedGroupCount(null);
-    setOwnedEventCount(null);
+    setBlockers(null);
     const res = await fetch(`/api/members?id=${member.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -98,30 +96,20 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
     const body = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      // FP-74: still assigned as another member's Pastoral Leader — surface the Bulk Reassign
-      // screen as the resolution path, per the story's AC, instead of the generic error banner.
-      // FP-146 added a second guard reason (still owns groups) mapped to the same error code,
-      // distinguished by which count field is present — only take this branch when it's
-      // actually the Pastoral Leader case, otherwise fall through to the generic banner below.
-      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.assignedMemberCount !== undefined) {
-        setBlockedCount(body.error.assignedMemberCount ?? null);
-        return;
-      }
-      // FP-153: still owns groups — same error code, distinguished by ownedGroupCount instead.
-      // No dedicated bulk-reassign UI page exists for group ownership (unlike Pastoral Leader's
-      // /reassign), so this points to the Groups admin page, where per-group reassignment
-      // already exists (GroupEditForm.tsx, built under FP-146).
-      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.ownedGroupCount !== undefined) {
-        setOwnedGroupCount(body.error.ownedGroupCount ?? null);
-        return;
-      }
-      // FP-161-2: still owns events — same error code, distinguished by ownedEventCount
-      // instead. No dedicated bulk-reassign UI page exists for event ownership either
-      // (matching Groups' precedent), so this points to the Events admin page, where
-      // per-event reassignment already exists (EventForm.tsx's Owner section, built here).
-      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION' && body.error.ownedEventCount !== undefined) {
-        setOwnedEventCount(body.error.ownedEventCount ?? null);
-        return;
+      // FP-74 / FP-153 / FP-161-2 / FP-258: a 409 can carry several blocks at once (members led,
+      // groups, events, last Administrator). Show every one, with the helpful links below.
+      if (res.status === 409 && body?.error?.code === 'INVALID_STATE_TRANSITION') {
+        const e = body.error;
+        const found: RemovalBlockers = {
+          assignedMemberCount: e.assignedMemberCount ?? 0,
+          ownedGroupCount: e.ownedGroupCount ?? 0,
+          ownedEventCount: e.ownedEventCount ?? 0,
+          lastAdmin: e.lastAdmin === true,
+        };
+        if (hasBlockers(found)) {
+          setBlockers(found);
+          return;
+        }
       }
       // FP-235: the record was scrubbed but deleting the login account failed — calling
       // Remove again finishes the job.
@@ -239,32 +227,29 @@ export default function MemberEditForm({ token, member, members, currentLeaderMe
             activity stays but shows as &apos;Deactivated User&apos;. Removal is blocked while the
             member is still someone&apos;s Assigned Leader or still owns groups or events.
           </p>
-          {blockedCount !== null && (
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {member.first_name} {member.last_name} is still assigned as Assigned Leader to {blockedCount} member{blockedCount === 1 ? '' : 's'}.
-              Reassign {blockedCount === 1 ? 'them' : 'them all'} first via{' '}
-              <a href={`/admin/members/${member.id}/reassign`} className="font-medium underline hover:no-underline">
-                Bulk Reassign
-              </a>.
-            </div>
-          )}
-          {ownedGroupCount !== null && (
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {member.first_name} {member.last_name} still owns {ownedGroupCount} group{ownedGroupCount === 1 ? '' : 's'}.
-              Reassign ownership from each group&apos;s edit page before removing —{' '}
-              <Link href="/admin/groups" className="font-medium underline hover:no-underline">
-                Groups
-              </Link>.
-            </div>
-          )}
-          {ownedEventCount !== null && (
-            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {member.first_name} {member.last_name} still owns {ownedEventCount} event{ownedEventCount === 1 ? '' : 's'}.
-              Reassign ownership from each event&apos;s edit page before removing —{' '}
-              <Link href="/admin/events" className="font-medium underline hover:no-underline">
-                Events
-              </Link>.
-            </div>
+          {blockers !== null && (
+            <ul className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              {blockerSentences(blockers, 'admin').map(b => (
+                <li key={b.key}>
+                  {b.text}{' '}
+                  {b.key === 'assignedMembers' && (
+                    <a href={`/admin/members/${member.id}/reassign`} className="font-medium underline hover:no-underline">
+                      Bulk Reassign
+                    </a>
+                  )}
+                  {b.key === 'groups' && (
+                    <Link href="/admin/groups" className="font-medium underline hover:no-underline">
+                      Groups
+                    </Link>
+                  )}
+                  {b.key === 'events' && (
+                    <Link href="/admin/events" className="font-medium underline hover:no-underline">
+                      Events
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
           <button
             onClick={handleRemove}

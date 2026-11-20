@@ -1,4 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  blockersMessage, hasBlockers, LAST_ADMIN_DEMOTION_MESSAGE,
+  type RemovalAudience, type RemovalBlockers,
+} from './removalBlockers';
 import { listRoleCatalog, getRoleCatalogEntryById } from '@/src/features/role-catalog/role-catalog.service';
 import { ROLE_LABELS } from '@/src/lib/auth/roleLabels';
 
@@ -180,6 +184,14 @@ export async function updateMember(id: string, tenantId: string, input: UpdateMe
       err.code = 'NOT_FOUND_IN_TENANT';
       throw err;
     }
+    // FP-258: block_last_admin_removal_or_demotion() — the role change would leave the
+    // community with no Administrator. Plain message, never the raw database text.
+    if (error.code === 'FP409') {
+      const err = new Error(LAST_ADMIN_DEMOTION_MESSAGE) as Error & { code: string; lastAdmin: boolean };
+      err.code = 'INVALID_STATE_TRANSITION';
+      err.lastAdmin = true;
+      throw err;
+    }
     throw error;
   }
 
@@ -327,36 +339,46 @@ export async function updateMyProfile(memberId: string, tenantId: string, input:
 // there) instead of returning NOT_FOUND_IN_TENANT.
 export type RemoveMemberReason = 'SELF_DELETED' | 'DEACTIVATED';
 
-// FP-74 / FP-146 / FP-161-2 guard-trigger mapping — unchanged from the old
-// softDeleteMember()/deleteOwnAccount(): code === 'P0001' (Postgres's generic "raised
-// exception" SQLSTATE) plus a message-substring match, mapped to INVALID_STATE_TRANSITION
-// with the affected count parsed out of the trigger's own message and attached
-// structurally so the route doesn't need to re-parse free text. The substrings and the
-// triggers' RAISE EXCEPTION texts (20260806000066, 20260719000049, 20260720000052) must
-// always change together, or the removal block silently stops matching.
-function mapRemoveMemberError(error: { code?: string; message?: string }): never {
+// FP-258: error thrown for a blocked removal. Carries every block (counts > 0 are the real
+// ones) and a plain `message`; the API routes turn it into the 409 body.
+type RemovalBlockedError = Error & { code: string } & RemovalBlockers;
+
+function removalBlockedError(blockers: RemovalBlockers, audience: RemovalAudience): RemovalBlockedError {
+  const err = new Error(blockersMessage(blockers, audience)) as RemovalBlockedError;
+  err.code = 'INVALID_STATE_TRANSITION';
+  err.assignedMemberCount = blockers.assignedMemberCount;
+  err.ownedGroupCount = blockers.ownedGroupCount;
+  err.ownedEventCount = blockers.ownedEventCount;
+  err.lastAdmin = blockers.lastAdmin;
+  return err;
+}
+
+// FP-74 / FP-146 / FP-161-2 / FP-258 guard-trigger mapping — the BACKSTOP for a race between
+// the member_removal_blockers() pre-check and the update: code === 'P0001' (Postgres's generic
+// "raised exception" SQLSTATE) plus a message-substring match, or FP409 for the last-Admin
+// trigger, mapped to INVALID_STATE_TRANSITION with the affected count parsed out of the
+// trigger's own message. The `message` sent to clients is always the plain sentence, never the
+// raw database text. The substrings and the triggers' RAISE EXCEPTION texts (20261004000079,
+// 20260719000049, 20260720000052, 20261119000086) must always change together, or the removal
+// block silently stops matching.
+function mapRemoveMemberError(error: { code?: string; message?: string }, audience: RemovalAudience): never {
+  const none: RemovalBlockers = { assignedMemberCount: 0, ownedGroupCount: 0, ownedEventCount: 0, lastAdmin: false };
+  if (error.code === 'FP409' && error.message?.includes('LAST_ADMIN')) {
+    throw removalBlockedError({ ...none, lastAdmin: true }, audience);
+  }
   if (error.code === 'P0001' && error.message?.includes('still assigned as Assigned Leader')) {
-    const err = new Error(error.message) as Error & { code: string; assignedMemberCount?: number };
-    err.code = 'INVALID_STATE_TRANSITION';
     const match = error.message.match(/to (\d+) member/);
-    if (match) err.assignedMemberCount = parseInt(match[1], 10);
-    throw err;
+    throw removalBlockedError({ ...none, assignedMemberCount: match ? parseInt(match[1], 10) : 1 }, audience);
   }
   // Matched on 'group(s)' specifically (not just 'still owns') since the event-ownership
   // guard's message also contains 'still owns'.
   if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('group(s)')) {
-    const err = new Error(error.message) as Error & { code: string; ownedGroupCount?: number };
-    err.code = 'INVALID_STATE_TRANSITION';
     const match = error.message.match(/owns (\d+) group/);
-    if (match) err.ownedGroupCount = parseInt(match[1], 10);
-    throw err;
+    throw removalBlockedError({ ...none, ownedGroupCount: match ? parseInt(match[1], 10) : 1 }, audience);
   }
   if (error.code === 'P0001' && error.message?.includes('still owns') && error.message?.includes('event(s)')) {
-    const err = new Error(error.message) as Error & { code: string; ownedEventCount?: number };
-    err.code = 'INVALID_STATE_TRANSITION';
     const match = error.message.match(/owns (\d+) event/);
-    if (match) err.ownedEventCount = parseInt(match[1], 10);
-    throw err;
+    throw removalBlockedError({ ...none, ownedEventCount: match ? parseInt(match[1], 10) : 1 }, audience);
   }
   if (error.code === 'FP404') {
     const err = new Error('Member not found for this tenant') as Error & { code: string };
@@ -368,13 +390,34 @@ function mapRemoveMemberError(error: { code?: string; message?: string }): never
 
 export async function removeMember(memberId: string, tenantId: string, reason: RemoveMemberReason): Promise<void> {
   const db = serviceClient();
+  const audience: RemovalAudience = reason === 'SELF_DELETED' ? 'self' : 'admin';
+
+  // FP-258: check EVERY reason up front (read-only), so the caller hears all of them at once.
+  // The remove_member() guards below stay as the backstop for a race.
+  const { data: pre, error: preError } = await db.rpc('member_removal_blockers', {
+    p_tenant_id: tenantId,
+    p_member_id: memberId,
+  });
+  if (preError) throw preError;
+  const row = (Array.isArray(pre) ? pre[0] : pre) as
+    | { assigned_member_count: number; owned_group_count: number; owned_event_count: number; is_last_admin: boolean }
+    | undefined;
+  if (row) {
+    const blockers: RemovalBlockers = {
+      assignedMemberCount: row.assigned_member_count ?? 0,
+      ownedGroupCount: row.owned_group_count ?? 0,
+      ownedEventCount: row.owned_event_count ?? 0,
+      lastAdmin: row.is_last_admin === true,
+    };
+    if (hasBlockers(blockers)) throw removalBlockedError(blockers, audience);
+  }
 
   const { data, error } = await db.rpc('remove_member', {
     p_tenant_id: tenantId,
     p_member_id: memberId,
     p_reason: reason,
   });
-  if (error) mapRemoveMemberError(error);
+  if (error) mapRemoveMemberError(error, audience);
 
   const userId = data as string | null;
   if (!userId) return;
