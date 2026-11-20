@@ -327,12 +327,15 @@ export async function updateMyProfile(memberId: string, tenantId: string, input:
 //
 //   1. remove_member() (20261004000078) in ONE transaction: a single UPDATE of the
 //      members row (deleted_at, placeholder email, 'Deactivated User' / 'Self-deleted
-//      User' name, birthdate reduced to January 1 of its year; gender and marital
-//      status kept) so the three guard triggers and the FP-234 prune trigger fire on
-//      it, plus scrubbing of the person's invitation rows. A rejecting guard aborts
-//      everything, so a guard rejection never deletes anyone's login.
+//      User' name; birthdate, gender and marital status all CLEARED to NULL (FP-255))
+//      so the three guard triggers and the FP-234 prune
+//      trigger fire on it, plus scrubbing of the person's invitation rows. A rejecting
+//      guard aborts everything, so a guard rejection never deletes anyone's login.
 //   2. Only then auth.admin.deleteUser(user_id), which frees the email so the person
 //      can be re-invited as a brand-new member.
+//   3. FP-255: only after the login is gone (or was already gone), clear members.user_id
+//      with clear_removed_member_login_link(). Until then user_id stays on the row, so a
+//      failed login deletion can be retried.
 //
 // Retryable: calling it again for a member that is already removed finishes whatever
 // is left (scrubs details a pre-FP-235 deactivation kept, deletes a login that is still
@@ -429,9 +432,23 @@ export async function removeMember(memberId: string, tenantId: string, reason: R
   const { error: deleteAuthError } = await db.auth.admin.deleteUser(userId);
   if (deleteAuthError) {
     const e = deleteAuthError as { status?: number; code?: string; message: string };
-    if (e.status === 404 || e.code === 'user_not_found') return;
-    const err = new Error(`Member removed but the Auth identity could not be deleted: ${deleteAuthError.message}`) as Error & { code: string };
-    err.code = 'AUTH_DELETE_FAILED';
+    if (!(e.status === 404 || e.code === 'user_not_found')) {
+      const err = new Error(`Member removed but the Auth identity could not be deleted: ${deleteAuthError.message}`) as Error & { code: string };
+      err.code = 'AUTH_DELETE_FAILED';
+      throw err;
+    }
+  }
+
+  // FP-255: the login is gone, so the leftover link on the anonymous shell can go too.
+  // If this fails the person is already locked out and has no login; pressing Remove
+  // again finishes it (remove_member() returns the same id, deleteUser reports 404).
+  const { error: clearError } = await db.rpc('clear_removed_member_login_link', {
+    p_tenant_id: tenantId,
+    p_member_id: memberId,
+  });
+  if (clearError) {
+    const err = new Error('Member removed and the login deleted, but the leftover login link could not be cleared. Try Remove again.') as Error & { code: string };
+    err.code = 'LOGIN_LINK_CLEAR_FAILED';
     throw err;
   }
 }
