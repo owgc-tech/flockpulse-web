@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, errorResponse } from '@/src/lib/auth/middleware';
 import { getMyProfile, updateMyProfile, deleteOwnAccount } from '@/src/features/members/service';
+import { conflictBody, type RemovalBlockers } from '@/src/features/members/removalBlockers';
 
 // GET /api/members/me — FP-112: self-service profile read, including group memberships.
 // No role restriction — inherently self-scoped via ctx.memberId, no id param needed.
@@ -57,15 +58,8 @@ export const DELETE = (req: NextRequest) =>
       const code = (err as { code?: string }).code;
       if (code === 'NOT_FOUND_IN_TENANT') return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
       if (code === 'INVALID_STATE_TRANSITION') {
-        // Same 409 shape as DELETE /api/members's admin-facing deactivation
-        // guard responses, including the parsed count(s).
-        const assignedMemberCount = (err as { assignedMemberCount?: number }).assignedMemberCount;
-        const ownedGroupCount = (err as { ownedGroupCount?: number }).ownedGroupCount;
-        const ownedEventCount = (err as { ownedEventCount?: number }).ownedEventCount;
-        return NextResponse.json(
-          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount, ownedEventCount } },
-          { status: 409 }
-        );
+        // Same 409 shape as DELETE /api/members (FP-258): every block present, plus a plain message.
+        return NextResponse.json(conflictBody(err as Error & Partial<RemovalBlockers>), { status: 409 });
       }
       if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
       throw err;
