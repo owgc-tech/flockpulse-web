@@ -62,6 +62,8 @@ export const DELETE = (req: NextRequest) =>
         return NextResponse.json(conflictBody(err as Error & Partial<RemovalBlockers>), { status: 409 });
       }
       if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
+      // FP-255: login deleted, leftover link not cleared — deleting the account again finishes it.
+      if (code === 'LOGIN_LINK_CLEAR_FAILED') return errorResponse('LOGIN_LINK_CLEAR_FAILED', (err as Error).message, 500);
       throw err;
     }
   });

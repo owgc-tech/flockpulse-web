@@ -12,7 +12,8 @@ export type MemberRole =
 
 export interface MemberRow {
   id: string;
-  user_id: string;
+  // FP-255: null for a REMOVED member once their login is deleted and the link cleared.
+  user_id: string | null;
   email: string;
   first_name: string;
   last_name: string;

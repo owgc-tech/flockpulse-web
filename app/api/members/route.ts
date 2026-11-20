@@ -118,6 +118,8 @@ export const DELETE = (req: NextRequest) =>
       // FP-235: scrubbed, but the Auth login could not be deleted — the client tells the
       // admin to press Remove again, which completes it.
       if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
+      // FP-255: login deleted, leftover link not cleared — same client handling: press Remove again.
+      if (code === 'LOGIN_LINK_CLEAR_FAILED') return errorResponse('LOGIN_LINK_CLEAR_FAILED', (err as Error).message, 500);
       throw err;
     }
   }));
