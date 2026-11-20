@@ -75,8 +75,8 @@ export async function submitSelfReport(
       member_id: row.member_id,
       self_report_status: row.self_report_status,
       reason: row.reason,
-      feedback: row.feedback,
-      star_rating: row.star_rating,
+      feedback: null,
+      star_rating: null,
       confirmation_status: row.confirmation_status,
       submitted_at: row.submitted_at,
     };
@@ -112,8 +112,10 @@ export async function submitSelfReport(
     member_id: row.member_id,
     self_report_status: row.self_report_status,
     reason: row.reason,
-    feedback: row.feedback,
-    star_rating: row.star_rating,
+    // FP-257: echo what the member just sent; the stored feedback row is anonymous and is
+    // never read back here.
+    feedback: feedback ?? null,
+    star_rating: starRating ?? null,
     confirmation_status: row.confirmation_status,
     submitted_at: row.submitted_at,
   };

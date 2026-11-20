@@ -124,12 +124,12 @@ async function main() {
   const auditCountFor = (ps: string[]) => Number(psql(`SELECT count(*) FROM audit_logs WHERE tenant_id = '${T}' AND ${anyPhrase(ps)}`));
   const snapshot = async (id: string) => ({
     rsvps: ((await svc.from('rsvps').select('event_id, rsvp_status, guest_count').eq('member_id', id).order('event_id')).data ?? []),
-    reports: ((await svc.from('member_attendance_reports').select('event_id, confirmation_status, star_rating').eq('member_id', id).order('event_id')).data ?? []),
+    reports: ((await svc.from('member_attendance_reports').select('event_id, confirmation_status').eq('member_id', id).order('event_id')).data ?? []),
     attendance: ((await svc.from('attendance').select('event_id, attendance_status, confirmation_type, confirmed_by').eq('member_id', id).order('event_id')).data ?? []),
   });
   const texts = async (id: string) => ({
     rsvps: sorted(((await svc.from('rsvps').select('rsvp_reason').eq('member_id', id)).data ?? []).map((r: { rsvp_reason: string | null }) => String(r.rsvp_reason))),
-    reasons: sorted(((await svc.from('member_attendance_reports').select('reason, feedback').eq('member_id', id)).data ?? []).map((r: { reason: string | null; feedback: string | null }) => `${r.reason}/${r.feedback}`)),
+    reasons: sorted(((await svc.from('member_attendance_reports').select('reason').eq('member_id', id)).data ?? []).map((r: { reason: string | null }) => String(r.reason))),
     notes: sorted(((await svc.from('attendance').select('leader_note').eq('member_id', id)).data ?? []).map((r: { leader_note: string | null }) => String(r.leader_note))),
   });
 
@@ -212,17 +212,18 @@ async function main() {
     check(`${label}: the removal succeeded even though an RSVP has 7 guests against a maximum of 5 (the guest-maximum trap)`,
       ((await svc.from('rsvps').select('guest_count').eq('member_id', person.id).eq('event_id', Ef2).single()).data?.guest_count) === 7);
     check(`${label}: every RSVP reason is '[removed]'`, eq(t.rsvps, ['[removed]', '[removed]']), JSON.stringify(t.rsvps));
-    check(`${label}: self-report reason and feedback are '[removed]' where they existed (NULLs stay NULL)`,
-      t.reasons.includes('[removed]/null') && t.reasons.includes('null/[removed]') && !t.reasons.some((x) => x.includes(person.first)), JSON.stringify(t.reasons));
+    // FP-257: feedback is no longer on the self-report row (it lives, anonymously, in event_feedback).
+    check(`${label}: self-report reason is '[removed]' where it existed (NULLs stay NULL)`,
+      t.reasons.includes('[removed]') && t.reasons.includes('null') && !t.reasons.some((x) => x.includes(person.first)), JSON.stringify(t.reasons));
     check(`${label}: leader notes (the leader's note and the admin-override reason) are '[removed]'; a note that was NULL stays NULL`,
       t.notes.filter((n) => n === '[removed]').length === 2 && t.notes.every((n) => n === '[removed]' || n === 'null'), JSON.stringify(t.notes));
     const after = await snapshot(person.id);
-    check(`${label}: statuses, guest counts, ratings and attendance results are unchanged`, eq(after, before), JSON.stringify(after).slice(0, 200));
+    check(`${label}: statuses, guest counts and attendance results are unchanged`, eq(after, before), JSON.stringify(after).slice(0, 200));
     check(`${label}: not one planted text is left in audit_logs (database-wide search returns 0 rows)`, auditCountFor(p.phrases) === 0 && Number(psql(`SELECT count(*) FROM audit_logs WHERE ${anyPhrase(p.phrases)}`)) === 0);
     const red = await auditRows('member_redaction', person.id, 'redact_personal_text');
     const c = red[0]?.after_value as { rsvps: number; self_reports: number; attendance: number; audit_entries: number } | undefined;
-    check(`${label}: exactly one member_redaction / redact_personal_text entry, with the counts (rsvps 2, self_reports 2, attendance 2, audit_entries ${expectedAudit})`,
-      red.length === 1 && c?.rsvps === 2 && c?.self_reports === 2 && c?.attendance === 2 && c?.audit_entries === expectedAudit, JSON.stringify(red.map((r: { after_value: unknown }) => r.after_value)));
+    check(`${label}: exactly one member_redaction / redact_personal_text entry, with the counts (rsvps 2, self_reports 1, attendance 2, audit_entries ${expectedAudit})`,
+      red.length === 1 && c?.rsvps === 2 && c?.self_reports === 1 && c?.attendance === 2 && c?.audit_entries === expectedAudit, JSON.stringify(red.map((r: { after_value: unknown }) => r.after_value)));
     check(`${label}: the redaction record holds counts and the member id only (no text, no name)`, red[0]?.before_value === null && eq(sorted(Object.keys(red[0]?.after_value ?? {})), ['attendance', 'audit_entries', 'rsvps', 'self_reports']));
     const memberRow = (await svc.from('members').select('first_name, last_name, email, deleted_at').eq('id', person.id).single()).data;
     check(`${label}: the member row is the anonymous shell ("${reason === 'DEACTIVATED' ? 'Deactivated' : 'Self-deleted'} User"), original name and email gone`,
@@ -270,6 +271,8 @@ async function main() {
 
   // ============================================================== one-time section
   console.log('\n=== The one-time cleanup (section 7), run by applying the migration again');
+  // FP-257: only section 7 is re-applied now. Re-applying the whole 20261006000083 file would put its old
+  // remove_member() and redaction function (which names the dropped feedback column) back.
   const old = await mkMember('Oldtimer' + stamp);
   must(await svc.from('tenants').update({ max_guest_count_default: 10 }).eq('id', T).select('id'), 'raise max');
   const pO = await plant(old);
@@ -282,9 +285,12 @@ async function main() {
         ('${T}', 'member', '${old.id}', 'register', '${old.id}', NULL, ${q(JSON.stringify(legacyMember))}::jsonb),
         ('${T}', 'invitation', '${legacyInv.id}', 'revoke', '${admin.id}', ${q(JSON.stringify(legacyInv))}::jsonb, NULL)`);
   const previewSql = (() => {
-    const dip = readFileSync('documentation/dips/DIP-FP-236-web.md', 'utf8');
+    // (CRLF-normalised: on Windows checkouts the DIP file has CRLF line endings.)
+    const dip = readFileSync('documentation/dips/DIP-FP-236-web.md', 'utf8').replace(/\r?\n/g, '\n');
     const block = [...dip.matchAll(/```sql\n([\s\S]*?)```/g)].map((m) => m[1]).find((b) => b.includes('FP-236 preview'))!;
-    return block.split('\n').map((l) => l.replace(/^ {3}/, '')).join('\n');
+    // FP-257: the dropped feedback column is no longer part of that count.
+    return block.split('\n').map((l) => l.replace(/^ {3}/, '')).join('\n')
+      .replace(" OR (s.feedback IS NOT NULL AND s.feedback <> '[removed]')", '');
   })();
   const preview = () => Object.fromEntries(psql(previewSql).split('\n').filter(Boolean).map((l) => { const i = l.lastIndexOf('|'); return [l.slice(0, i), Number(l.slice(i + 1))]; })) as Record<string, number>;
   const oldSnap = await snapshot(old.id);
@@ -295,7 +301,7 @@ async function main() {
     && p0['their RSVP reasons to replace'] >= 1 && p0['their self-reports with a reason or feedback to replace'] >= 1 && p0['leader notes about them to replace'] >= 1);
   check('...and this member\'s texts are in the audit log right now', auditCountFor(pO.phrases) >= 4);
 
-  const apply = () => execFileSync('docker', [...PSQL, '-v', 'ON_ERROR_STOP=1', '-q'], { input: readFileSync(MIGRATION, 'utf8'), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+  const apply = () => execFileSync('docker', [...PSQL, '-v', 'ON_ERROR_STOP=1', '-q'], { input: (() => { const m = readFileSync(MIGRATION, 'utf8'); return m.slice(m.indexOf('-- SECTION 7')); })(), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   let applied1 = 'ok';
   try { apply(); } catch (e) { applied1 = String((e as { stderr?: string }).stderr).slice(0, 300); }
   check('the migration applies cleanly again (one script)', applied1 === 'ok', applied1);
@@ -316,7 +322,7 @@ async function main() {
   const ridRows = (await svc.from('audit_logs').select('after_value').eq('tenant_id', T).eq('action', 'redact_audit_identifiers')).data ?? [];
   check('exactly one redact_audit_identifiers entry for this community, with the count of entries changed (2)', ridRows.length === 1 && ridRows[0].after_value?.audit_entries === 2, JSON.stringify(ridRows));
   const oRed = (await svc.from('audit_logs').select('after_value').eq('entity_type', 'member_redaction').eq('entity_id', old.id)).data ?? [];
-  check('exactly one redact_personal_text entry for the earlier-removed member', oRed.length === 1 && oRed[0].after_value?.rsvps === 2 && oRed[0].after_value?.self_reports === 2 && oRed[0].after_value?.attendance === 2, JSON.stringify(oRed));
+  check('exactly one redact_personal_text entry for the earlier-removed member', oRed.length === 1 && oRed[0].after_value?.rsvps === 2 && oRed[0].after_value?.self_reports === 1 && oRed[0].after_value?.attendance === 2, JSON.stringify(oRed));
   check("the earlier-removed member's name and email are still found nowhere in the audit log", Number(psql(`SELECT count(*) FROM audit_logs WHERE (COALESCE(before_value::text, '') || COALESCE(after_value::text, '')) ILIKE ANY (ARRAY[${[old.first, old.last, old.email].map((s) => q('%' + s + '%')).join(',')}])`)) === 0);
 
   const entryCount = () => Number(psql(`SELECT count(*) FROM audit_logs WHERE action IN ('redact_audit_identifiers','redact_personal_text')`));
