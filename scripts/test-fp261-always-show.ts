@@ -12,6 +12,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { createTask, updateTask } from '../src/features/tasks/task.service';
 
+// FP-263: pure checks, no database; refuses a hosted URL if one is set in the environment.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb(undefined, { allowUnset: true });
+
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` -- ${detail}` : ''}`);

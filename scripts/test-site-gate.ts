@@ -5,6 +5,10 @@
 import assert from 'node:assert/strict';
 import { siteGateDecision, GATE_PUBLIC_PATHS } from '../src/lib/site-gate';
 
+// FP-263: pure checks, no database; refuses a hosted URL if one is set in the environment.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb(undefined, { allowUnset: true });
+
 let passed = 0;
 function check(name: string, actual: unknown, expected: unknown) {
   assert.equal(actual, expected, name);

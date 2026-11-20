@@ -11,6 +11,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { LABEL_ORDER } from '../src/features/events/modifiedFields';
 
+// FP-263: pure checks, no database; refuses a hosted URL if one is set in the environment.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb(undefined, { allowUnset: true });
+
 const ROOT = join(__dirname, '..');
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
