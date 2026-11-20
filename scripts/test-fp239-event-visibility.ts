@@ -14,6 +14,10 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
 process.env.SUPABASE_SERVICE_ROLE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
+// FP-263: refuse to run unless the database is on this computer.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb();
+
 import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createClient } from '@supabase/supabase-js';

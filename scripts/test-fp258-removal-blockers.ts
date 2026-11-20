@@ -13,6 +13,10 @@ import {
   type RemovalBlockers,
 } from '../src/features/members/removalBlockers';
 
+// FP-263: pure checks, no database; refuses a hosted URL if one is set in the environment.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb(undefined, { allowUnset: true });
+
 let failures = 0;
 function check(name: string, ok: boolean, detail = '') {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` -- ${detail}` : ''}`);
