@@ -16,6 +16,8 @@ import {
   parseResetCredential,
   resetDoneVariant,
   validateNewPassword,
+  isFromApp,
+  APP_RETURN_URL,
 } from '../src/features/auth/reset-password';
 
 let failed = 0;
@@ -55,6 +57,12 @@ for (const r of ['ADMIN', 'LEADER', 'SR_COORDINATOR', 'COORDINATOR', 'COMMUNITY_
 check('variant MEMBER -> member', resetDoneVariant('MEMBER') === 'member');
 check('variant undefined -> member', resetDoneVariant(undefined) === 'member');
 check('variant garbage -> member', resetDoneVariant('garbage') === 'member' && resetDoneVariant('') === 'member' && resetDoneVariant('toString') === 'member');
+
+check("isFromApp 'app' true", isFromApp('app') === true);
+check('isFromApp other values false', ['App', 'APP', '', 'web', ' app'].every((v) => isFromApp(v) === false));
+check('isFromApp undefined false', isFromApp(undefined) === false);
+check("isFromApp ['app'] (array) false", isFromApp(['app']) === false && isFromApp(['app', 'app']) === false && isFromApp([]) === false);
+check('APP_RETURN_URL', APP_RETURN_URL === 'flockpulse://');
 
 // ---------- Part B ----------
 function psql(sql: string) {

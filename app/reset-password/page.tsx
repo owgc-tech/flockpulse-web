@@ -1,6 +1,13 @@
+import { isFromApp } from '@/src/features/auth/reset-password';
 import ResetRequestForm from './ResetRequestForm';
 
-export default function ResetPasswordPage() {
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string | string[] }>;
+}) {
+  const { from } = await searchParams;
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -8,7 +15,7 @@ export default function ResetPasswordPage() {
         <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
           Enter your email and we&apos;ll send you a reset link.
         </p>
-        <ResetRequestForm />
+        <ResetRequestForm fromApp={isFromApp(from)} />
       </div>
     </main>
   );
