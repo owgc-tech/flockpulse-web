@@ -102,7 +102,6 @@ async function createMember(
       role: opts.role ?? 'MEMBER',
       gender: opts.gender ?? 'MALE',
       marital_status: opts.marital_status ?? 'SINGLE',
-      birthdate: '1990-01-01',
     })
     .select('id')
     .single();

@@ -77,8 +77,8 @@ function makeMember(name: string, tenantId: string): string {
   const id = newUuid();
   const userId = newUuid();
   psql(`
-    INSERT INTO members (id, tenant_id, user_id, email, role, first_name, last_name, gender, marital_status, birthdate)
-    VALUES ('${id}', '${tenantId}', '${userId}', '${name.toLowerCase()}@fp6972.t', 'MEMBER', '${name}', 'Test', 'MALE', 'SINGLE', '1990-01-01');
+    INSERT INTO members (id, tenant_id, user_id, email, role, first_name, last_name, gender, marital_status)
+    VALUES ('${id}', '${tenantId}', '${userId}', '${name.toLowerCase()}@fp6972.t', 'MEMBER', '${name}', 'Test', 'MALE', 'SINGLE');
   `);
   createdMemberIds.push(id);
   return id;

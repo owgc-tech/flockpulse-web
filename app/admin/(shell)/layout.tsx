@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
 import { getTenantSettings } from '@/src/features/tenant/service';
 import { getMyProfile } from '@/src/features/members/service';
+import { getAcceptanceRequired } from '@/src/features/legal/acceptance.service';
 import AdminSidebar from '@/src/components/admin/AdminSidebar';
 import CommunityBanner from '@/src/components/admin/CommunityBanner';
 import UserAvatarMenu from '@/src/components/admin/UserAvatarMenu';
@@ -20,6 +21,16 @@ export default async function AdminShellLayout({ children }: { children: React.R
   // "can reach the shell at all" gate. Per-section exclusion (Formation/Groups/
   // Members/Restore) happens one level down, in each page's own guard.
   if (!tenantId || !role || !isLeaderTierOrAbove(role)) redirect('/login');
+
+  // FP-254: one-time acceptance of the Terms of Service and Privacy Policy. A gate in this shell only:
+  // the API routes are not blocked. If the check itself fails, do not block (logged without personal data).
+  let acceptanceRequired = false;
+  try {
+    if (memberId) acceptanceRequired = await getAcceptanceRequired(memberId, tenantId);
+  } catch {
+    console.error('admin shell: acceptance check failed');
+  }
+  if (acceptanceRequired) redirect('/accept-terms');
 
   let settings: { name: string; logo_url: string | null; tagline: string | null } | null = null;
   try {

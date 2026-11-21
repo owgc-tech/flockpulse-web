@@ -69,7 +69,7 @@ async function main() {
     const email = `${first.toLowerCase()}-${stamp}@example.test`;
     const m = must(await svc.from('members').insert({
       tenant_id: T, user_id: crypto.randomUUID(), email, role, first_name: first, last_name: `Last${first}${stamp}`,
-      gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1987-03-09',
+      gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), first) as { id: string };
     return { id: m.id, first, last: `Last${first}${stamp}`, email };
   }
@@ -158,10 +158,10 @@ async function main() {
   const founder = await authUser('founder');
   const reg = await createTenantAndFoundingAdmin(founder.token, {
     communityName: 'FP236 Founded ' + stamp, description: null, firstName: 'Founderfirst' + stamp, lastName: 'Founderlast' + stamp,
-    gender: 'MALE', maritalStatus: 'MARRIED', birthdate: '1980-02-02',
+    gender: 'MALE', maritalStatus: 'MARRIED', confirmAdult: true, acceptTerms: true,
   }).catch(async () => createTenantAndFoundingAdmin(founder.token, {
     communityName: 'FP236 Founded ' + stamp, description: null, firstName: 'Founderfirst' + stamp, lastName: 'Founderlast' + stamp,
-    gender: 'MALE', maritalStatus: 'SINGLE', birthdate: '1980-02-02',
+    gender: 'MALE', maritalStatus: 'SINGLE', confirmAdult: true, acceptTerms: true,
   }));
   const founderEntries = await auditRows('member', reg.memberId, 'register');
   check('founder registration: exactly one member/register entry, holding only id, tenant_id, role, role_catalog_entry_id',
@@ -172,7 +172,7 @@ async function main() {
 
   const invitee = await authUser('invitee');
   const inv = await insertInvitation({ tenantId: reg.tenantId, email: invitee.email, role: 'MEMBER', roleCatalogEntryId: null, groupId: null, invitedBy: reg.memberId, authUserId: invitee.id });
-  const registered = await completeRegistration(invitee.token, { firstName: 'Inviteefirst' + stamp, lastName: 'Inviteelast' + stamp, gender: 'FEMALE', maritalStatus: 'SINGLE', birthdate: '1991-07-07' });
+  const registered = await completeRegistration(invitee.token, { firstName: 'Inviteefirst' + stamp, lastName: 'Inviteelast' + stamp, gender: 'FEMALE', maritalStatus: 'SINGLE', confirmAdult: true, acceptTerms: true });
   const inviteeEntries = await auditRows('member', registered.memberId, 'register');
   check('invite registration: the member/register entry holds only id, tenant_id, role, role_catalog_entry_id',
     inviteeEntries.length === 1 && eq(sorted(Object.keys(inviteeEntries[0].after_value ?? {})), ['id', 'role', 'role_catalog_entry_id', 'tenant_id']));
@@ -279,7 +279,7 @@ async function main() {
   must(await svc.from('tenants').update({ max_guest_count_default: 5 }).eq('id', T).select('id'), 'lower max again');                     // texts in tables and in audit entries, member still active
   must(await svc.from('members').update({ deleted_at: new Date().toISOString() }).eq('id', old.id).select('id'), 'remove directly (legacy deactivation)');
   // legacy full-row entries, inserted as the owner, bypassing write_audit_log (as the registration functions used to)
-  const legacyMember = { id: old.id, tenant_id: T, email: old.email, role: 'MEMBER', first_name: old.first, last_name: old.last, gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1987-03-09', user_id: crypto.randomUUID(), role_catalog_entry_id: null };
+  const legacyMember = { id: old.id, tenant_id: T, email: old.email, role: 'MEMBER', first_name: old.first, last_name: old.last, gender: 'FEMALE', marital_status: 'SINGLE', user_id: crypto.randomUUID(), role_catalog_entry_id: null };
   const legacyInv = { id: crypto.randomUUID(), tenant_id: T, email: old.email, role: 'MEMBER', auth_user_id: crypto.randomUUID(), status: 'PENDING', invited_by: admin.id, invited_at: new Date().toISOString() };
   psql(`INSERT INTO audit_logs (tenant_id, entity_type, entity_id, action, actor_id, before_value, after_value) VALUES
         ('${T}', 'member', '${old.id}', 'register', '${old.id}', NULL, ${q(JSON.stringify(legacyMember))}::jsonb),

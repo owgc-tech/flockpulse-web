@@ -58,7 +58,7 @@ async function main() {
       if (u.error) throw u.error;
       userId = u.data.user!.id;
     }
-    const m = must(await svc.from('members').insert({ tenant_id: tenant, user_id: userId, email, role, first_name: first, last_name: 'Roster', gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04' }).select('id').single(), first) as { id: string };
+    const m = must(await svc.from('members').insert({ tenant_id: tenant, user_id: userId, email, role, first_name: first, last_name: 'Roster', gender: 'FEMALE', marital_status: 'SINGLE' }).select('id').single(), first) as { id: string };
     let token = '';
     if (login) {
       await svc.auth.admin.updateUserById(userId, { app_metadata: { tenant_id: tenant, role, member_id: m.id } });

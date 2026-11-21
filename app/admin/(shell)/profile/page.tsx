@@ -38,7 +38,6 @@ export default async function ProfilePage() {
           initialLastName={profile.last_name}
           initialGender={profile.gender}
           initialMaritalStatus={profile.marital_status}
-          initialBirthdate={profile.birthdate}
           groups={profile.groups}
         />
 

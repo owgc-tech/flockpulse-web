@@ -8,6 +8,7 @@ import {
   completeFounderRegistrationAction,
   type FounderCompleteState,
 } from './actions';
+import { AcceptTermsCheckbox, ConfirmAdultCheckbox } from '@/src/features/legal/LegalCheckboxes';
 
 type PageState = 'loading' | 'ready' | 'error';
 
@@ -41,6 +42,8 @@ export default function FounderCompleteForm() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [communityName, setCommunityName] = useState<string>('');
+  const [confirmAdult, setConfirmAdult] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   // Right column ref for measuring rendered height to set textarea height.
   const rightColRef = useRef<HTMLDivElement>(null);
@@ -263,12 +266,9 @@ export default function FounderCompleteForm() {
             </select>
           </div>
 
-          <div className={fieldClass}>
-            <label htmlFor="birthdate" className={labelClass}>Date of birth</label>
-            <input
-              id="birthdate" name="birthdate" type="date" required
-              className={inputClass}
-            />
+          <div className="flex flex-col gap-3">
+            <ConfirmAdultCheckbox checked={confirmAdult} onChange={setConfirmAdult} />
+            <AcceptTermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
           </div>
         </div>
       </div>
@@ -276,7 +276,7 @@ export default function FounderCompleteForm() {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={isPending || !sessionToken}
+          disabled={isPending || !sessionToken || !confirmAdult || !acceptTerms}
           className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
         >
           {isPending ? 'Creating your community…' : 'Create community'}

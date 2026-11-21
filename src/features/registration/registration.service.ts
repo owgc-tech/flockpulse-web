@@ -33,13 +33,18 @@ export async function completeRegistration(
     p_last_name:      input.lastName,
     p_gender:         input.gender,
     p_marital_status: input.maritalStatus,
-    p_birthdate:      input.birthdate,
+    p_confirm_18:     input.confirmAdult,
+    p_accept_terms:   input.acceptTerms,
   });
 
   if (rpcError) {
     const code = rpcError.message.includes('No pending invitation')
       ? 'NO_PENDING_INVITATION'
-      : 'REGISTRATION_FAILED';
+      : rpcError.message.includes('confirm you are 18')
+        ? 'ADULT_NOT_CONFIRMED'
+        : rpcError.message.includes('accept the Terms')
+          ? 'TERMS_NOT_ACCEPTED'
+          : 'REGISTRATION_FAILED';
     const err = new Error(rpcError.message) as Error & { code: string };
     err.code = code;
     throw err;

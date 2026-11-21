@@ -6,7 +6,8 @@ export interface CompleteRegistrationInput {
   lastName: string;
   gender: Gender;
   maritalStatus: MaritalStatus;
-  birthdate: string; // ISO date string YYYY-MM-DD
+  confirmAdult: boolean; // FP-254: "I confirm I am 18 or older."
+  acceptTerms: boolean;  // FP-254: "I accept the Terms of Service and the Privacy Policy."
 }
 
 export interface RegistrationResult {

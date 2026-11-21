@@ -226,7 +226,6 @@ export interface UpdateMyProfileInput {
   lastName?: string;
   gender?: 'MALE' | 'FEMALE';
   maritalStatus?: 'SINGLE' | 'MARRIED' | 'WIDOWED' | 'DIVORCED' | 'SEPARATED';
-  birthdate?: string;
 }
 
 // FP-112: self-service profile read — same five fields complete_registration() collects,
@@ -237,7 +236,7 @@ export async function getMyProfile(memberId: string, tenantId: string) {
 
   const { data: member, error } = await db
     .from('members')
-    .select('id, first_name, last_name, email, role, role_catalog_entry_id, gender, marital_status, birthdate')
+    .select('id, first_name, last_name, email, role, role_catalog_entry_id, gender, marital_status')
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
     .single();
@@ -286,26 +285,23 @@ export async function updateMyProfile(memberId: string, tenantId: string, input:
     err.code = 'INVALID_VALUE';
     throw err;
   }
-  if (input.birthdate !== undefined && new Date(input.birthdate) > new Date()) {
-    const err = new Error('birthdate cannot be in the future') as Error & { code: string };
-    err.code = 'INVALID_VALUE';
-    throw err;
-  }
 
   const update: Record<string, unknown> = {};
   if (input.firstName !== undefined) update.first_name = input.firstName;
   if (input.lastName !== undefined) update.last_name = input.lastName;
   if (input.gender !== undefined) update.gender = input.gender;
   if (input.maritalStatus !== undefined) update.marital_status = input.maritalStatus;
-  if (input.birthdate !== undefined) update.birthdate = input.birthdate;
 
-  const { data, error } = await serviceClient()
-    .from('members')
-    .update(update)
+  // FP-254: an older phone build may still send birthdate; it is never read, so a body with nothing
+  // else in it leaves nothing to update. Return the current row instead of sending an empty update.
+  const columns = 'id, first_name, last_name, email, gender, marital_status';
+  const members = serviceClient().from('members');
+  const { data, error } = await (Object.keys(update).length === 0
+    ? members.select(columns)
+    : members.update(update).select(columns))
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .select('id, first_name, last_name, email, gender, marital_status, birthdate')
     .single();
 
   if (error) {

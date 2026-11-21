@@ -77,7 +77,7 @@ async function main() {
     if (u.error) throw u.error;
     const m = must(await svc.from('members').insert({
       tenant_id: tenant, user_id: u.data.user!.id, email, role, first_name: first, last_name: 'Vis',
-      gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), first) as { id: string };
     await svc.auth.admin.updateUserById(u.data.user!.id, { app_metadata: { tenant_id: tenant, role, member_id: m.id } });
     const { data: sess, error } = await anon.auth.signInWithPassword({ email, password: 'Pw-12345-abcde' });

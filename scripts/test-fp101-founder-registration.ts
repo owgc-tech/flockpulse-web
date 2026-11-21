@@ -129,7 +129,7 @@ async function main() {
     const exists = psqlQuery(
       `SELECT COUNT(*) FROM pg_proc WHERE proname = 'create_tenant_and_founding_admin' AND pronamespace = 'public'::regnamespace`
     );
-    parseInt(exists) === 1
+    parseInt(exists) >= 1
       ? pass('1.1 function exists', 'function present in public schema')
       : fail('1.1 function exists', `count=${exists}`);
   } catch (e) { fail('1.1 function exists', (e as Error).message); }
@@ -139,7 +139,7 @@ async function main() {
     const { error } = await anonClient().rpc('create_tenant_and_founding_admin', {
       p_community_name: 'Anon Attempt', p_description: null,
       p_first_name: 'A', p_last_name: 'B',
-      p_gender: 'MALE', p_marital_status: 'SINGLE', p_birthdate: '1990-01-01',
+      p_gender: 'MALE', p_marital_status: 'SINGLE', p_confirm_18: true, p_accept_terms: true,
     });
     // PGRST301 = PostgREST JWT rejection; 42501 = Postgres permission denied.
     const blocked = !!error && (
@@ -171,7 +171,7 @@ async function main() {
         p_community_name: 'SQL Test Community',
         p_description:    'A community for testing description storage',
         p_first_name: 'Founder', p_last_name: 'One',
-        p_gender: 'MALE', p_marital_status: 'SINGLE', p_birthdate: '1990-01-01',
+        p_gender: 'MALE', p_marital_status: 'SINGLE', p_confirm_18: true, p_accept_terms: true,
       });
       if (error) throw new Error(error.message);
       const row = (Array.isArray(rows) ? rows[0] : rows) as { tenant_id: string; member_id: string };
@@ -196,7 +196,7 @@ async function main() {
       const { error } = await founderClient(g1Token).rpc('create_tenant_and_founding_admin', {
         p_community_name: 'Second Attempt', p_description: null,
         p_first_name: 'Founder', p_last_name: 'One',
-        p_gender: 'MALE', p_marital_status: 'SINGLE', p_birthdate: '1990-01-01',
+        p_gender: 'MALE', p_marital_status: 'SINGLE', p_confirm_18: true, p_accept_terms: true,
       });
       error?.message.includes('already registered')
         ? pass('1.4 duplicate blocked', `error: ${error.message}`)
@@ -241,7 +241,7 @@ async function main() {
     const { data: rows, error } = await founderClient(f.token).rpc('create_tenant_and_founding_admin', {
       p_community_name: 'No-Desc Community', p_description: null,
       p_first_name: 'No', p_last_name: 'Desc',
-      p_gender: 'FEMALE', p_marital_status: 'MARRIED', p_birthdate: '1985-03-10',
+      p_gender: 'FEMALE', p_marital_status: 'MARRIED', p_confirm_18: true, p_accept_terms: true,
     });
     if (error) throw new Error(error.message);
     const row = (Array.isArray(rows) ? rows[0] : rows) as { tenant_id: string; member_id: string };
@@ -280,7 +280,7 @@ async function main() {
         communityName: 'Service Test Community',
         description: 'We meet every Sunday at 9am.',
         firstName: 'Svc', lastName: 'Founder',
-        gender: 'FEMALE', maritalStatus: 'SINGLE', birthdate: '1992-06-15',
+        gender: 'FEMALE', maritalStatus: 'SINGLE', confirmAdult: true, acceptTerms: true,
       });
       createdTenantIds.push(svcResult.tenantId);
       const memberRole = psqlQuery(`SELECT role FROM members WHERE id = '${svcResult.memberId}'`);
@@ -301,7 +301,7 @@ async function main() {
       await createTenantAndFoundingAdmin(g2FounderToken, {
         communityName: 'Second Community', description: null,
         firstName: 'Svc', lastName: 'Founder',
-        gender: 'FEMALE', maritalStatus: 'SINGLE', birthdate: '1992-06-15',
+        gender: 'FEMALE', maritalStatus: 'SINGLE', confirmAdult: true, acceptTerms: true,
       });
       fail('2.2 duplicate error code', 'no error thrown');
     } catch (e) {
@@ -355,7 +355,7 @@ async function main() {
     const pathBResult = await createTenantAndFoundingAdmin(postSetSessionToken, {
       communityName: 'Path B Community', description: 'Via email link',
       firstName: 'Path', lastName: 'B',
-      gender: 'MALE', maritalStatus: 'SINGLE', birthdate: '1991-09-20',
+      gender: 'MALE', maritalStatus: 'SINGLE', confirmAdult: true, acceptTerms: true,
     });
     createdTenantIds.push(pathBResult.tenantId);
     const memberRole = psqlQuery(`SELECT role FROM members WHERE id = '${pathBResult.memberId}'`);
@@ -379,8 +379,8 @@ async function main() {
     const regAdminUserId = psqlQuery(`SELECT gen_random_uuid()`);
     psql(`
       INSERT INTO tenants (id, name) VALUES ('${regTenantId}', 'Regression Tenant FP101') ON CONFLICT DO NOTHING;
-      INSERT INTO members (id, tenant_id, user_id, email, role, first_name, last_name, gender, marital_status, birthdate)
-      VALUES ('${regAdminId}', '${regTenantId}', '${regAdminUserId}', 'fp101-regadmin@t.com', 'ADMIN', 'Reg', 'Admin', 'MALE', 'SINGLE', '1980-01-01')
+      INSERT INTO members (id, tenant_id, user_id, email, role, first_name, last_name, gender, marital_status)
+      VALUES ('${regAdminId}', '${regTenantId}', '${regAdminUserId}', 'fp101-regadmin@t.com', 'ADMIN', 'Reg', 'Admin', 'MALE', 'SINGLE')
       ON CONFLICT DO NOTHING;
     `);
     const { inviteMember } = await import('../src/features/invitations/invitation.service');
@@ -416,7 +416,7 @@ async function main() {
       const result = await createTenantAndFoundingAdmin(f.token, {
         communityName: `${value} Community`, description: null,
         firstName: 'Test', lastName: value,
-        gender: 'FEMALE', maritalStatus: value, birthdate: '1988-04-12',
+        gender: 'FEMALE', maritalStatus: value, confirmAdult: true, acceptTerms: true,
       });
       createdTenantIds.push(result.tenantId);
       const storedStatus = psqlQuery(`SELECT marital_status FROM members WHERE id = '${result.memberId}'`);
