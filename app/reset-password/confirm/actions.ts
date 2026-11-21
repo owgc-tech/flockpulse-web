@@ -55,7 +55,18 @@ export async function confirmPasswordResetAction(
   if (!session) return INVALID_LINK;
 
   // 5. Set the password. The link is already used at this point, so any failure means a new link.
-  const { error: updateError } = await supabase.auth.updateUser({ password: password! });
+  // Why the admin API: a reset-link session is only aal1, and Supabase refuses
+  // auth.updateUser({ password }) at aal1 when the account has MFA (401 insufficient_aal).
+  // The link has just proven control of the mailbox. The new password alone signs nobody in:
+  // sign-in still needs the authenticator code (aal2), and step 6 revokes every existing session.
+  // The service-role client is used only for this call and the global sign-out below.
+  const svc = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { error: updateError } = await svc.auth.admin.updateUserById(session.user.id, {
+    password: password!,
+  });
   if (updateError) {
     if (updateError.code === 'same_password') {
       return {
@@ -68,10 +79,6 @@ export async function confirmPasswordResetAction(
 
   // 6. Globally invalidate ALL sessions for this account — not just this browser's.
   // An attacker who triggered the reset (or was already logged in elsewhere) keeps nothing.
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
   await svc.auth.admin.signOut(session.access_token, 'global');
 
   // Clear MFA trust cookie on this browser too — belt-and-suspenders.
