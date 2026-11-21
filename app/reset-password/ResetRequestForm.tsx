@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { APP_RETURN_URL } from '@/src/features/auth/reset-password';
+import { APP_RETURN_URL } from '@/src/features/auth/reset-from-app';
 import { requestPasswordResetAction, type ResetRequestState } from './actions';
 
 const initialState: ResetRequestState = {};

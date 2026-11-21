@@ -1,4 +1,4 @@
-import { isFromApp } from '@/src/features/auth/reset-password';
+import { isFromApp } from '@/src/features/auth/reset-from-app';
 import ResetRequestForm from './ResetRequestForm';
 
 export default async function ResetPasswordPage({

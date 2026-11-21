@@ -2,17 +2,6 @@
 // (isLeaderTierOrAbove is the single source of truth for role tiers, so it is reused here.)
 import { isLeaderTierOrAbove, type Role } from '@/src/lib/auth/middleware';
 
-/** Where "Back to the app" points. The phone app registers this scheme (not verifiable from this repo). */
-export const APP_RETURN_URL = 'flockpulse://';
-
-/**
- * True only for ?from=app exactly. The parameter changes wording and one link, nothing else.
- * Arrays (a repeated parameter), empty, other values and other casing are all false.
- */
-export function isFromApp(value: string | string[] | undefined): boolean {
-  return value === 'app';
-}
-
 export type ResetCredential =
   | { kind: 'token_hash'; tokenHash: string }
   | { kind: 'code'; code: string };

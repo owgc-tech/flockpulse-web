@@ -16,9 +16,8 @@ import {
   parseResetCredential,
   resetDoneVariant,
   validateNewPassword,
-  isFromApp,
-  APP_RETURN_URL,
 } from '../src/features/auth/reset-password';
+import { isFromApp, APP_RETURN_URL } from '../src/features/auth/reset-from-app';
 
 let failed = 0;
 function check(name: string, ok: boolean) {
