@@ -1,40 +1,73 @@
 'use server';
 
 import { createSupabaseServerClient } from '@/src/lib/supabase/server';
+import {
+  parseResetCredential,
+  resetDoneVariant,
+  validateNewPassword,
+} from '@/src/features/auth/reset-password';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
 export interface ResetConfirmState {
   error?: string;
+  // True when the emailed link can no longer be used (invalid, expired, or already used).
+  linkInvalid?: boolean;
 }
+
+const INVALID_LINK: ResetConfirmState = {
+  error: 'Invalid reset link. Please request a new one.',
+  linkInvalid: true,
+};
 
 export async function confirmPasswordResetAction(
   _prev: ResetConfirmState,
   formData: FormData
 ): Promise<ResetConfirmState> {
-  const password = formData.get('password') as string;
-  const confirm = formData.get('confirmPassword') as string;
+  const password = formData.get('password') as string | null;
+  const confirm = formData.get('confirmPassword') as string | null;
+  const tokenHash = (formData.get('tokenHash') as string | null) ?? undefined;
+  const code = (formData.get('code') as string | null) ?? undefined;
 
-  if (!password || password.length < 8) return { error: 'Password must be at least 8 characters.' };
-  if (password !== confirm) return { error: 'Passwords do not match.' };
+  // 1. Validate the password first: a typo must not use up the one-time link.
+  const passwordError = validateNewPassword(password, confirm);
+  if (passwordError) return { error: passwordError };
 
+  // 2. Which credential did the link carry?
+  const credential = parseResetCredential({ token_hash: tokenHash, type: 'recovery', code });
+  if (!credential) return INVALID_LINK;
+
+  // 3. Verify the link HERE (a Server Action can set the session cookies; the page cannot).
+  // Always verify; never reuse a session already in this browser, or a different signed-in
+  // account's password could be changed.
   const supabase = await createSupabaseServerClient();
+  const { error: verifyError } =
+    credential.kind === 'token_hash'
+      ? await supabase.auth.verifyOtp({ token_hash: credential.tokenHash, type: 'recovery' })
+      : await supabase.auth.exchangeCodeForSession(credential.code);
+  if (verifyError) {
+    return { error: 'Reset link is invalid or expired. Please request a new one.', linkInvalid: true };
+  }
 
-  // DIP-FP-108: session now comes from page.tsx's exchangeCodeForSession
-  // (established via cookies), not a client-supplied accessToken.
+  // 4. The session that verification just created.
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { error: 'No active session. Please request a new reset link.' };
+  if (!session) return INVALID_LINK;
 
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: 'Could not update password. The reset link may have expired.' };
+  // 5. Set the password. The link is already used at this point, so any failure means a new link.
+  const { error: updateError } = await supabase.auth.updateUser({ password: password! });
+  if (updateError) {
+    if (updateError.code === 'same_password') {
+      return {
+        error: 'Choose a password you have not used before. Please request a new reset link.',
+        linkInvalid: true,
+      };
+    }
+    return { error: 'Could not update password. Please request a new reset link.', linkInvalid: true };
+  }
 
-  // Globally invalidate ALL sessions for this account — not just this browser's.
-  // Without this, an attacker who triggered the password reset (or was already
-  // logged in on another device) keeps their active session untouched.
-  // Admin API signOut with scope='global' revokes every refresh token for the user.
-  // Sourced from the server-side session (fetched above) rather than a
-  // client-supplied token — same security behavior, just server-derived.
+  // 6. Globally invalidate ALL sessions for this account — not just this browser's.
+  // An attacker who triggered the reset (or was already logged in elsewhere) keeps nothing.
   const svc = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -45,5 +78,12 @@ export async function confirmPasswordResetAction(
   const cookieStore = await cookies();
   cookieStore.delete('fp_mfa_expires_at');
 
-  redirect('/login');
+  // 7. Clear this browser's own session cookies (the token is already revoked; ignore errors).
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {}
+
+  // 8. redirect() throws, so it stays outside any try/catch.
+  const variant = resetDoneVariant(session.user.app_metadata?.role as string | undefined);
+  redirect(`/reset-password/done?for=${variant}`);
 }
