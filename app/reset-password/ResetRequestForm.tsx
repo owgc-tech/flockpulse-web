@@ -5,6 +5,16 @@ import { requestPasswordResetAction, type ResetRequestState } from './actions';
 
 const initialState: ResetRequestState = {};
 
+function BackToSignIn({ className = '' }: { className?: string }) {
+  return (
+    <p className={`text-center text-xs text-zinc-400 dark:text-zinc-600${className}`}>
+      <a href="/login" className="underline hover:text-zinc-600 dark:hover:text-zinc-400">
+        Back to sign in
+      </a>
+    </p>
+  );
+}
+
 export default function ResetRequestForm() {
   const [state, formAction, isPending] = useActionState(requestPasswordResetAction, initialState);
 
@@ -13,10 +23,13 @@ export default function ResetRequestForm() {
 
   if (state.success) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-        <p className="font-medium">Check your inbox</p>
-        <p className="mt-1">We sent a password reset link to your email address.</p>
-      </div>
+      <>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+          <p className="font-medium">Check your inbox</p>
+          <p className="mt-1">We sent a password reset link to your email address.</p>
+        </div>
+        <BackToSignIn className=" mt-4" />
+      </>
     );
   }
 
@@ -40,11 +53,7 @@ export default function ResetRequestForm() {
       >
         {isPending ? 'Sending…' : 'Send reset link'}
       </button>
-      <p className="text-center text-xs text-zinc-400 dark:text-zinc-600">
-        <a href="/login" className="underline hover:text-zinc-600 dark:hover:text-zinc-400">
-          Back to sign in
-        </a>
-      </p>
+      <BackToSignIn />
     </form>
   );
 }
