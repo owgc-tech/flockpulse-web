@@ -55,7 +55,7 @@ async function community(label: string) {
   const mk = async (first: string, role = 'MEMBER') => {
     const m = must(await svc.from('members').insert({
       tenant_id: T, user_id: crypto.randomUUID(), email: `${first.toLowerCase()}-${stamp}@example.test`, role,
-      first_name: first, last_name: `Last${first}${stamp}`, gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1987-03-09',
+      first_name: first, last_name: `Last${first}${stamp}`, gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), first) as { id: string };
     return { id: m.id, first, last: `Last${first}${stamp}` };
   };

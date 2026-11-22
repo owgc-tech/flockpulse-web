@@ -127,7 +127,7 @@ async function main() {
     }
     const m = must(await svc.from('members').insert({
       tenant_id: tenantId, user_id: userId, email, role, first_name: first, last_name: 'Tester',
-      gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), 'member ' + first) as { id: string };
     if (withLogin) await svc.auth.admin.updateUserById(userId, { app_metadata: { tenant_id: tenantId, role, member_id: m.id } });
     return { id: m.id, email };

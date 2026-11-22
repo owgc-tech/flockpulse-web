@@ -143,7 +143,6 @@ async function setupTestUser() {
       role: 'ADMIN',
       gender: 'MALE',
       marital_status: 'SINGLE',
-      birthdate: '1990-01-01',
     })
     .select('id')
     .single();

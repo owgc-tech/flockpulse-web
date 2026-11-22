@@ -46,13 +46,15 @@ export async function completeRegistrationAction(
   const lastName     = (formData.get('lastName') as string)?.trim();
   const gender       = formData.get('gender') as Gender;
   const maritalStatus = formData.get('maritalStatus') as MaritalStatus;
-  const birthdate    = formData.get('birthdate') as string;
+  const confirmAdult = formData.get('confirmAdult') === 'on';
+  const acceptTerms  = formData.get('acceptTerms') === 'on';
 
   if (!firstName) return { error: 'First name is required' };
   if (!lastName)  return { error: 'Last name is required' };
   if (!['MALE', 'FEMALE'].includes(gender)) return { error: 'Gender is required' };
   if (!['SINGLE', 'MARRIED'].includes(maritalStatus)) return { error: 'Marital status is required' };
-  if (!birthdate) return { error: 'Birthdate is required' };
+  if (!confirmAdult) return { error: 'Please confirm you are 18 or older.' };
+  if (!acceptTerms)  return { error: 'Please accept the Terms of Service and the Privacy Policy.' };
 
   try {
     const result = await completeRegistration(accessToken, {
@@ -60,13 +62,20 @@ export async function completeRegistrationAction(
       lastName,
       gender,
       maritalStatus,
-      birthdate,
+      confirmAdult,
+      acceptTerms,
     });
     return { success: true, memberId: result.memberId };
   } catch (err: unknown) {
     const code = (err as { code?: string }).code;
     if (code === 'NO_PENDING_INVITATION') {
       return { error: 'No pending invitation found for this account. The link may have already been used or expired.' };
+    }
+    if (code === 'ADULT_NOT_CONFIRMED') {
+      return { error: 'Please confirm you are 18 or older.' };
+    }
+    if (code === 'TERMS_NOT_ACCEPTED') {
+      return { error: 'Please accept the Terms of Service and the Privacy Policy.' };
     }
     if (code === 'METADATA_WRITE_FAILED') {
       return { error: 'Registration completed but account setup failed. Please contact support.' };

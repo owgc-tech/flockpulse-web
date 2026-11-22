@@ -10,19 +10,17 @@ interface Props {
   initialLastName: string;
   initialGender: string | null;
   initialMaritalStatus: string | null;
-  initialBirthdate: string | null;
   groups: { id: string; name: string }[];
 }
 
 export default function ProfileForm({
   token, email, initialFirstName, initialLastName,
-  initialGender, initialMaritalStatus, initialBirthdate, groups,
+  initialGender, initialMaritalStatus, groups,
 }: Props) {
   const [firstName, setFirstName] = useState(initialFirstName);
   const [lastName, setLastName] = useState(initialLastName);
   const [gender, setGender] = useState(initialGender ?? '');
   const [maritalStatus, setMaritalStatus] = useState(initialMaritalStatus ?? '');
-  const [birthdate, setBirthdate] = useState(initialBirthdate ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -109,17 +107,6 @@ export default function ProfileForm({
           <option value="DIVORCED">Divorced</option>
           <option value="SEPARATED">Separated</option>
         </select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label className={labelClass}>Birthdate</label>
-        <input
-          name="birthdate"
-          type="date"
-          value={birthdate}
-          onChange={e => { setBirthdate(e.target.value); setSaved(false); }}
-          className={inputClass}
-        />
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

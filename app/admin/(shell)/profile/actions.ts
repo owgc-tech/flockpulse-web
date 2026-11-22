@@ -41,7 +41,6 @@ export async function updateMyProfileAction(
   const lastName = (formData.get('lastName') as string | null)?.trim();
   const gender = (formData.get('gender') as string | null) || undefined;
   const maritalStatus = (formData.get('maritalStatus') as string | null) || undefined;
-  const birthdate = (formData.get('birthdate') as string | null) || undefined;
 
   try {
     await updateMyProfile(ctx.memberId, ctx.tenantId, {
@@ -49,7 +48,6 @@ export async function updateMyProfileAction(
       lastName: lastName || undefined,
       gender: gender as 'MALE' | 'FEMALE' | undefined,
       maritalStatus: maritalStatus as 'SINGLE' | 'MARRIED' | 'WIDOWED' | 'DIVORCED' | 'SEPARATED' | undefined,
-      birthdate,
     });
     return {};
   } catch (e) {

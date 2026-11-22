@@ -28,7 +28,8 @@ export async function createTenantAndFoundingAdmin(
     lastName: string;
     gender: string;
     maritalStatus: string;
-    birthdate: string;
+    confirmAdult: boolean;
+    acceptTerms: boolean;
   }
 ): Promise<FounderRegistrationResult> {
   // Step 1: call the RPC authenticated as the founder.
@@ -47,14 +48,19 @@ export async function createTenantAndFoundingAdmin(
       p_last_name:       params.lastName,
       p_gender:          params.gender,
       p_marital_status:  params.maritalStatus,
-      p_birthdate:       params.birthdate,
+      p_confirm_18:      params.confirmAdult,
+      p_accept_terms:    params.acceptTerms,
     }
   );
 
   if (rpcError) {
     const code = rpcError.message.includes('already registered')
       ? 'ALREADY_REGISTERED'
-      : 'REGISTRATION_FAILED';
+      : rpcError.message.includes('confirm you are 18')
+        ? 'ADULT_NOT_CONFIRMED'
+        : rpcError.message.includes('accept the Terms')
+          ? 'TERMS_NOT_ACCEPTED'
+          : 'REGISTRATION_FAILED';
     const err = new Error(rpcError.message) as Error & { code: string };
     err.code = code;
     throw err;

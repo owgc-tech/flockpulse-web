@@ -20,8 +20,10 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/members/me — FP-112: self-service profile update. Only firstName/lastName/
-// gender/maritalStatus/birthdate are ever accepted — role/email/tenant_id are never read
+// gender/maritalStatus are ever accepted — role/email/tenant_id are never read
 // from the body, matching the members_update_self RLS policy's documented intent.
+// FP-254: birthdate is no longer collected. An older phone build may still send it; it is ignored
+// silently (never read, never written, no error).
 export const PATCH = (req: NextRequest) =>
   withAuth(req, async (req, ctx) => {
     const body = await req.json().catch(() => null);
@@ -33,7 +35,6 @@ export const PATCH = (req: NextRequest) =>
         lastName: body.lastName,
         gender: body.gender,
         maritalStatus: body.maritalStatus,
-        birthdate: body.birthdate,
       });
       return NextResponse.json({ data: profile });
     } catch (err: unknown) {

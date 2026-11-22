@@ -2,7 +2,7 @@
  * FP-255: removing a member clears gender, marital status and (after the login is deleted)
  * the leftover login link. Drives removeMember() end to end on the LOCAL database.
  *
- *  1. an ordinary removal: gender, marital status, birthdate and user_id end up NULL, the login is deleted
+ *  1. an ordinary removal: gender, marital status and user_id end up NULL, the login is deleted
  *  2. deleteUser fails: AUTH_DELETE_FAILED, user_id is KEPT; a second removeMember() completes it
  *  3. clearing the link fails after the login is gone: LOGIN_LINK_CLEAR_FAILED, user_id kept;
  *     a second removeMember() completes it (deleteUser reports "not found" and is treated as success)
@@ -76,14 +76,14 @@ async function newMemberWithLogin(label: string): Promise<{ memberId: string; us
   const row = await mustOk(svc.from('members').insert({
     tenant_id: tenantId, user_id: userId, email: `fp255-${tag}-${label}@example.test`,
     role: 'MEMBER', first_name: label, last_name: 'Tester',
-    gender: 'FEMALE', marital_status: 'MARRIED', birthdate: '1988-07-07',
+    gender: 'FEMALE', marital_status: 'MARRIED',
   }).select('id').single(), 'insert member') as { id: string };
   return { memberId: row.id, userId };
 }
 
 async function memberRow(memberId: string) {
-  return await mustOk(svc.from('members').select('first_name, gender, marital_status, user_id, deleted_at, birthdate').eq('id', memberId).single(), 'read member') as
-    { first_name: string; gender: string | null; marital_status: string | null; user_id: string | null; deleted_at: string | null; birthdate: string | null };
+  return await mustOk(svc.from('members').select('first_name, gender, marital_status, user_id, deleted_at').eq('id', memberId).single(), 'read member') as
+    { first_name: string; gender: string | null; marital_status: string | null; user_id: string | null; deleted_at: string | null };
 }
 async function loginExists(userId: string): Promise<boolean> {
   const r = await svc.auth.admin.getUserById(userId);
@@ -105,7 +105,6 @@ async function main() {
   check('gender cleared', r1.gender === null);
   check('marital status cleared', r1.marital_status === null);
   check('user_id cleared', r1.user_id === null);
-  check('birthdate cleared completely (not just reduced to a year)', r1.birthdate === null);
   check('login deleted', !(await loginExists(m1.userId)));
 
   console.log('\n=== 2. deleteUser fails: link kept, retry completes');
@@ -113,7 +112,7 @@ async function main() {
   failDeleteUserOnce();
   check('first call -> AUTH_DELETE_FAILED', (await codeOf(removeMember(m2.memberId, tenantId, 'SELF_DELETED'))) === 'AUTH_DELETE_FAILED');
   const r2a = await memberRow(m2.memberId);
-  check('record already scrubbed (gender, marital status and birthdate NULL)', r2a.gender === null && r2a.marital_status === null && r2a.birthdate === null && r2a.deleted_at !== null);
+  check('record already scrubbed (gender and marital status NULL)', r2a.gender === null && r2a.marital_status === null && r2a.deleted_at !== null);
   check('user_id KEPT so the retry can find the login', r2a.user_id === m2.userId);
   check('login still exists', await loginExists(m2.userId));
   await removeMember(m2.memberId, tenantId, 'SELF_DELETED');
