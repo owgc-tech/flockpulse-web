@@ -101,6 +101,47 @@ for (const f of FILES) {
     hrefs.filter((h) => /\.md$/i.test(h)).every((h) => resolveLegalHref(h) !== h));
 }
 
+// --- FP-249 follow-up: header logo and date lines (renderer)
+const renderer = fs.readFileSync(path.join(process.cwd(), 'src', 'features', 'legal-pages', 'LegalPage.tsx'), 'utf8');
+check('LegalPage source: header has the logo <img src="/flockpulse-logo.png" alt="FlockPulse">',
+  /<img src="\/flockpulse-logo\.png" alt="FlockPulse"/.test(renderer));
+check('LegalPage source: the logo sits on a white wrapper (bg-white) inside the Link to "/"',
+  /<Link href="\/" className="[^"]*bg-white[^"]*">\s*<img src="\/flockpulse-logo\.png"/.test(renderer));
+check('LegalPage source: no plain-text "FlockPulse" Link any more', !/<Link[^>]*>\s*FlockPulse\s*<\/Link>/.test(renderer));
+check('LegalPage source: the p component has whitespace-pre-line',
+  /p: \(\{ children \}\) => \(\s*<p className="[^"]*whitespace-pre-line/.test(renderer));
+// Every paragraph (outside lists, tables, headings) with a single line break is an intended one: the date lines
+// (and, in Support / Account Deletion, the "operated by" line followed by "Last updated").
+for (const f of FILES) {
+  const paras = stripped[f].replace(/\r\n/g, '\n').trimEnd().split(/\n{2,}/)
+    .filter((b) => b.includes('\n') && !/^(#|\||---|\s*([-*+]|\d+\.) )/.test(b));
+  check(`${f}: the only paragraph containing a line break is the two-line date paragraph (found ${paras.length})`,
+    paras.length === 1 && /\*\*Last updated:\*\*/.test(paras[0]) && paras[0].split('\n').length === 2);
+}
+
+// Rendered output: reads the HTML that `npx next build` produced (run the build first).
+const BUILT = path.join(process.cwd(), '.next', 'server', 'app');
+if (!fs.existsSync(path.join(BUILT, 'privacy.html'))) {
+  console.log('INFO  SKIPPED rendered-HTML checks: no .next build output (run `npx next build` first)');
+} else {
+  for (const page of ['privacy', 'terms', 'support', 'delete-account']) {
+    const html = fs.readFileSync(path.join(BUILT, `${page}.html`), 'utf8');
+    const header = /<header[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+    check(`${page} (built): header has <img> with src="/flockpulse-logo.png" and alt="FlockPulse"`,
+      /<img[^>]*src="\/flockpulse-logo\.png"/.test(header) && /alt="FlockPulse"/.test(header));
+    check(`${page} (built): header has no plain-text "FlockPulse" link`, !/<a [^>]*>\s*FlockPulse\s*<\/a>/.test(header));
+    check(`${page} (built): the logo link goes to "/"`, /<a [^>]*href="\/"[^>]*>\s*<img/.test(header));
+    const para = /<p [^>]*>(?:(?!<\/p>)[\s\S])*Last updated(?:(?!<\/p>)[\s\S])*<\/p>/.exec(html)?.[0] ?? '';
+    check(`${page} (built): the "Last updated" paragraph has whitespace-pre-line`, /class="[^"]*whitespace-pre-line/.test(para));
+  }
+  for (const page of ['privacy', 'terms']) {
+    const html = fs.readFileSync(path.join(BUILT, `${page}.html`), 'utf8');
+    const m = /<strong[^>]*>Effective date:<\/strong>([\s\S]*?)<strong[^>]*>Last updated:<\/strong>/.exec(html);
+    check(`${page} (built): "Effective date" and "Last updated" are separated by a line break in the text`,
+      !!m && m[1].includes('\n') && !m[1].includes('<br'));
+  }
+}
+
 // --- the site gate is unchanged
 check('GATE_PUBLIC_PATHS is still empty', GATE_PUBLIC_PATHS.length === 0);
 
