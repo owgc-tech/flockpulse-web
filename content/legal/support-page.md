@@ -1,7 +1,7 @@
 # FlockPulse Support
 
 **FlockPulse** is operated by Joseph Punzalan, a sole proprietor in Ontario, Canada.
-**Last updated:** [TO DECIDE: the day this page goes live]
+**Last updated:** 2026-11-23
 
 ## Contact us
 
@@ -71,3 +71,4 @@ Good to know:
 | 1.2 | 2026-11-21 | "Forgot password" now describes the mobile Forgot password? link, the phone browser and the return to the app. "Lost my authenticator app" is for anyone, not only Community Administrators. |
 | 1.3 | 2026-11-21 | "Forgot password" rewritten in short steps for the mobile app and the web, for every role: reset link by email from admin@flockpulse.ca, "Back to the app" button, single-use link that expires (exact time is a [CHECK]), a newer link cancels the older one, signed out on all devices after a reset, same answer whether or not the email is registered. "Lost my authenticator app" matches the two-step login scope. |
 | 1.4 | 2026-11-21 | Removed the [CHECK] about the reset link expiry. The page says the link stops working after a short time and gives no number. |
+| 1.5 | 2026-11-22 | Last updated 2026-11-23. |

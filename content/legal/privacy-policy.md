@@ -1,7 +1,7 @@
 # FlockPulse Privacy Policy
 
-**Effective date:** [TO DECIDE: the day this page goes live]
-**Last updated:** [TO DECIDE: same day as the effective date]
+**Effective date:** 2026-11-21
+**Last updated:** 2026-11-23
 
 ## Summary
 
@@ -51,9 +51,9 @@ What this means for you:
 - Your password. Our login provider stores it in scrambled (hashed) form, so we cannot read it.
 - Your gender and marital status, which you enter on your profile.
 - Your role (Community Administrator, Leader or Member), your group, and who your Leader is.
-- A record, with the date and time, that you accepted our Terms and this Policy (and which versions), and that you confirmed you are 18 or older. You confirm this with a tick box. It is your own confirmation. We do not check it and we do not ask for proof of age.
+- A record that you accepted our [Terms of Service](terms-of-service.md) and this Policy. It holds your member ID, your Community, the effective date of each document you accepted, your 18+ confirmation, and the time. It has no name or email. When you register, you accept both documents with a tick box. You also tick a box to confirm that you are 18 or older. That is your own confirmation. We do not check it and we do not ask for proof of age.
 
-We do not collect your birthdate or your phone number. Before this Policy took effect, FlockPulse asked for a birthdate. We permanently deleted every birthdate on the day this Policy took effect, so we hold no birthdate for anyone. Copies in backups are replaced on their normal schedule (section 10). A Community that keeps a birthday list keeps it outside FlockPulse, and is responsible for it.
+We do not collect your birthdate or your phone number. Before November 21, 2026, FlockPulse asked for a birthdate. On November 21, 2026, we permanently deleted every stored birthdate, so we hold no birthdate for anyone. Backups keep older copies until they expire (section 10). A Community that keeps a birthday list keeps it outside FlockPulse, and is responsible for it.
 
 ### Two-step login
 
@@ -211,8 +211,8 @@ Deleting is permanent. You cannot reactivate the account. If you come back, you 
   - Your links to your Leader and your groups.
   - Your task assignments, and your current Commit or Refuse answers.
   - Free text you wrote in RSVP reasons, attendance reasons and Leader notes. This text becomes `[removed]`, including inside the audit log.
-- **Stays, de-identified:** a record under an internal member ID. It holds your role, your account creation date, your RSVP answers and guest counts, your attendance records and dates, your program completions, your announcement acknowledgements, your event invitations, your past Commit or Refuse answers, your record of accepting the Terms and this Policy (the versions of the documents, your 18+ confirmation and the time), and audit log entries that show only the member ID.
-- **Why it stays:** so your Community's attendance history and statistics stay correct. The record of accepting the Terms and Policy stays so that we can show, if there is a dispute, that you agreed and confirmed that you are 18 or older. It has no name attached.
+- **Stays, de-identified:** a record under an internal member ID. It holds your role, your account creation date, your RSVP answers and guest counts, your attendance records and dates, your program completions, your announcement acknowledgements, your event invitations, your past Commit or Refuse answers, your record of accepting the [Terms](terms-of-service.md) and this Policy (your Community, the effective date of each document you accepted, your 18+ confirmation, and the time), and audit log entries that show only the member ID.
+- **Why it stays:** so your Community's attendance history and statistics stay correct. The record of accepting the Terms and Policy stays so that we can show, if there is a dispute, that you accepted the Terms of Service and this Policy and confirmed that you are 18 or older. It has no name or email attached.
 - **De-identified does not mean anonymous.** We removed your name, contact details and free text. But in a small Community, someone who knows the Community may still work out who a record belongs to. We cannot promise that the remaining record cannot be linked to you.
 
 ### What deletion does not reach right away
@@ -253,7 +253,7 @@ No service is completely secure. If a breach of security safeguards affects pers
 
 ## 13. Age
 
-FlockPulse is for adults. You must be 18 or older. When you register, you must tick a box to confirm that you are 18 or older. Members who joined before this Policy took effect confirm it on a one-time screen. This is your own confirmation, not proof of age. We do not ask for your birthdate or any proof, and we cannot check your age, so Communities must only invite adults. If we learn that a person under 18 has an account, we will remove it. If you think this has happened, email us.
+FlockPulse is for adults. You must be 18 or older. When you register, you must tick a box to confirm that you are 18 or older. Existing Members, Leaders and Community Administrators see a one-time screen with the same box, and with a box to accept the [Terms of Service](terms-of-service.md) and this Policy, the next time they open the app or the web admin area. This is your own confirmation, not proof of age. We do not ask for your birthdate or any proof, and we cannot check your age, so Communities must only invite adults. If we learn that a person under 18 has an account, we will remove it. If you think this has happened, email us.
 
 ## 14. Your rights and how to make a request
 
@@ -312,3 +312,5 @@ FlockPulse is operated by Joseph Punzalan, a sole proprietor in Ontario, Canada.
 | 1.8 | 2026-11-21 | Mailtrap sends both invitation and password-reset emails (the separate login-provider email row is removed). Two-step login is described correctly: every Member is asked to set it up in the mobile app, and Leaders and Community Administrators use it on the web (sections 3, 11 and 12). |
 | 1.9 | 2026-11-21 | Mailtrap is listed as sending our system emails (password resets confirmed) from admin@flockpulse.ca. The invitation-email provider is now a [TO DECIDE] row until Joseph confirms it. Two-step login: required for all accounts in the mobile app, and for Leaders and Community Administrators in the web admin area (sections 3, 11, 12). |
 | 1.10 | 2026-11-21 | Mailtrap sends both invitation emails and password-reset emails (verified in the code). The [TO DECIDE] invitation row is gone. No sender address is given for invitations. |
+| 1.11 | 2026-11-22 | FP-254 is deployed. The acceptance record is described exactly (member ID, Community, effective date of each document accepted, time; no name or email). It no longer says the 18+ confirmation is stored in it. Old birthdates were deleted on November 21, 2026, and backups keep older copies until they expire. The one-time screen reaches existing Members, Leaders and Community Administrators. Effective date 2026-11-21. Last updated 2026-11-23. The Terms of Service are linked. |
+| 1.12 | 2026-11-22 | Correction: the acceptance record does store the 18+ confirmation (a required yes). Put back in section 3 and section 10 ("stays" and "Why it stays"). Nothing else changed. |

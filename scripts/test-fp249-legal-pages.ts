@@ -24,13 +24,6 @@ function check(name: string, ok: boolean) {
 }
 
 const FILES = ['privacy-policy', 'terms-of-service', 'support-page', 'account-deletion-page'] as const;
-// Expected number of unfinished markers in the TEXT ABOVE the change log (date lines only).
-const EXPECTED_MARKER_LINES: Record<(typeof FILES)[number], number> = {
-  'privacy-policy': 2,
-  'terms-of-service': 2,
-  'support-page': 1,
-  'account-deletion-page': 1,
-};
 // What each stripped file must still end with.
 const ENDS_WITH: Record<(typeof FILES)[number], RegExp> = {
   'privacy-policy': /support@flockpulse\.ca[\s\S]*we will give you one\.\n$/,
@@ -74,17 +67,9 @@ check('unknown value unchanged', resolveLegalHref('something-else.md') === 'some
 check("'constructor' (object key, not a link) unchanged", resolveLegalHref('constructor') === 'constructor');
 check("'' unchanged", resolveLegalHref('') === '');
 
-// --- hasUnfinishedMarkers on the stripped text
+// --- hasUnfinishedMarkers
 for (const f of FILES) {
-  check(`${f}: stripped text has unfinished markers (date placeholders)`, hasUnfinishedMarkers(stripped[f]));
-  const todecide = (stripped[f].match(/\[TO DECIDE/g) ?? []).length;
-  const check_ = (stripped[f].match(/\[CHECK/g) ?? []).length;
-  check(`${f}: exactly ${EXPECTED_MARKER_LINES[f]} [TO DECIDE (got ${todecide}) and no [CHECK (got ${check_})`,
-    todecide === EXPECTED_MARKER_LINES[f] && check_ === 0);
-  const markerLines = stripped[f].split('\n').filter((l) => l.includes('[TO DECIDE'));
-  check(`${f}: every marker is on an "Effective date" / "Last updated" line`,
-    markerLines.length === EXPECTED_MARKER_LINES[f] &&
-      markerLines.every((l) => /^\*\*(Effective date|Last updated):\*\*/.test(l)));
+  // Final text: the marker expectations moved to the go-live block below (none left above the change log).
 }
 check('hasUnfinishedMarkers: false for a sample without markers', !hasUnfinishedMarkers('# A\n\nAll done. [a link](x.md)\n'));
 check('hasUnfinishedMarkers: true for [CHECK', hasUnfinishedMarkers('x [CHECK: y] z'));
@@ -142,8 +127,37 @@ if (!fs.existsSync(path.join(BUILT, 'privacy.html'))) {
   }
 }
 
-// --- the site gate is unchanged
-check('GATE_PUBLIC_PATHS is still empty', GATE_PUBLIC_PATHS.length === 0);
+// --- FP-249 go-live: final text, no unfinished markers, exact date lines, cross-links
+const DATE_LINES: Record<(typeof FILES)[number], string[]> = {
+  'privacy-policy': ['**Effective date:** 2026-11-21', '**Last updated:** 2026-11-23'],
+  'terms-of-service': ['**Effective date:** 2026-11-21', '**Last updated:** 2026-11-23'],
+  'support-page': ['**Last updated:** 2026-11-23'],
+  'account-deletion-page': ['**Last updated:** 2026-11-23'],
+};
+for (const f of FILES) {
+  check(`${f}: no unfinished marker in the stripped text`, !hasUnfinishedMarkers(stripped[f]));
+  check(`${f}: no [TO DECIDE and no [CHECK above the change log`,
+    !stripped[f].includes('[TO DECIDE') && !stripped[f].includes('[CHECK'));
+  const dateLines = stripped[f].split('\n').filter((l) => /^\*\*(Effective date|Last updated):\*\*/.test(l));
+  check(`${f}: date lines are exactly ${JSON.stringify(DATE_LINES[f])}`,
+    JSON.stringify(dateLines) === JSON.stringify(DATE_LINES[f]));
+  check(`${f}: no carriage return in the file (LF only)`, !raw[f].includes('\r'));
+}
+check('terms-of-service links to privacy-policy.md', stripped['terms-of-service'].includes('](privacy-policy.md)'));
+check('terms-of-service links to privacy-policy.md in section 1.4 and in section 11', (() => {
+  const t = stripped['terms-of-service'];
+  const p14 = t.split('\n').find((l) => l.startsWith('**1.4 ')) ?? '';
+  const i11 = t.search(/^## 11\. /m);
+  const rest11 = i11 === -1 ? '' : t.slice(i11 + 3);
+  const n11 = rest11.search(/^## /m);
+  const s11 = n11 === -1 ? rest11 : rest11.slice(0, n11);
+  return p14.includes('](privacy-policy.md)') && s11.includes('](privacy-policy.md)');
+})());
+check('privacy-policy links to terms-of-service.md', stripped['privacy-policy'].includes('](terms-of-service.md)'));
+check('GATE_PUBLIC_PATHS is exactly the four legal pages',
+  JSON.stringify(GATE_PUBLIC_PATHS) === JSON.stringify(['/privacy', '/terms', '/support', '/delete-account']));
+
+// --- the site gate
 
 console.log(failed === 0 ? '\nALL PASSED' : `\n${failed} FAILED`);
 process.exit(failed === 0 ? 0 : 1);
