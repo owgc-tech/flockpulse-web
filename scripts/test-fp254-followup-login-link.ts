@@ -1,9 +1,13 @@
 /**
  * FP-254 follow-up: which roles get the "Continue to Login" button on the registration-complete screen.
- * Pure helper cases only: no network, no database (so no assertLocalDb call is needed).
+ * Pure helper cases only: no network, no database (assertLocalDb with allowUnset, as the other pure scripts do).
  * NOT covered: the rendered screen and the /accept-terms redirect (browser only).
  */
 import { showContinueToLogin } from '../src/features/registration/registration-complete';
+import { assertLocalDb } from './lib/assert-local-db';
+
+// FP-263: pure script, no database; refuses only if a hosted URL is set in the environment.
+assertLocalDb(undefined, { allowUnset: true });
 
 let failed = 0;
 function check(name: string, ok: boolean) {
