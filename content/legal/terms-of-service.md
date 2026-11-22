@@ -1,11 +1,11 @@
 # FlockPulse Terms of Service
 
-**Effective date:** [TO DECIDE: the day this page goes live]
-**Last updated:** [TO DECIDE: same day as the effective date]
+**Effective date:** 2026-11-21
+**Last updated:** 2026-11-23
 
 ## Summary
 
-These Terms are the rules for using FlockPulse. FlockPulse helps a Community (such as a club, a non-profit, a faith community or an alumni group) run its events, attendance, programs and tasks. You can only join a Community by invitation, and you must be 18 or older. Your Community decides what it collects about its Members, and Community Administrators have extra duties (section 10). We do not promise that FlockPulse will always be available or error-free, and our responsibility to you is limited as far as the law allows (section 14). You can delete your account once you have handed over anything that blocks it. Our Privacy Policy explains how we handle personal information. FlockPulse is currently offered only to organizations based outside Quebec.
+These Terms are the rules for using FlockPulse. FlockPulse helps a Community (such as a club, a non-profit, a faith community or an alumni group) run its events, attendance, programs and tasks. You can only join a Community by invitation, and you must be 18 or older. Your Community decides what it collects about its Members, and Community Administrators have extra duties (section 10). We do not promise that FlockPulse will always be available or error-free, and our responsibility to you is limited as far as the law allows (section 14). You can delete your account once you have handed over anything that blocks it. Our [Privacy Policy](privacy-policy.md) explains how we handle personal information. FlockPulse is currently offered only to organizations based outside Quebec.
 
 ## 1. About these Terms
 
@@ -13,9 +13,9 @@ These Terms are the rules for using FlockPulse. FlockPulse helps a Community (su
 
 **1.2 Who these Terms apply to.** They apply to everyone who uses the Service: Members, Leaders and Community Administrators. A Community Administrator also accepts these Terms for the Community (section 10).
 
-**1.3 How you accept.** You accept these Terms when you tick the box at registration, when you accept them on the one-time screen we show existing Members, or when you keep using the Service after we show them to you. We keep a record of when you accepted.
+**1.3 How you accept.** You accept these Terms when you tick the box at registration, when you accept them on the one-time screen we show existing Members, Leaders and Community Administrators, or when you keep using the Service after we show them to you. We keep a record of which version you accepted, that you confirmed you are 18 or older, and when.
 
-**1.4 What else applies.** These Terms and our Privacy Policy apply to everyone. If we sign a separate written agreement with a Community (for example, a data processing agreement), that agreement also applies to the Community. If it conflicts with these Terms, the written agreement wins for that Community.
+**1.4 What else applies.** These Terms and our [Privacy Policy](privacy-policy.md) apply to everyone. If we sign a separate written agreement with a Community (for example, a data processing agreement), that agreement also applies to the Community. If it conflicts with these Terms, the written agreement wins for that Community.
 
 **1.5 Key words.**
 
@@ -32,7 +32,7 @@ These Terms are the rules for using FlockPulse. FlockPulse helps a Community (su
 
 **2.1 By invitation only.** You can only join a Community if it invites you. We set up new Communities by hand. There is no public sign-up.
 
-**2.2 Adults only.** You must be 18 or older. When you register, you must tick a box to confirm that you are 18 or older. Existing Members confirm it on a one-time screen. This is your own confirmation. It is not proof of your age, we do not ask for your birthdate or any proof, and we cannot check your age. If you are under 18, do not use FlockPulse. If we learn that someone under 18 has an account, we will remove it.
+**2.2 Adults only.** You must be 18 or older. When you register, you must tick a box to confirm that you are 18 or older. Existing Members, Leaders and Community Administrators confirm it on a one-time screen. This is your own confirmation. It is not proof of your age, we do not ask for your birthdate or any proof, and we cannot check your age. If you are under 18, do not use FlockPulse. If we learn that someone under 18 has an account, we will remove it.
 
 **2.3 Outside Quebec.** For now, FlockPulse is offered only to organizations based outside the province of Quebec. A Community based in Quebec may not use it.
 
@@ -43,7 +43,7 @@ These Terms are the rules for using FlockPulse. FlockPulse helps a Community (su
 - Set up and use the two-step login (an authenticator app). The mobile app requires it for all accounts. The web admin area requires it for Leaders and Community Administrators.
 - Tell us right away at support@flockpulse.ca if you think someone else used your account.
 - You are responsible for what happens under your account, unless we caused the problem.
-- You can delete your account whenever you like, once you have handed over anything that blocks it. That means active Members you lead, active groups you own and upcoming events you own. If you are the only Community Administrator, you must first make another Member an Administrator, or ask us to close the Community. Section 10 of the Privacy Policy explains how, and what stays afterwards.
+- You can delete your account whenever you like, once you have handed over anything that blocks it. That means active Members you lead, active groups you own and upcoming events you own. If you are the only Community Administrator, you must first make another Member an Administrator, or ask us to close the Community. Section 10 of the [Privacy Policy](privacy-policy.md) explains how, and what stays afterwards.
 
 ## 4. The Service and changes
 
@@ -75,7 +75,7 @@ If you find a security problem, tell us at support@flockpulse.ca. Please do not 
 
 ## 6. Content
 
-**6.1 Whose Content it is.** Your Content stays yours. The information a Community puts into FlockPulse stays the Community's. We do not claim to own it. Your personal information is also protected by our Privacy Policy.
+**6.1 Whose Content it is.** Your Content stays yours. The information a Community puts into FlockPulse stays the Community's. We do not claim to own it. Your personal information is also protected by our [Privacy Policy](privacy-policy.md).
 
 **6.2 What you let us do.** You give us permission to store, copy, process and show Content, only so that we can run, secure and support the Service as the Privacy Policy describes. This permission ends when the Content is deleted, subject to the backups and de-identified records described in the Privacy Policy.
 
@@ -118,7 +118,7 @@ These terms apply to anyone who sets up or runs a Community's space.
 
 **10.1 Authority.** By accepting these Terms for a Community, you say that you have the authority to bind the Community. If the Community is not a registered organization (for example, it is an informal group), you accept these Terms for yourself and for the group, and you are responsible for the Community's duties.
 
-**10.2 The Community is our customer.** The Community decides why it collects information about its Members and how it uses it. For that information, FlockPulse is the Community's service provider. We handle it on the Community's behalf, following the Community's instructions given through the Service and these Terms. Section 2 of the Privacy Policy explains this.
+**10.2 The Community is our customer.** The Community decides why it collects information about its Members and how it uses it. For that information, FlockPulse is the Community's service provider. We handle it on the Community's behalf, following the Community's instructions given through the Service and these Terms. Section 2 of the [Privacy Policy](privacy-policy.md) explains this.
 
 **10.3 What the Community is responsible for.** The Community must:
 
@@ -153,7 +153,7 @@ We will tell the Community promptly. We will let it help with the defence. We wi
 
 ## 11. Privacy and data protection
 
-Our Privacy Policy explains what personal information we collect, who can see it, where it is kept, how long we keep it, and your rights. It is part of these Terms. If the Policy and these Terms disagree about personal information, the Policy wins.
+Our [Privacy Policy](privacy-policy.md) explains what personal information we collect, who can see it, where it is kept, how long we keep it, and your rights. It is part of these Terms. If the Policy and these Terms disagree about personal information, the Policy wins.
 
 ## 12. Ending your use
 
@@ -170,7 +170,7 @@ When we reasonably can, we will tell you why and give you a chance to fix a prob
 
 **12.3 If we stop offering FlockPulse.** We will give Community Administrators at least 30 days' notice, unless the law or safety requires us to act faster. We will export a Community's data on request.
 
-**12.4 After it ends.** Your right to use the Service ends. What happens to data is set out in section 10 of the Privacy Policy. Sections that are meant to continue after the end of these Terms still apply. These include ownership, disclaimers, limits on responsibility, claims about the Community, and governing law.
+**12.4 After it ends.** Your right to use the Service ends. What happens to data is set out in section 10 of the [Privacy Policy](privacy-policy.md). Sections that are meant to continue after the end of these Terms still apply. These include ownership, disclaimers, limits on responsibility, claims about the Community, and governing law.
 
 ## 13. Disclaimers
 
@@ -209,7 +209,7 @@ These Terms are governed by the laws of Ontario and the federal laws of Canada t
 
 ## 17. General
 
-- **Whole agreement.** These Terms, the Privacy Policy and any written agreement mentioned in section 1.4 are the whole agreement about the Service.
+- **Whole agreement.** These Terms, the [Privacy Policy](privacy-policy.md) and any written agreement mentioned in section 1.4 are the whole agreement about the Service.
 - **If part is invalid.** If a part of these Terms cannot be enforced, the rest still applies.
 - **No waiver.** If we do not enforce a right right away, we have not given it up.
 - **Transfers.** We may transfer these Terms to a company that takes over FlockPulse, or to a buyer of the business. We will tell you. You may not transfer your rights without our written consent.
@@ -238,3 +238,5 @@ FlockPulse is operated by Joseph Punzalan, a sole proprietor in Ontario, Canada.
 | 1.4 | 2026-11-21 | Section 2.2: you confirm you are 18 or older with a tick box. It is your own confirmation, not proof of age. No birthdate is asked for. Section 1.3 mentions the one-time screen for existing Members. Section 13 says FlockPulse holds no birthdates. **Effective date: the day FP-254 is deployed.** |
 | 1.5 | 2026-11-21 | Section 3: two-step login is described correctly (every Member is asked at first sign-in on the mobile app; Leaders and Community Administrators use it on the web). |
 | 1.6 | 2026-11-21 | Section 3: two-step login is required for all accounts in the mobile app, and for Leaders and Community Administrators in the web admin area. |
+| 1.7 | 2026-11-22 | FP-254 is deployed. The one-time screen reaches existing Members, Leaders and Community Administrators (1.3, 2.2). The record is described as the version accepted and the time (1.3). Effective date 2026-11-21. Last updated 2026-11-23. The Privacy Policy is linked. |
+| 1.8 | 2026-11-22 | Section 1.3: the record also shows your 18+ confirmation. Nothing else changed. |

@@ -52,6 +52,29 @@ console.log('=== Launch switch');
 check("publicLaunch 'true' opens the site", d('flockpulse.ca', '/', 'production', 'true'), 'pass');
 check("publicLaunch 'TRUE' stays gated", d('flockpulse.ca', '/', 'production', 'TRUE'), 'coming-soon');
 check("publicLaunch '1' stays gated", d('flockpulse.ca', '/', 'production', '1'), 'coming-soon');
-check('allowlist is empty for now', GATE_PUBLIC_PATHS.length, 0);
+const LEGAL = ['/privacy', '/terms', '/support', '/delete-account'];
+check('GATE_PUBLIC_PATHS is exactly the four legal pages', JSON.stringify(GATE_PUBLIC_PATHS), JSON.stringify(LEGAL));
+
+const GATED_CASES: Array<[string, string | undefined]> = [
+  ['flockpulse.ca', 'production'],
+  ['flockpulse.ca', 'preview'],
+  ['www.flockpulse.ca', 'production'],
+  ['flockpulse-web.vercel.app', 'production'],
+];
+console.log('=== Legal pages are open while gated');
+for (const [host, env] of GATED_CASES) {
+  for (const p of [...LEGAL, '/privacy/x']) {
+    check(`${host} (${env}) ${p} passes`, d(host, p, env), 'pass');
+  }
+  for (const p of ['/', '/login', '/admin', '/register', '/accept-terms', '/privacy-policy', '/privacyx',
+    '/terms-of-service', '/supports', '/delete-accounts', '/delete', '/Privacy']) {
+    check(`${host} (${env}) ${p} stays coming-soon`, d(host, p, env), 'coming-soon');
+  }
+  check(`${host} (${env}) /api/privacy stays api-not-found`, d(host, '/api/privacy', env), 'api-not-found');
+}
+console.log('=== Launch switch still opens everything');
+for (const p of ['/', '/login', '/admin', '/privacy', '/api/events']) {
+  check(`publicLaunch 'true' on flockpulse.ca: ${p}`, d('flockpulse.ca', p, 'production', 'true'), 'pass');
+}
 
 console.log(`\n${passed}/${passed} checks passed`);
