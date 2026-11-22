@@ -34,7 +34,11 @@ const components: Components = {
   h3: ({ children }) => (
     <h3 className="mb-2 mt-6 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{children}</h3>
   ),
-  p: ({ children }) => <p className="my-4 leading-7 text-zinc-700 dark:text-zinc-300">{children}</p>,
+  // whitespace-pre-line: the date lines ("Effective date", "Last updated") are consecutive lines in the source;
+  // Markdown joins them into one paragraph, so show each single line break.
+  p: ({ children }) => (
+    <p className="my-4 whitespace-pre-line leading-7 text-zinc-700 dark:text-zinc-300">{children}</p>
+  ),
   ul: ({ children }) => (
     <ul className="my-4 list-disc space-y-2 pl-6 text-zinc-700 dark:text-zinc-300">{children}</ul>
   ),
@@ -94,8 +98,9 @@ export default function LegalPage({ doc }: { doc: LegalDocument }) {
     <div className="flex min-h-screen flex-col bg-white dark:bg-black">
       <header className="border-b border-zinc-200 dark:border-zinc-800">
         <div className="mx-auto w-full max-w-3xl px-4 py-4">
-          <Link href="/" className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-            FlockPulse
+          {/* The logo PNG has a white background, so it stays on a white rounded wrapper in dark mode too. */}
+          <Link href="/" className="inline-block rounded-lg bg-white p-1">
+            <img src="/flockpulse-logo.png" alt="FlockPulse" className="h-auto w-44" />
           </Link>
         </div>
       </header>
