@@ -24,7 +24,7 @@ FlockPulse is not for emergencies. In an emergency, call 911 or your local emerg
 
 1. On the login screen, tap **Forgot password?**
 2. A page opens in your phone's browser. Type your email.
-3. We send you an email with a reset link. It comes from admin@flockpulse.ca ("FlockPulse Admin").
+3. We send you an email with a reset link. It comes from support@flockpulse.ca.
 4. Open the link and choose a new password.
 5. Tap **Back to the app**. Then sign in with your new password.
 
@@ -69,6 +69,7 @@ Good to know:
 | 1.0 | 2026-11-18 | First version. |
 | 1.1 | 2026-11-18 | Reply time set at 3 business days (decided). |
 | 1.2 | 2026-11-21 | "Forgot password" now describes the mobile Forgot password? link, the phone browser and the return to the app. "Lost my authenticator app" is for anyone, not only Community Administrators. |
-| 1.3 | 2026-11-21 | "Forgot password" rewritten in short steps for the mobile app and the web, for every role: reset link by email from admin@flockpulse.ca, "Back to the app" button, single-use link that expires (exact time is a [CHECK]), a newer link cancels the older one, signed out on all devices after a reset, same answer whether or not the email is registered. "Lost my authenticator app" matches the two-step login scope. |
+| 1.3 | 2026-11-21 | "Forgot password" rewritten in short steps for the mobile app and the web, for every role: reset link by email from the old sender address, "Back to the app" button, single-use link that expires (exact time is a [CHECK]), a newer link cancels the older one, signed out on all devices after a reset, same answer whether or not the email is registered. "Lost my authenticator app" matches the two-step login scope. |
 | 1.4 | 2026-11-21 | Removed the [CHECK] about the reset link expiry. The page says the link stops working after a short time and gives no number. |
 | 1.5 | 2026-11-22 | Last updated 2026-11-23. |
+| 1.6 | 2026-11-22 | Step 3 of "Forgot password": the reset email comes from support@flockpulse.ca. |

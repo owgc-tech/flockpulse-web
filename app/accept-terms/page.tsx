@@ -27,7 +27,9 @@ export default async function AcceptTermsPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <img src="/flockpulse-logo.png" alt="FlockPulse" className="mb-4 h-auto w-full" />
+        <div className="mb-4 rounded-xl bg-white dark:p-3">
+          <img src="/flockpulse-logo.png" alt="FlockPulse" className="h-auto w-full" />
+        </div>
         <h1 className="mb-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Please confirm to continue</h1>
         <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
           We updated our <TermsLinks withThe={false} />. Please read them, then confirm below. FlockPulse does not ask for your birthdate.
