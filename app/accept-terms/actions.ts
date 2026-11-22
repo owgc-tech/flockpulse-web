@@ -35,5 +35,5 @@ export async function acceptTermsAction(
     return { error: 'We could not save your confirmation. Please try again.' };
   }
 
-  redirect('/admin');
+  redirect('/');
 }

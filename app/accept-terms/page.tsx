@@ -6,7 +6,7 @@ import { signOutAction } from '@/app/admin/(shell)/actions';
 import AcceptTermsForm from './AcceptTermsForm';
 
 // FP-254: one-time screen for existing members. Outside the admin shell (the shell redirects here),
-// but requires a signed-in user. Already accepted (or nothing required): straight on to /admin.
+// but requires a signed-in user. Already accepted (or nothing required): straight on to / (which forwards to /admin/community).
 export default async function AcceptTermsPage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -22,7 +22,7 @@ export default async function AcceptTermsPage() {
   } catch {
     // If the check itself fails, show the screen; accepting is harmless and the action re-checks nothing else.
   }
-  if (!required) redirect('/admin');
+  if (!required) redirect('/');
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-black">
