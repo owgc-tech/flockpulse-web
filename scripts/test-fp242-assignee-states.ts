@@ -13,6 +13,10 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
 process.env.SUPABASE_SERVICE_ROLE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
+// FP-263: refuse to run unless the database is on this computer.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb();
+
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
 import {
@@ -100,7 +104,7 @@ async function main() {
     }
     const m = must(await svc.from('members').insert({
       tenant_id: tenantId, user_id: userId, email, role, first_name: first, last_name: last,
-      gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), 'member ' + first) as { id: string };
     if (withLogin) await svc.auth.admin.updateUserById(userId, { app_metadata: { tenant_id: tenantId, role, member_id: m.id } });
     return { id: m.id, email };

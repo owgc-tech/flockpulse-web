@@ -48,7 +48,7 @@ type Props =
 const ENTITY_LABELS: Record<OverlayEntity, string> = {
   course: 'Course',
   module: 'Module',
-  talk: 'Talk',
+  talk: 'Session',
 };
 
 export default function FormationOverlay(props: Props) {
@@ -261,7 +261,7 @@ export default function FormationOverlay(props: Props) {
               )}
               {'hasChildren' in props && props.hasChildren && mode === 'edit' && (
                 <span className="text-xs text-zinc-400 dark:text-zinc-600">
-                  Delete all {entity === 'course' ? 'modules' : 'talks'} first
+                  Delete all {entity === 'course' ? 'modules' : 'sessions'} first
                 </span>
               )}
               <div className="ml-auto flex gap-2">

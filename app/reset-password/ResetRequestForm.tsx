@@ -1,11 +1,27 @@
 'use client';
 
 import { useActionState } from 'react';
+import { APP_RETURN_URL } from '@/src/features/auth/reset-from-app';
 import { requestPasswordResetAction, type ResetRequestState } from './actions';
 
 const initialState: ResetRequestState = {};
 
-export default function ResetRequestForm() {
+// FP-265 adj-3: opened from the phone app (?from=app), the way back is the app, not the web login
+// (Members cannot use the web login).
+function BackLink({ fromApp, className = '' }: { fromApp: boolean; className?: string }) {
+  return (
+    <p className={`text-center text-xs text-zinc-400 dark:text-zinc-600${className}`}>
+      <a
+        href={fromApp ? APP_RETURN_URL : '/login'}
+        className="underline hover:text-zinc-600 dark:hover:text-zinc-400"
+      >
+        {fromApp ? 'Back to the app' : 'Back to sign in'}
+      </a>
+    </p>
+  );
+}
+
+export default function ResetRequestForm({ fromApp = false }: { fromApp?: boolean }) {
   const [state, formAction, isPending] = useActionState(requestPasswordResetAction, initialState);
 
   const inputClass =
@@ -13,10 +29,14 @@ export default function ResetRequestForm() {
 
   if (state.success) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-        <p className="font-medium">Check your inbox</p>
-        <p className="mt-1">We sent a password reset link to your email address.</p>
-      </div>
+      <>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
+          <p className="font-medium">Check your inbox</p>
+          <p className="mt-1">We sent a password reset link to your email address.</p>
+          {fromApp && <p className="mt-1">Then return to the FlockPulse app.</p>}
+        </div>
+        <BackLink fromApp={fromApp} className=" mt-4" />
+      </>
     );
   }
 
@@ -40,11 +60,7 @@ export default function ResetRequestForm() {
       >
         {isPending ? 'Sending…' : 'Send reset link'}
       </button>
-      <p className="text-center text-xs text-zinc-400 dark:text-zinc-600">
-        <a href="/login" className="underline hover:text-zinc-600 dark:hover:text-zinc-400">
-          Back to sign in
-        </a>
-      </p>
+      <BackLink fromApp={fromApp} />
     </form>
   );
 }

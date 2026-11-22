@@ -21,9 +21,9 @@ export default async function DeletedTalksPage() {
 
   return (
     <div className="px-6 py-8">
-      <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-50">Deleted Talks</h2>
+      <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-50">Deleted Sessions</h2>
       <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-        Restore a deleted talk. Its parent module must be active first.
+        Restore a deleted session. Its parent module must be active first.
       </p>
       <DeletedTalksTable initialTalks={talks} token={token} />
     </div>

@@ -20,6 +20,10 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
 process.env.SUPABASE_SERVICE_ROLE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
+// FP-263: refuse to run unless the database is on this computer.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb();
+
 import { execFileSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
@@ -70,7 +74,7 @@ async function main() {
     ['location_name', 'Other hall', 'Location'], ['location_address', '2 Side St', 'Location'],
     ['event_type_id', 'ty2', 'Event type'],
     ['online_meeting_url', 'https://x.test/j', 'Online meeting'], ['online_meeting_platform_label', 'Meet', 'Online meeting'], ['online_meeting_resource_id', 'res1', 'Online meeting'],
-    ['talk_id', 'talk1', 'Talk'],
+    ['talk_id', 'talk1', 'Session'],
     ['rsvp_closure_days', 3, 'RSVP settings'], ['guests_allowed', true, 'RSVP settings'],
     ['target', { group_ids: ['g2'], member_ids: [] }, 'Invitees'],
     ['status', 'CANCELLED', 'Status'],
@@ -123,7 +127,7 @@ async function main() {
     }
     const m = must(await svc.from('members').insert({
       tenant_id: tenantId, user_id: userId, email, role, first_name: first, last_name: 'Tester',
-      gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), 'member ' + first) as { id: string };
     if (withLogin) await svc.auth.admin.updateUserById(userId, { app_metadata: { tenant_id: tenantId, role, member_id: m.id } });
     return { id: m.id, email };
@@ -242,7 +246,7 @@ async function main() {
   const talk = must(await svc.from('talks').insert({ tenant_id: T1, module_id: mod, name: 'Ta', sequence_order: 1, for_single_men: true }).select('id').single(), 'talk').id;
   const talkEv = await mkEvent({ attendees: [viewer] });
   await open(talkEv); await edit(talkEv, { talkId: talk });
-  await expectFields("talk -> ['Talk']", talkEv, ['Talk']);
+  await expectFields("talk -> ['Session']", talkEv, ['Session']);
 
   const noopEv = await mkEvent({ attendees: [viewer], name: 'NoOp-' + stamp });
   await open(noopEv); await edit(noopEv, { name: 'NoOp-' + stamp });

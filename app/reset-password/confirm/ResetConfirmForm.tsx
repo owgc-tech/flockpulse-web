@@ -5,18 +5,40 @@ import { confirmPasswordResetAction, type ResetConfirmState } from './actions';
 
 const initialState: ResetConfirmState = {};
 
-// DIP-FP-108: the session is already established server-side (page.tsx's
-// exchangeCodeForSession, via cookies) by the time this renders — no token
-// to parse from the URL or thread through to the action.
-export default function ResetConfirmForm() {
+// FP-265: the page does not touch Supabase. The emailed credential (token_hash or
+// code) is posted with the new password, and confirmPasswordResetAction verifies it
+// and sets the password in one Server Action (which, unlike a Server Component, can
+// set the session cookies).
+export default function ResetConfirmForm({
+  tokenHash,
+  code,
+}: {
+  tokenHash?: string;
+  code?: string;
+}) {
   const [state, formAction, isPending] = useActionState(confirmPasswordResetAction, initialState);
 
   const inputClass =
     'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 w-full';
   const labelClass = 'text-sm font-medium text-zinc-700 dark:text-zinc-300';
 
+  if (state.linkInvalid) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          {state.error}
+        </div>
+        <a href="/reset-password" className="text-center text-sm underline text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
+          Request a new reset link
+        </a>
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      {tokenHash && <input type="hidden" name="tokenHash" value={tokenHash} />}
+      {code && <input type="hidden" name="code" value={code} />}
       {state.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           {state.error}

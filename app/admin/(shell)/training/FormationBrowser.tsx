@@ -404,7 +404,7 @@ export default function FormationBrowser({ initialCourses, token }: Props) {
           isLoading={modulesLoading}
         />
         <Column
-          title="Talks"
+          title="Sessions"
           items={talks}
           selectedId={selectedTalkId}
           onSelect={setSelectedTalkId}

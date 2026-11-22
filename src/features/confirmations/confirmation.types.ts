@@ -11,8 +11,8 @@ export interface PendingConfirmationRow {
   member_first_name: string;
   member_last_name: string;
   self_report_status: string;
-  feedback: string | null;
-  star_rating: number | null;
+  // FP-257: Leaders never see feedback or a star rating — they are stored anonymously
+  // (event_feedback) and are not part of a pending confirmation.
   submitted_at: string;
   rsvp_status: string | null;
   rsvp_reason: string | null;

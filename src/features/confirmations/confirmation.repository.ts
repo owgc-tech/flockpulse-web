@@ -40,8 +40,6 @@ export async function getPendingConfirmations(
       event_id,
       member_id,
       self_report_status,
-      feedback,
-      star_rating,
       submitted_at,
       members!member_id ( first_name, last_name )
     `)
@@ -133,8 +131,6 @@ export async function getPendingConfirmations(
       member_first_name: member?.first_name ?? '',
       member_last_name:  member?.last_name  ?? '',
       self_report_status: row['self_report_status'] as string,
-      feedback:          row['feedback']   as string | null,
-      star_rating:       row['star_rating'] as number | null,
       submitted_at:      row['submitted_at'] as string,
       rsvp_status:       rsvp?.rsvp_status  ?? null,
       rsvp_reason:       rsvp?.rsvp_reason  ?? null,

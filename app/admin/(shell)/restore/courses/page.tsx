@@ -23,7 +23,7 @@ export default async function DeletedCoursesPage() {
     <div className="px-6 py-8">
       <h2 className="mb-1 text-base font-semibold text-zinc-900 dark:text-zinc-50">Deleted Courses</h2>
       <p className="mb-6 text-sm text-zinc-500 dark:text-zinc-400">
-        Restore a deleted course to make it visible again in Formation.
+        Restore a deleted course to make it visible again in Training.
       </p>
       <DeletedCoursesTable initialCourses={courses} token={token} />
     </div>

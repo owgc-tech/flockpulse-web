@@ -17,6 +17,10 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
 process.env.SUPABASE_SERVICE_ROLE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
+// FP-263: refuse to run unless the database is on this computer.
+import { assertLocalDb } from './lib/assert-local-db';
+assertLocalDb();
+
 import { createClient } from '@supabase/supabase-js';
 import {
   listEventsForMember, getEventById, updateEvent, recordEventView, recordEventViewForCaller,
@@ -57,7 +61,7 @@ async function main() {
   async function mkMember(tenantId: string, first: string, role: Role) {
     const m = must(await svc.from('members').insert({
       tenant_id: tenantId, user_id: crypto.randomUUID(), email: `${first.toLowerCase()}-${stamp}@example.test`, role,
-      first_name: first, last_name: 'Tester', gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      first_name: first, last_name: 'Tester', gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), 'member ' + first);
     return (m as { id: string }).id;
   }
@@ -323,7 +327,7 @@ async function main() {
     const u = await svc.auth.admin.createUser({ email, password: 'Pw-12345-abcde', email_confirm: true, app_metadata: { tenant_id: tenantId, role } });
     if (u.error) throw u.error;
     const m = must(await svc.from('members').insert({
-      tenant_id: tenantId, user_id: u.data.user!.id, email, role, first_name: first, last_name: 'Route', gender: 'FEMALE', marital_status: 'SINGLE', birthdate: '1990-04-04',
+      tenant_id: tenantId, user_id: u.data.user!.id, email, role, first_name: first, last_name: 'Route', gender: 'FEMALE', marital_status: 'SINGLE',
     }).select('id').single(), 'route member') as { id: string };
     await svc.auth.admin.updateUserById(u.data.user!.id, { app_metadata: { tenant_id: tenantId, role, member_id: m.id } });
     const { data: sess, error } = await anonClient.auth.signInWithPassword({ email, password: 'Pw-12345-abcde' });

@@ -13,11 +13,6 @@ import RepeatsFields from './RepeatsFields';
 import ConvertToSeriesSection from './ConvertToSeriesSection';
 import GroupMemberChipPicker from './GroupMemberChipPicker';
 
-// FP-161-3: always shown as optional task slots, matched by name against the tenant's tasks
-// catalog (Phase 1) — mirrors Prayer Leader/Food Assignment's pre-FP-161-3 "always optional,
-// no event-type gating" precedent (FP-107), generalized to the uniform Task system.
-const CORE_TASK_NAMES = ['Prayer Leader', 'Food Assignment', 'Music'];
-
 function toggleId(prev: string[], id: string): string[] {
   return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
 }
@@ -232,7 +227,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       const tasks: TaskRow[] = tasksBody.data ?? [];
       setTaskCatalog(tasks);
 
-      const coreIds = tasks.filter(t => CORE_TASK_NAMES.includes(t.name)).map(t => t.id);
+      const alwaysShowIds = tasks.filter(t => t.always_show === true).map(t => t.id);
 
       let assignments: EventTaskAssignmentRow[] = [];
       if (isEdit && initialEvent) {
@@ -245,12 +240,12 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
       initialAssignmentsRef.current = assignments;
 
       const assigneesMap: Record<string, AssigneeSelector> = {};
-      for (const id of coreIds) assigneesMap[id] = { group_ids: [], member_ids: [] };
+      for (const id of alwaysShowIds) assigneesMap[id] = { group_ids: [], member_ids: [] };
       for (const a of assignments) {
         assigneesMap[a.task_id] = { group_ids: a.assignee?.group_ids ?? [], member_ids: a.assignee?.member_ids ?? [] };
       }
       setTaskAssignees(assigneesMap);
-      setVisibleTaskIds(Array.from(new Set([...coreIds, ...assignments.map(a => a.task_id)])));
+      setVisibleTaskIds(Array.from(new Set([...alwaysShowIds, ...assignments.map(a => a.task_id)])));
     }
     loadTasks().catch(() => { setTaskCatalog([]); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -580,7 +575,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
 
       {isFormation && (
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Formation talk</p>
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Training session</p>
           <div className="grid grid-cols-3 gap-3">
             <select className={inputClass} value={courseId} onChange={e => { setCourseId(e.target.value); setModuleId(''); setTalkId(''); }}>
               <option value="">Course…</option>
@@ -591,7 +586,7 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
               {visibleModules.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
             <select className={inputClass} value={talkId} onChange={e => setTalkId(e.target.value)} disabled={!moduleId}>
-              <option value="">Talk…</option>
+              <option value="">Session…</option>
               {visibleTalks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
@@ -787,13 +782,13 @@ export default function EventForm({ token, eventTypes, groups, members, initialE
           {taskCatalog
             .filter(t => visibleTaskIds.includes(t.id))
             .map(t => {
-              const isCore = CORE_TASK_NAMES.includes(t.name);
+              const isAlwaysShown = t.always_show === true;
               const current = taskAssignees[t.id] ?? { group_ids: [], member_ids: [] };
               return (
                 <div key={t.id} className="flex flex-col gap-2 border-t border-zinc-200 pt-4 first:border-t-0 first:pt-0 dark:border-zinc-800">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t.name}</p>
-                    {!isCore && (
+                    {!isAlwaysShown && (
                       <button
                         type="button"
                         onClick={() => handleRemoveTask(t.id)}

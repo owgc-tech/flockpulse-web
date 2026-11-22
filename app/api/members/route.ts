@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth, requireRole, errorResponse } from '@/src/lib/auth/middleware';
 import { listMembers, getMemberById, createMember, updateMember, removeMember } from '@/src/features/members/service';
+import { conflictBody, type RemovalBlockers } from '@/src/features/members/removalBlockers';
 
 const requireAdmin = requireRole('ADMIN');
 
@@ -82,6 +83,10 @@ export const PATCH = (req: NextRequest) =>
       if (code === 'NOT_FOUND') {
         return errorResponse('INVALID_ROLE', 'roleCatalogEntryId not found for this tenant', 422);
       }
+      // FP-258: the role change would leave the community with no Administrator.
+      if (code === 'INVALID_STATE_TRANSITION') {
+        return NextResponse.json(conflictBody(err as Error & Partial<RemovalBlockers>), { status: 409 });
+      }
       throw err;
     }
   }));
@@ -106,20 +111,15 @@ export const DELETE = (req: NextRequest) =>
         return errorResponse('NOT_FOUND_IN_TENANT', 'Member not found for this tenant', 404);
       }
       if (code === 'INVALID_STATE_TRANSITION') {
-        const assignedMemberCount = (err as { assignedMemberCount?: number }).assignedMemberCount;
-        // FP-153: mirrors assignedMemberCount's own extraction — without this, member.service.ts's
-        // ownedGroupCount (added under FP-146) never reaches the client at all.
-        const ownedGroupCount = (err as { ownedGroupCount?: number }).ownedGroupCount;
-        // FP-161-2: same extraction, for member.service.ts's ownedEventCount.
-        const ownedEventCount = (err as { ownedEventCount?: number }).ownedEventCount;
-        return NextResponse.json(
-          { error: { code, message: (err as Error).message, assignedMemberCount, ownedGroupCount, ownedEventCount } },
-          { status: 409 }
-        );
+        // FP-258: every block present (counts > 0, lastAdmin) plus a plain message; zero counts
+        // are omitted so older clients behave as before.
+        return NextResponse.json(conflictBody(err as Error & Partial<RemovalBlockers>), { status: 409 });
       }
       // FP-235: scrubbed, but the Auth login could not be deleted — the client tells the
       // admin to press Remove again, which completes it.
       if (code === 'AUTH_DELETE_FAILED') return errorResponse('AUTH_DELETE_FAILED', (err as Error).message, 500);
+      // FP-255: login deleted, leftover link not cleared — same client handling: press Remove again.
+      if (code === 'LOGIN_LINK_CLEAR_FAILED') return errorResponse('LOGIN_LINK_CLEAR_FAILED', (err as Error).message, 500);
       throw err;
     }
   }));

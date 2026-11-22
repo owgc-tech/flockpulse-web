@@ -31,9 +31,9 @@ export default async function FormationProgressPage() {
   return (
     <div className="flex flex-col">
       <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Formation Progress</h1>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Training Progress</h1>
         <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-          View member formation progress and record manual talk completions.
+          View member training progress and record manual session completions.
         </p>
       </div>
       <FormationProgressBrowser

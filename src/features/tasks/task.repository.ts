@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { TaskRow, CreateTaskInput, UpdateTaskInput } from './task.types';
 
-const COLS = 'id, tenant_id, name, individual_only, deleted_at, created_at, updated_at';
+const COLS = 'id, tenant_id, name, individual_only, always_show, deleted_at, created_at, updated_at';
 
 function serviceClient() {
   return createClient(
@@ -17,6 +17,7 @@ export async function insertTask(tenantId: string, input: CreateTaskInput): Prom
       tenant_id: tenantId,
       name: input.name,
       individual_only: input.individualOnly ?? false,
+      always_show: input.alwaysShow ?? false,
     })
     .select(COLS)
     .single();
@@ -31,6 +32,7 @@ export async function patchTask(
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.name !== undefined) patch.name = input.name;
   if (input.individualOnly !== undefined) patch.individual_only = input.individualOnly;
+  if (input.alwaysShow !== undefined) patch.always_show = input.alwaysShow;
   if (input.deletedAt !== undefined) patch.deleted_at = input.deletedAt;
 
   const { data, error } = await serviceClient()

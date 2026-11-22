@@ -5,7 +5,8 @@ export interface FounderRegistrationInput {
   lastName: string;
   gender: string;
   maritalStatus: string;
-  birthdate: string;
+  confirmAdult: boolean;
+  acceptTerms: boolean;
   email: string;
   password: string;
 }

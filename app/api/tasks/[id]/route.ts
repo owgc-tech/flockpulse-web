@@ -12,12 +12,13 @@ export async function PATCH(
     const body = await req.json().catch(() => null);
     if (!body) return errorResponse('INVALID_BODY', 'Request body required', 400);
 
-    const { name, individual_only, deleted_at } = body;
+    const { name, individual_only, always_show, deleted_at } = body;
 
     try {
       const updated = await updateTask(id, ctx.tenantId, {
         name,
         individualOnly: individual_only,
+        alwaysShow: always_show,
         deletedAt: deleted_at,
       });
       return NextResponse.json({ data: updated }, { status: 200 });

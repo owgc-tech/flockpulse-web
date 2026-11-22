@@ -16,9 +16,9 @@ export interface SiteGateInput {
 
 const GATED_HOSTS = new Set(['flockpulse.ca', 'www.flockpulse.ca']);
 
-// Paths that stay reachable while gated (the legal pages join here later). Exact
-// match or a sub-path of an entry.
-export const GATE_PUBLIC_PATHS: string[] = [];
+// Paths that stay reachable while gated: the four public legal pages (Google Play needs a public
+// privacy policy). Exact match or a sub-path of an entry.
+export const GATE_PUBLIC_PATHS: string[] = ['/privacy', '/terms', '/support', '/delete-account'];
 
 // Files the coming-soon page and the browser tab need. app/icon.png is served at /icon.png;
 // /flockpulse-logo.png is public/flockpulse-logo.png, shown on the coming-soon page.

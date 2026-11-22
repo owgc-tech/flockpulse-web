@@ -24,6 +24,7 @@
 // (tsx is what lets this .mjs import the TypeScript service; the script is safe to
 // re-run — a second run finds nothing left to do.)
 import { createClient } from '@supabase/supabase-js';
+import { isLocalSupabaseUrl } from '../lib/assert-local-db.ts';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -32,6 +33,29 @@ if (!url || !key) {
   process.exit(2);
 }
 const execute = process.argv.includes('--execute');
+
+// FP-263: this script is meant for a hosted database, so running it against anything that is
+// not on this computer needs a typed opt-in naming the project: --hosted=<project-ref>, where
+// <project-ref> is the first part of the URL's host (abcd in abcd.supabase.co).
+if (!isLocalSupabaseUrl(url)) {
+  let host = '(unreadable)';
+  try { host = new URL(url).host; } catch { /* keep the placeholder */ }
+  const ref = host.split('.')[0];
+  const flag = process.argv.find((a) => a.startsWith('--hosted='));
+  if (!ref || ref === '(unreadable)' || !flag || flag.slice('--hosted='.length) !== ref) {
+    console.error(`Database: ${host}`);
+    console.error('This is not the local database, so it needs an explicit opt-in.');
+    console.error(ref && ref !== '(unreadable)'
+      ? `To run against it, add exactly this flag: --hosted=${ref}`
+      : 'The database URL could not be read; fix NEXT_PUBLIC_SUPABASE_URL.');
+    process.exit(1);
+  }
+}
+// Stops here, before any client is created or any request is made (used by scripts/test-fp263-local-guard.ts).
+if (process.argv.includes('--dry-check')) {
+  console.log('Guard passed (dry check, nothing was contacted).');
+  process.exit(0);
+}
 
 const db = createClient(url, key);
 const PLACEHOLDER = /^deleted-[0-9a-f-]{36}@deleted\.invalid$/;

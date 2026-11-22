@@ -60,10 +60,10 @@ const NAV: NavItem[] = [
     ],
   },
   {
-    label: 'Formation',
+    label: 'Training',
     children: [
-      { href: '/admin/formation-progress', label: 'Member Progress', adminOnly: false },
-      { href: '/admin/formation', label: 'Courses', adminOnly: true },
+      { href: '/admin/training-progress', label: 'Member Progress', adminOnly: false },
+      { href: '/admin/training', label: 'Courses', adminOnly: true },
     ],
   },
   {
@@ -81,7 +81,7 @@ const NAV: NavItem[] = [
     children: [
       { href: '/admin/restore/courses', label: 'Courses' },
       { href: '/admin/restore/modules', label: 'Modules' },
-      { href: '/admin/restore/talks', label: 'Talks' },
+      { href: '/admin/restore/sessions', label: 'Sessions' },
     ],
   },
 ];

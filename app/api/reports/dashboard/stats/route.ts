@@ -3,7 +3,8 @@ import { withAuth, errorResponse } from '@/src/lib/auth/middleware';
 import { getDashboardStats } from '@/src/features/reports/report.service';
 
 // GET /api/reports/dashboard/stats?event_id=... — the mobile Dashboard
-// tab's three stat cards (attendance, RSVP, rating + anonymized feedback)
+// tab's three stat cards (attendance, RSVP, rating + anonymized feedback — read from
+// event_feedback, which has no author; FP-257)
 // for a single event. Open to every authenticated role — getDashboardStats()
 // itself validates the event is tenant-scoped and, for non-Admin-tier
 // callers, that the caller is actually invited to it (event_attendees).

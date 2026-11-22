@@ -4,6 +4,8 @@ import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { completeRegistrationAction, getInviteRoleTitleAction, type CompleteRegistrationState } from './actions';
+import { AcceptTermsCheckbox, ConfirmAdultCheckbox } from '@/src/features/legal/LegalCheckboxes';
+import { showContinueToLogin } from '@/src/features/registration/registration-complete';
 
 const initialState: CompleteRegistrationState = {};
 
@@ -21,6 +23,8 @@ export default function CompleteProfileForm() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const [roleTitle, setRoleTitle] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmAdult, setConfirmAdult] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem('fp_reg_token');
@@ -77,18 +81,21 @@ export default function CompleteProfileForm() {
   }
 
   if (state.success) {
+    const loginButton = (
+      <button
+        type="button"
+        onClick={() => router.push('/login')}
+        className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+      >
+        Continue to Login
+      </button>
+    );
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 p-6 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
         <p className="font-medium">Registration complete.</p>
         {role === 'ADMIN' ? (
           <>
-            <button
-              type="button"
-              onClick={() => router.push('/login')}
-              className="self-start rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            >
-              Continue to Login
-            </button>
+            {loginButton}
             <p className="text-sm">Download the FlockPulse app to get started. Your login email is the address your invitation was sent to.</p>
           </>
         ) : (
@@ -96,9 +103,13 @@ export default function CompleteProfileForm() {
           // either platform (iOS is TestFlight-only, added per-tester
           // manually; Android's link changes per build) — this states the
           // real next step instead of a fake/broken download button.
-          <p className="text-sm">
-            You&apos;re all set. Your admin will follow up separately with an invitation to install the FlockPulse mobile app — watch for that message at the email address your invitation was sent to.
-          </p>
+          // FP-254 follow-up: every role except Member also gets the login button, above this text.
+          <>
+            {showContinueToLogin(role) && loginButton}
+            <p className="text-sm">
+              You&apos;re all set. Your admin will follow up separately with an invitation to install the FlockPulse mobile app — watch for that message at the email address your invitation was sent to.
+            </p>
+          </>
         )}
       </div>
     );
@@ -170,18 +181,12 @@ export default function CompleteProfileForm() {
         </select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="birthdate" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Birthdate
-        </label>
-        <input
-          id="birthdate" name="birthdate" type="date" required
-          max={new Date().toISOString().split('T')[0]}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-        />
+      <div className="flex flex-col gap-3">
+        <ConfirmAdultCheckbox checked={confirmAdult} onChange={setConfirmAdult} />
+        <AcceptTermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />
       </div>
 
-      <button type="submit" disabled={isPending || !accessToken}
+      <button type="submit" disabled={isPending || !accessToken || !confirmAdult || !acceptTerms}
         className="mt-1 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
         {isPending ? 'Saving…' : 'Complete registration'}
       </button>
